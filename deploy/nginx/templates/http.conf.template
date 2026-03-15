@@ -4,6 +4,12 @@ server {
 
   client_max_body_size ${NGINX_CLIENT_MAX_BODY_SIZE};
 
+  location /health {
+    access_log off;
+    return 200 'ok';
+    add_header Content-Type text/plain;
+  }
+
   location /.well-known/acme-challenge/ {
     root /var/www/certbot;
   }
