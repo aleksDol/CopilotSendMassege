@@ -1,5 +1,5 @@
 server {
-  listen 80;
+  listen 80 default_server;
   server_name ${APP_DOMAIN};
 
   client_max_body_size ${NGINX_CLIENT_MAX_BODY_SIZE};
@@ -11,7 +11,8 @@ server {
   }
 
   location /.well-known/acme-challenge/ {
-    root /var/www/certbot;
+    alias /var/www/certbot/.well-known/acme-challenge/;
+    default_type text/plain;
   }
 
   location /api/ {
