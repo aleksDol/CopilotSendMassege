@@ -24,6 +24,9 @@ __pycache__/
 *.pyc
 .venv/
 
+# docker image archives (не коммитить — для переноса на VPS)
+*.tar
+
 # ide / os
 .vscode/
 .idea/
