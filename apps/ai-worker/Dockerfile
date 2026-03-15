@@ -11,7 +11,7 @@ COPY packages ./packages
 
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @repo/ai-worker build
-RUN pnpm --filter @repo/ai-worker deploy --prod /prod/ai-worker
+RUN mkdir -p /prod/ai-worker && cp -r apps/ai-worker/dist apps/ai-worker/package.json /prod/ai-worker/ && cp -r node_modules /prod/ai-worker/
 
 FROM node:20-alpine AS runner
 

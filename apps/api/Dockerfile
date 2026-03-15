@@ -13,7 +13,7 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @repo/ai-core build \
   && pnpm --filter @repo/api build \
   && pnpm --filter @repo/db prisma:generate
-RUN pnpm --filter @repo/api deploy --prod /prod/api
+RUN mkdir -p /prod/api && cp -r apps/api/dist apps/api/package.json /prod/api/ && cp -r node_modules /prod/api/
 
 FROM node:20-alpine AS runner
 
