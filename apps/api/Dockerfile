@@ -13,14 +13,14 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @repo/db prisma:generate \
   && pnpm --filter @repo/ai-core build \
   && pnpm --filter @repo/api build
-RUN mkdir -p /prod/api && cp -r apps/api/dist apps/api/package.json /prod/api/ && cp -r node_modules /prod/api/
+RUN pnpm prune --prod
 
 FROM node:20-alpine AS runner
 
 ENV NODE_ENV=production
 WORKDIR /app
 
-COPY --from=builder /prod/api ./
+COPY --from=builder /app ./
 
 EXPOSE 4000
-CMD ["node", "dist/index.js"]
+CMD ["node", "apps/api/dist/index.js"]
