@@ -12,6 +12,7 @@ COPY packages ./packages
 
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @repo/web build
+RUN mkdir -p /app/apps/web/public
 
 FROM node:20-alpine AS runner
 
