@@ -1,0 +1,148 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-sales-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ai_sales_assistant
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ai_sales_assistant"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: ai-sales-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: ai-sales-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      API_HOST: 0.0.0.0
+      API_PORT: ${API_PORT:-4000}
+      PORT: ${API_PORT:-4000}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      TELEGRAM_WORKER_URL: http://telegram-worker:8080
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
+      TELEGRAM_WORKER_TIMEOUT_MS: 15000
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL_REPLY: ${OPENAI_MODEL_REPLY:-gpt-4o-mini}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      AI_PROMPT_VERSION: ${AI_PROMPT_VERSION:-v1}
+      AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS:-12000}
+      AI_MAX_CONTEXT_MESSAGES: ${AI_MAX_CONTEXT_MESSAGES:-20}
+      REDIS_CACHE_TTL: ${REDIS_CACHE_TTL:-45}
+      AI_WORKER_CONCURRENCY: ${AI_WORKER_CONCURRENCY:-2}
+      TELEGRAM_WORKER_CONCURRENCY: ${TELEGRAM_WORKER_CONCURRENCY:-2}
+      FOLLOW_UP_UNANSWERED_HOURS: ${FOLLOW_UP_UNANSWERED_HOURS:-24}
+      FOLLOW_UP_WARM_LEAD_HOURS: ${FOLLOW_UP_WARM_LEAD_HOURS:-48}
+      DASHBOARD_ACTIVITY_WINDOW_DAYS: ${DASHBOARD_ACTIVITY_WINDOW_DAYS:-7}
+    ports:
+      - "${API_PORT:-4000}:${API_PORT:-4000}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      telegram-worker:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:${API_PORT:-4000}/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: ai-sales-web
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_started
+
+  ai-worker:
+    build:
+      context: .
+      dockerfile: apps/ai-worker/Dockerfile
+    container_name: ai-sales-ai-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      AI_WORKER_PORT: 8090
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
+      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:${API_PORT:-4000}}
+      AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS:-12000}
+      AI_WORKER_CONCURRENCY: ${AI_WORKER_CONCURRENCY:-2}
+      TELEGRAM_WORKER_CONCURRENCY: ${TELEGRAM_WORKER_CONCURRENCY:-2}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  telegram-worker:
+    build:
+      context: .
+      dockerfile: apps/telegram-worker/Dockerfile
+    container_name: ai-sales-telegram-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+      TELEGRAM_SESSION_ENCRYPTION_KEY: ${TELEGRAM_SESSION_ENCRYPTION_KEY}
+      TELEGRAM_INITIAL_DIALOG_LIMIT: ${TELEGRAM_INITIAL_DIALOG_LIMIT:-100}
+      TELEGRAM_INITIAL_MESSAGES_PER_DIALOG: ${TELEGRAM_INITIAL_MESSAGES_PER_DIALOG:-50}
+      TELEGRAM_WORKER_CONCURRENCY: ${TELEGRAM_WORKER_CONCURRENCY:-2}
+      TELEGRAM_WORKER_HOST: 0.0.0.0
+      TELEGRAM_WORKER_PORT: 8080
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
+      API_INTERNAL_URL: http://api:${API_PORT:-4000}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

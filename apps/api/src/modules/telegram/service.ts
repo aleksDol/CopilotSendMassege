@@ -1,0 +1,199 @@
+import { ChannelType, ChannelAccountStatus, TelegramLoginStatus } from "@prisma/client";
+import type { FastifyInstance } from "fastify";
+import { AppError } from "../../lib/errors.js";
+import { TelegramWorkerClient } from "../../lib/telegram-worker-client.js";
+
+type Scope = {
+  companyId: string;
+  userId: string;
+};
+
+const TG_LOGIN_REQUIRED = "LOGIN_REQUIRED" as unknown as TelegramLoginStatus;
+const TG_CONNECTED = "CONNECTED" as unknown as TelegramLoginStatus;
+
+const mapTelegramStatus = (status: TelegramLoginStatus): string => status.toLowerCase();
+
+const getWorkerClient = (app: FastifyInstance): TelegramWorkerClient =>
+  new TelegramWorkerClient(
+    app.config.env.TELEGRAM_WORKER_URL,
+    app.config.env.INTERNAL_API_TOKEN,
+    app.config.env.TELEGRAM_WORKER_TIMEOUT_MS
+  );
+
+const ensureChannelAndAccount = async (app: FastifyInstance, scope: Scope, phone: string) => {
+  const result = await app.prisma.$transaction(async (tx) => {
+    let channel = await tx.channelAccount.findFirst({
+      where: {
+        companyId: scope.companyId,
+        channelType: ChannelType.TELEGRAM,
+        externalAccountId: phone
+      },
+      include: { telegram: true }
+    });
+
+    if (!channel) {
+      const hasTelegramChannel = await tx.channelAccount.findFirst({
+        where: {
+          companyId: scope.companyId,
+          channelType: ChannelType.TELEGRAM
+        },
+        select: { id: true }
+      });
+
+      channel = await tx.channelAccount.create({
+        data: {
+          companyId: scope.companyId,
+          channelType: ChannelType.TELEGRAM,
+          externalAccountId: phone,
+          displayName: `Telegram ${phone}`,
+          status: ChannelAccountStatus.CONNECTING,
+          isPrimary: !hasTelegramChannel,
+          createdByUserId: scope.userId
+        },
+        include: { telegram: true }
+      });
+    } else {
+      channel = await tx.channelAccount.update({
+        where: { id: channel.id },
+        data: {
+          displayName: `Telegram ${phone}`,
+          status: ChannelAccountStatus.CONNECTING
+        },
+        include: { telegram: true }
+      });
+    }
+
+    await tx.telegramAccount.upsert({
+      where: { channelAccountId: channel.id },
+      update: {
+        phone,
+        loginStatus: TG_LOGIN_REQUIRED,
+        errorMessage: null
+      },
+      create: {
+        channelAccountId: channel.id,
+        phone,
+        loginStatus: TG_LOGIN_REQUIRED
+      }
+    });
+
+    return channel;
+  });
+
+  return result;
+};
+
+export const startConnect = async (app: FastifyInstance, scope: Scope, payload: { phone: string }) => {
+  const channel = await ensureChannelAndAccount(app, scope, payload.phone);
+
+  const worker = getWorkerClient(app);
+  const response = await worker.startLogin({
+    companyId: scope.companyId,
+    channelAccountId: channel.id,
+    phone: payload.phone
+  });
+
+  return {
+    status: response.status,
+    requiresPassword: response.requiresPassword ?? false
+  };
+};
+
+export const verifyCode = async (
+  app: FastifyInstance,
+  scope: Scope,
+  payload: { phone: string; code: string }
+) => {
+  const worker = getWorkerClient(app);
+
+  return worker.verifyCode({
+    companyId: scope.companyId,
+    phone: payload.phone,
+    code: payload.code
+  });
+};
+
+export const verifyPassword = async (
+  app: FastifyInstance,
+  scope: Scope,
+  payload: { phone: string; password: string }
+) => {
+  const worker = getWorkerClient(app);
+
+  return worker.verifyPassword({
+    companyId: scope.companyId,
+    phone: payload.phone,
+    password: payload.password
+  });
+};
+
+export const getTelegramAccount = async (app: FastifyInstance, scope: Scope) => {
+  const account = await app.prisma.telegramAccount.findFirst({
+    where: {
+      channelAccount: {
+        companyId: scope.companyId,
+        channelType: ChannelType.TELEGRAM
+      }
+    },
+    orderBy: {
+      updatedAt: "desc"
+    },
+    include: {
+      channelAccount: true
+    }
+  });
+
+  if (!account) {
+    return {
+      status: "not_connected"
+    };
+  }
+
+  return {
+    channelAccountId: account.channelAccountId,
+    phone: account.phone,
+    loginStatus: mapTelegramStatus(account.loginStatus),
+    displayName: account.channelAccount.displayName,
+    username: account.username,
+    lastSyncAt: account.lastSyncAt,
+    errorMessage: account.errorMessage
+  };
+};
+
+export const triggerInitialSync = async (
+  app: FastifyInstance,
+  scope: Scope,
+  payload?: {
+    phone?: string;
+    dialogsLimit?: number;
+    messagesPerDialog?: number;
+  }
+) => {
+  const connectedAccount = await app.prisma.telegramAccount.findFirst({
+    where: {
+      phone: payload?.phone,
+      loginStatus: TG_CONNECTED,
+      channelAccount: {
+        companyId: scope.companyId,
+        channelType: ChannelType.TELEGRAM
+      }
+    },
+    include: {
+      channelAccount: true
+    }
+  });
+
+  if (!connectedAccount) {
+    throw new AppError(400, "TELEGRAM_NOT_CONNECTED", "Connected Telegram account not found for workspace");
+  }
+
+  const worker = getWorkerClient(app);
+
+  return worker.sync({
+    companyId: scope.companyId,
+    channelAccountId: connectedAccount.channelAccountId,
+    phone: connectedAccount.phone,
+    dialogsLimit: payload?.dialogsLimit,
+    messagesPerDialog: payload?.messagesPerDialog
+  });
+};

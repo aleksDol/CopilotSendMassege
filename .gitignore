@@ -1,0 +1,31 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build outputs
+.next/
+dist/
+coverage/
+.turbo/
+
+# logs
+*.log
+
+# env files (секреты — не коммитить)
+.env
+.env.local
+.env.production
+.env.*.local
+.env.production.*
+!.env.example
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# ide / os
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

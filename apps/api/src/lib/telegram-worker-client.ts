@@ -1,0 +1,87 @@
+import { AppError } from "./errors.js";
+
+type WorkerPayload = Record<string, unknown>;
+
+type WorkerSuccess = {
+  status: string;
+  requiresPassword?: boolean;
+  details?: unknown;
+};
+
+const normalizeWorkerError = async (response: Response): Promise<string> => {
+  try {
+    const body = (await response.json()) as { error?: { message?: string } };
+    if (body?.error?.message) {
+      return body.error.message;
+    }
+  } catch {
+    // noop
+  }
+
+  return `Telegram worker returned HTTP ${response.status}`;
+};
+
+export class TelegramWorkerClient {
+  constructor(
+    private readonly baseUrl: string,
+    private readonly token: string,
+    private readonly timeoutMs: number
+  ) {}
+
+  private async post(path: string, payload: WorkerPayload): Promise<WorkerSuccess> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    try {
+      const response = await fetch(`${this.baseUrl}${path}`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-internal-token": this.token
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        const message = await normalizeWorkerError(response);
+
+        throw new AppError(502, "TELEGRAM_WORKER_ERROR", message);
+      }
+
+      return (await response.json()) as WorkerSuccess;
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new AppError(504, "TELEGRAM_WORKER_TIMEOUT", "Telegram worker request timed out");
+      }
+
+      throw new AppError(502, "TELEGRAM_WORKER_UNAVAILABLE", "Telegram worker is unavailable");
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  startLogin(payload: WorkerPayload) {
+    return this.post("/internal/telegram/start-login", payload);
+  }
+
+  verifyCode(payload: WorkerPayload) {
+    return this.post("/internal/telegram/verify-code", payload);
+  }
+
+  verifyPassword(payload: WorkerPayload) {
+    return this.post("/internal/telegram/verify-password", payload);
+  }
+
+  sync(payload: WorkerPayload) {
+    return this.post("/internal/telegram/sync", payload);
+  }
+
+  sendMessage(payload: WorkerPayload) {
+    return this.post("/internal/telegram/send-message", payload);
+  }
+}

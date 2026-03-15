@@ -1,0 +1,710 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// =========================
+/// Enums
+/// =========================
+enum Plan {
+  FREE
+  PRO
+  TEAM
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+}
+
+enum UsageMetricType {
+  AI_SUGGESTION
+  AI_TOKEN_INPUT
+  AI_TOKEN_OUTPUT
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum ChannelType {
+  TELEGRAM
+  WHATSAPP
+  EMAIL
+  OTHER
+}
+
+enum ChannelAccountStatus {
+  CONNECTING
+  ACTIVE
+  PAUSED
+  ERROR
+  DISCONNECTED
+}
+
+enum TelegramLoginStatus {
+  LOGIN_REQUIRED
+  CODE_SENT
+  PASSWORD_REQUIRED
+  CONNECTED
+  RECONNECT_REQUIRED
+  LIMITED
+  DISABLED
+  ERROR
+}
+
+enum ConversationType {
+  DIRECT
+  GROUP
+  CHANNEL
+}
+
+enum ConversationParticipantRole {
+  MEMBER
+  ADMIN
+  OWNER
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+  SYSTEM
+}
+
+enum MessageType {
+  TEXT
+  MEDIA
+  SERVICE
+  OTHER
+}
+
+enum LeadStatus {
+  NEW
+  OPEN
+  WON
+  LOST
+}
+
+enum LeadStage {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum LeadTemperature {
+  COLD
+  WARM
+  HOT
+}
+
+enum LeadSource {
+  TELEGRAM
+  IMPORT
+  MANUAL
+  API
+}
+
+enum LeadEventType {
+  STATUS_CHANGED
+  STAGE_CHANGED
+  SCORE_CHANGED
+  OWNER_CHANGED
+  NOTE_ADDED
+}
+
+enum LeadEventSource {
+  USER
+  SYSTEM
+  AI
+}
+
+enum SummaryKind {
+  ROLLING
+  SNAPSHOT
+  HANDOFF
+}
+
+enum SuggestionType {
+  REPLY
+  FOLLOW_UP
+  OBJECTION_HANDLING
+  REENGAGEMENT
+}
+
+enum SuggestionStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  SENT
+  EXPIRED
+}
+
+enum AiSuggestionMode {
+  DEFAULT
+  SHORTER
+  MORE_FRIENDLY
+  MORE_SALES
+  HANDLE_OBJECTION
+}
+
+enum AiRunType {
+  REPLY_GENERATION
+  SUGGESTION
+  SUMMARY
+  CLASSIFICATION
+  EXTRACTION
+  FOLLOW_UP
+}
+
+enum AiRunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+enum TaskType {
+  FOLLOW_UP
+  CALL
+  MESSAGE
+  REVIEW
+  MANUAL
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskSource {
+  MANUAL
+  SYSTEM
+  AI
+}
+
+enum KnowledgeKind {
+  FAQ
+  PRODUCT
+  POLICY
+  SCRIPT
+  OTHER
+}
+
+/// =========================
+/// Company / User layer
+/// =========================
+model Company {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  plan      Plan     @default(FREE)
+  timezone  String   @default("UTC")
+  defaultReplyPolicy Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users           User[]
+  subscriptions   Subscription[]
+  usageRecords    UsageRecord[]
+  invites         TeamInvite[]
+  channelAccounts ChannelAccount[]
+  participants    Participant[]
+  conversations   Conversation[]
+  messages        Message[]
+  leads           Lead[]
+  aiSuggestions   AiSuggestion[]
+  aiRuns          AiRun[]
+  tasks           Task[]
+  knowledgeItems  KnowledgeItem[]
+  replyPolicy     ReplyPolicy?
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  companyId    String    @db.Uuid
+  email        String    @unique
+  passwordHash String
+  fullName     String
+  role         UserRole  @default(MEMBER)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  company                Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdChannelAccounts ChannelAccount[] @relation("ChannelAccountCreatedBy")
+  assignedConversations  Conversation[]
+  ownedLeads             Lead[]          @relation("LeadOwner")
+  leadEvents             LeadEvent[]     @relation("LeadEventCreatedBy")
+  assignedTasks          Task[]          @relation("TaskAssignedUser")
+  knowledgeItemsCreated  KnowledgeItem[] @relation("KnowledgeItemCreatedBy")
+  aiSuggestionsForUser   AiSuggestion[]  @relation("AiSuggestionCreatedForUser")
+  createdInvites         TeamInvite[]    @relation("InviteCreatedBy")
+
+  @@index([companyId])
+  @@index([companyId, role])
+}
+
+model Subscription {
+  id                   String             @id @default(uuid()) @db.Uuid
+  companyId            String             @db.Uuid
+  plan                 Plan
+  status               SubscriptionStatus @default(TRIALING)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt(sort: Desc)])
+  @@index([stripeCustomerId])
+  @@index([stripeSubscriptionId])
+}
+
+model UsageRecord {
+  id          String          @id @default(uuid()) @db.Uuid
+  companyId   String          @db.Uuid
+  metricType  UsageMetricType
+  quantity    Int
+  periodStart DateTime
+  periodEnd   DateTime
+  createdAt   DateTime        @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, metricType, periodStart])
+  @@index([companyId, createdAt(sort: Desc)])
+}
+
+model TeamInvite {
+  id            String   @id @default(uuid()) @db.Uuid
+  companyId     String   @db.Uuid
+  email         String
+  token         String   @unique
+  role          UserRole @default(MEMBER)
+  invitedByUserId String? @db.Uuid
+  expiresAt     DateTime
+  acceptedAt    DateTime?
+  createdAt     DateTime @default(now())
+
+  company       Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invitedByUser User?   @relation("InviteCreatedBy", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, email, acceptedAt])
+}
+
+/// =========================
+/// Channel abstraction layer
+/// =========================
+model ChannelAccount {
+  id                String               @id @default(uuid()) @db.Uuid
+  companyId         String               @db.Uuid
+  channelType       ChannelType
+  displayName       String
+  externalAccountId String
+  status            ChannelAccountStatus @default(ACTIVE)
+  isPrimary         Boolean              @default(false)
+  createdByUserId   String?              @db.Uuid
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  company       Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdByUser User?         @relation("ChannelAccountCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  telegram      TelegramAccount?
+  participants  Participant[]
+  conversations Conversation[]
+
+  @@unique([companyId, channelType, externalAccountId])
+  @@index([companyId, status])
+  @@index([companyId, isPrimary])
+}
+
+model TelegramAccount {
+  id                   String              @id @default(uuid()) @db.Uuid
+  channelAccountId     String              @unique @db.Uuid
+  phone                String?
+  telegramUserId       String?
+  username             String?
+  sessionDataEncrypted String?
+  apiDcId              Int?
+  authPhoneCodeHash    String?
+  loginStatus          TelegramLoginStatus @default(LOGIN_REQUIRED)
+  lastSyncAt           DateTime?
+  lastEventAt          DateTime?
+  errorMessage         String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  channelAccount ChannelAccount @relation(fields: [channelAccountId], references: [id], onDelete: Cascade)
+
+  @@index([telegramUserId])
+  @@index([loginStatus])
+}
+
+/// =========================
+/// Conversation layer (raw records)
+/// =========================
+model Participant {
+  id                    String   @id @default(uuid()) @db.Uuid
+  companyId             String   @db.Uuid
+  channelAccountId      String   @db.Uuid
+  externalParticipantId String
+  username              String?
+  fullName              String?
+  firstName             String?
+  lastName              String?
+  phone                 String?
+  isSelf                Boolean  @default(false)
+  metadata              Json?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  company                  Company                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  channelAccount           ChannelAccount            @relation(fields: [channelAccountId], references: [id], onDelete: Cascade)
+  conversationParticipants ConversationParticipant[]
+  messages                 Message[]
+
+  @@unique([channelAccountId, externalParticipantId])
+  @@index([companyId])
+  @@index([channelAccountId])
+}
+
+model Conversation {
+  id                     String           @id @default(uuid()) @db.Uuid
+  companyId              String           @db.Uuid
+  channelAccountId       String           @db.Uuid
+  externalConversationId String
+  conversationType       ConversationType
+  title                  String?
+  isArchived             Boolean          @default(false)
+  assignedUserId         String?          @db.Uuid
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  company                  Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  channelAccount           ChannelAccount             @relation(fields: [channelAccountId], references: [id], onDelete: Cascade)
+  assignedUser             User?                      @relation(fields: [assignedUserId], references: [id], onDelete: SetNull)
+  participants             ConversationParticipant[]
+  messages                 Message[]
+  state                    ConversationState?
+  lead                     Lead?
+  summaries                ConversationSummary[]
+  aiSuggestions            AiSuggestion[]
+  aiRuns                   AiRun[]
+  tasks                    Task[]
+
+  @@unique([channelAccountId, externalConversationId])
+  @@index([companyId, isArchived])
+  @@index([companyId, updatedAt(sort: Desc)])
+  @@index([assignedUserId])
+}
+
+model ConversationParticipant {
+  id             String                      @id @default(uuid()) @db.Uuid
+  conversationId String                      @db.Uuid
+  participantId  String                      @db.Uuid
+  role           ConversationParticipantRole @default(MEMBER)
+  joinedAt       DateTime                    @default(now())
+  leftAt         DateTime?
+  createdAt      DateTime                    @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  participant  Participant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, participantId])
+  @@index([participantId])
+}
+
+model Message {
+  id                       String           @id @default(uuid()) @db.Uuid
+  companyId                String           @db.Uuid
+  conversationId           String           @db.Uuid
+  participantId            String?          @db.Uuid
+  externalMessageId        String
+  replyToExternalMessageId String?
+  direction                MessageDirection
+  messageType              MessageType
+  text                     String?
+  normalizedText           String?
+  sentAt                   DateTime
+  editedAt                 DateTime?
+  isDeleted                Boolean          @default(false)
+  hasAttachment            Boolean          @default(false)
+  rawPayload               Json?
+  createdAt                DateTime         @default(now())
+
+  company               Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  conversation          Conversation         @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  participant           Participant?         @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  triggerAiSuggestions  AiSuggestion[]      @relation("AiSuggestionTriggerMessage")
+  sentAiSuggestions     AiSuggestion[]      @relation("AiSuggestionSentMessage")
+  aiRuns                AiRun[]
+  stateAsLastMessage    ConversationState[] @relation("ConversationStateLastMessage")
+  coveredBySummaries    ConversationSummary[]
+
+  @@unique([conversationId, externalMessageId])
+  @@index([conversationId, sentAt(sort: Desc)])
+  @@index([companyId, sentAt(sort: Desc)])
+  @@index([participantId])
+}
+
+/// =========================
+/// Conversation state layer
+/// =========================
+model ConversationState {
+  id                           String          @id @default(uuid()) @db.Uuid
+  conversationId               String          @unique @db.Uuid
+  lastMessageId                String?         @db.Uuid
+  lastMessageAt                DateTime?
+  lastMessagePreview           String?
+  lastInboundAt                DateTime?
+  lastOutboundAt               DateTime?
+  unansweredClientMessageCount Int             @default(0)
+  isWaitingForReply            Boolean         @default(false)
+  leadStatus                   LeadStatus      @default(NEW)
+  leadStage                    LeadStage       @default(NEW)
+  leadScore                    Int             @default(0)
+  leadTemperature              LeadTemperature @default(COLD)
+  lastClientIntent             String?
+  nextRecommendedAction        String?
+  followUpDueAt                DateTime?
+  riskFlags                    Json?
+  summaryVersion               Int             @default(0)
+  stateVersion                 Int             @default(1)
+  updatedAt                    DateTime        @updatedAt
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  lastMessage  Message?     @relation("ConversationStateLastMessage", fields: [lastMessageId], references: [id], onDelete: SetNull)
+
+  @@index([lastMessageAt(sort: Desc)])
+  @@index([followUpDueAt])
+  @@index([leadStatus, leadStage])
+}
+
+/// =========================
+/// Lead layer
+/// =========================
+model Lead {
+  id             String       @id @default(uuid()) @db.Uuid
+  companyId      String       @db.Uuid
+  conversationId String       @unique @db.Uuid
+  ownerUserId    String?      @db.Uuid
+  status         LeadStatus   @default(OPEN)
+  stage          LeadStage    @default(NEW)
+  score          Int          @default(0)
+  source         LeadSource   @default(TELEGRAM)
+  estimatedValue Decimal?     @db.Decimal(12, 2)
+  currency       String       @default("USD") @db.VarChar(3)
+  lostReason     String?
+  wonAt          DateTime?
+  lostAt         DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  ownerUser    User?       @relation("LeadOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  events       LeadEvent[]
+  tasks        Task[]
+
+  @@index([companyId, status, stage])
+  @@index([companyId, stage])
+  @@index([ownerUserId])
+}
+
+model LeadEvent {
+  id              String          @id @default(uuid()) @db.Uuid
+  leadId          String          @db.Uuid
+  eventType       LeadEventType
+  oldValue        Json?
+  newValue        Json?
+  source          LeadEventSource @default(SYSTEM)
+  createdByUserId String?         @db.Uuid
+  createdAt       DateTime        @default(now())
+
+  lead          Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdByUser User? @relation("LeadEventCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([leadId, createdAt(sort: Desc)])
+  @@index([createdByUserId])
+}
+
+/// =========================
+/// AI memory / artifacts
+/// =========================
+model ConversationSummary {
+  id                     String      @id @default(uuid()) @db.Uuid
+  conversationId         String      @db.Uuid
+  summaryText            String
+  coverageUntilMessageId String?     @db.Uuid
+  summaryKind            SummaryKind @default(ROLLING)
+  model                  String?
+  promptVersion          String?
+  createdAt              DateTime    @default(now())
+
+  conversation         Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  coverageUntilMessage Message?     @relation(fields: [coverageUntilMessageId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt(sort: Desc)])
+}
+
+model AiSuggestion {
+  id               String           @id @default(uuid()) @db.Uuid
+  companyId        String           @db.Uuid
+  conversationId   String           @db.Uuid
+  triggerMessageId String?          @db.Uuid
+  suggestionType   SuggestionType
+  mode             AiSuggestionMode @default(DEFAULT)
+  status           SuggestionStatus @default(PENDING)
+  model            String?
+  promptHash       String?
+  inputContext     Json?
+  suggestionText   String
+  confidence       Decimal?         @db.Decimal(5, 4)
+  createdForUserId String?          @db.Uuid
+  acceptedAt       DateTime?
+  rejectedAt       DateTime?
+  editedBeforeSend Boolean          @default(false)
+  sentMessageId    String?          @db.Uuid
+  createdAt        DateTime         @default(now())
+
+  company         Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  conversation    Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  triggerMessage  Message?      @relation("AiSuggestionTriggerMessage", fields: [triggerMessageId], references: [id], onDelete: SetNull)
+  createdForUser  User?         @relation("AiSuggestionCreatedForUser", fields: [createdForUserId], references: [id], onDelete: SetNull)
+  sentMessage     Message?      @relation("AiSuggestionSentMessage", fields: [sentMessageId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt(sort: Desc)])
+  @@index([conversationId, createdAt(sort: Desc)])
+  @@index([conversationId, status, createdAt(sort: Desc)])
+  @@index([conversationId, mode, createdAt(sort: Desc)])
+  @@index([createdForUserId])
+}
+
+model AiRun {
+  id           String      @id @default(uuid()) @db.Uuid
+  companyId    String      @db.Uuid
+  conversationId String?   @db.Uuid
+  messageId    String?     @db.Uuid
+  runType      AiRunType
+  provider     String
+  model        String
+  status       AiRunStatus @default(QUEUED)
+  inputTokens  Int         @default(0)
+  outputTokens Int         @default(0)
+  cachedTokens Int         @default(0)
+  latencyMs    Int?
+  costUsd      Decimal?    @db.Decimal(10, 6)
+  promptVersion String?
+  errorMessage String?
+  metadata     Json?
+  createdAt    DateTime    @default(now())
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  message      Message?      @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt(sort: Desc)])
+  @@index([conversationId, createdAt(sort: Desc)])
+  @@index([messageId])
+}
+
+/// =========================
+/// Tasks
+/// =========================
+model Task {
+  id             String       @id @default(uuid()) @db.Uuid
+  companyId      String       @db.Uuid
+  conversationId String?      @db.Uuid
+  leadId         String?      @db.Uuid
+  assignedUserId String?      @db.Uuid
+  taskType       TaskType
+  title          String
+  description    String?
+  status         TaskStatus   @default(OPEN)
+  priority       TaskPriority @default(MEDIUM)
+  dueAt          DateTime?
+  source         TaskSource   @default(SYSTEM)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  completedAt    DateTime?
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  lead         Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  assignedUser User?         @relation("TaskAssignedUser", fields: [assignedUserId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, status, dueAt])
+  @@index([companyId, status])
+  @@index([assignedUserId, status])
+  @@index([leadId])
+  @@index([conversationId])
+}
+
+/// =========================
+/// Knowledge and policies
+/// =========================
+model KnowledgeItem {
+  id              String        @id @default(uuid()) @db.Uuid
+  companyId       String        @db.Uuid
+  kind            KnowledgeKind
+  title           String
+  content         String
+  isActive        Boolean       @default(true)
+  priority        Int           @default(0)
+  version         Int           @default(1)
+  createdByUserId String?       @db.Uuid
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  company       Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdByUser User?   @relation("KnowledgeItemCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, kind, isActive])
+  @@index([companyId, updatedAt(sort: Desc)])
+}
+
+model ReplyPolicy {
+  id                String   @id @default(uuid()) @db.Uuid
+  companyId         String   @db.Uuid
+  toneRules         Json?
+  pricingRules      Json?
+  discountRules     Json?
+  forbiddenPromises Json?
+  forbiddenTopics   Json?
+  humanHandoffRules Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId])
+}

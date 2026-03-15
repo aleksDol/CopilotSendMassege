@@ -1,0 +1,308 @@
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: ai-sales-nginx
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      NGINX_CLIENT_MAX_BODY_SIZE: ${NGINX_CLIENT_MAX_BODY_SIZE:-20m}
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/nginx/templates:/etc/nginx/templates:ro
+      - ./deploy/nginx/entrypoint.sh:/entrypoint.sh:ro
+      - certbot_www:/var/www/certbot
+      - letsencrypt_certs:/etc/letsencrypt
+    command: ["/bin/sh", "-c", "chmod +x /entrypoint.sh && /entrypoint.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost/health >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - public
+      - app_internal
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: ai-sales-web
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
+      PORT: 3000
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - app_internal
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: ai-sales-api
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      API_PORT: 4000
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      TELEGRAM_WORKER_URL: http://telegram-worker:8080
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
+      TELEGRAM_WORKER_TIMEOUT_MS: ${TELEGRAM_WORKER_TIMEOUT_MS:-15000}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL_REPLY: ${OPENAI_MODEL_REPLY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL}
+      AI_PROMPT_VERSION: ${AI_PROMPT_VERSION}
+      APP_BASE_URL: ${APP_BASE_URL}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      STRIPE_PRICE_PRO: ${STRIPE_PRICE_PRO}
+      STRIPE_PRICE_TEAM: ${STRIPE_PRICE_TEAM}
+      AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS}
+      AI_MAX_CONTEXT_MESSAGES: ${AI_MAX_CONTEXT_MESSAGES}
+      REDIS_CACHE_TTL: ${REDIS_CACHE_TTL}
+      AI_WORKER_CONCURRENCY: ${AI_WORKER_CONCURRENCY}
+      TELEGRAM_WORKER_CONCURRENCY: ${TELEGRAM_WORKER_CONCURRENCY}
+      FOLLOW_UP_UNANSWERED_HOURS: ${FOLLOW_UP_UNANSWERED_HOURS}
+      FOLLOW_UP_WARM_LEAD_HOURS: ${FOLLOW_UP_WARM_LEAD_HOURS}
+      DASHBOARD_ACTIVITY_WINDOW_DAYS: ${DASHBOARD_ACTIVITY_WINDOW_DAYS}
+    expose:
+      - "4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - app_internal
+
+  telegram-worker:
+    build:
+      context: .
+      dockerfile: apps/telegram-worker/Dockerfile
+    container_name: ai-sales-telegram-worker
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      TELEGRAM_WORKER_HOST: 0.0.0.0
+      TELEGRAM_WORKER_PORT: 8080
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+      TELEGRAM_SESSION_ENCRYPTION_KEY: ${TELEGRAM_SESSION_ENCRYPTION_KEY}
+      TELEGRAM_INITIAL_DIALOG_LIMIT: ${TELEGRAM_INITIAL_DIALOG_LIMIT}
+      TELEGRAM_INITIAL_MESSAGES_PER_DIALOG: ${TELEGRAM_INITIAL_MESSAGES_PER_DIALOG}
+      TELEGRAM_WORKER_CONCURRENCY: ${TELEGRAM_WORKER_CONCURRENCY}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
+      API_INTERNAL_URL: http://api:4000
+    expose:
+      - "8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/health').status == 200 else 1)\""]
+      interval: 20s
+      timeout: 5s
+      retries: 8
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - app_internal
+
+  ai-worker:
+    build:
+      context: .
+      dockerfile: apps/ai-worker/Dockerfile
+    container_name: ai-sales-ai-worker
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      AI_WORKER_PORT: 8090
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
+      API_INTERNAL_URL: http://api:4000
+      AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS}
+      AI_WORKER_CONCURRENCY: ${AI_WORKER_CONCURRENCY}
+      TELEGRAM_WORKER_CONCURRENCY: ${TELEGRAM_WORKER_CONCURRENCY}
+    expose:
+      - "8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:8090/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 20s
+      timeout: 5s
+      retries: 8
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - app_internal
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-sales-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ai_sales_assistant}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ai_sales_assistant}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - app_internal
+
+  postgres-backup:
+    image: postgres:16-alpine
+    container_name: ai-sales-postgres-backup
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-ai_sales_assistant}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_DIR: /backups
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+      POSTGRES_BACKUP_INTERVAL_SECONDS: ${POSTGRES_BACKUP_INTERVAL_SECONDS:-86400}
+    volumes:
+      - ./scripts/backup-postgres.sh:/scripts/backup-postgres.sh:ro
+      - postgres_backups:/backups
+    command:
+      [
+        "/bin/sh",
+        "-c",
+        "chmod +x /scripts/backup-postgres.sh && while true; do /scripts/backup-postgres.sh; sleep ${POSTGRES_BACKUP_INTERVAL_SECONDS}; done"
+      ]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - app_internal
+
+  redis:
+    image: redis:7-alpine
+    container_name: ai-sales-redis
+    restart: unless-stopped
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    volumes:
+      - ./deploy/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - app_internal
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: ai-sales-certbot
+    profiles: ["ops"]
+    volumes:
+      - certbot_www:/var/www/certbot
+      - letsencrypt_certs:/etc/letsencrypt
+    command: >
+      certonly --webroot
+      --webroot-path=/var/www/certbot
+      --email ${SSL_EMAIL}
+      --agree-tos
+      --no-eff-email
+      -d ${APP_DOMAIN}
+
+volumes:
+  postgres_data:
+  redis_data:
+  postgres_backups:
+  certbot_www:
+  letsencrypt_certs:
+
+networks:
+  public:
+    driver: bridge
+  app_internal:
+    driver: bridge
+
