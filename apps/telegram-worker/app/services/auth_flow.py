@@ -524,3 +524,41 @@ async def mark_error(company_id: str, phone: str, error_message: str, status: st
                 ''',
                 (now, account["channelAccountId"]),
             )
+
+
+async def mark_error_by_channel(
+    company_id: str, channel_account_id: str, error_message: str, status: str = "ERROR"
+) -> None:
+    async with get_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                '''
+                SELECT ta."id" AS "telegramAccountId", ta."channelAccountId"
+                FROM "TelegramAccount" ta
+                JOIN "ChannelAccount" ca ON ca."id" = ta."channelAccountId"
+                WHERE ca."companyId" = %s AND ta."channelAccountId" = %s AND ca."channelType" = 'TELEGRAM'
+                LIMIT 1
+                ''',
+                (company_id, channel_account_id),
+            )
+            account = await cur.fetchone()
+        if not account:
+            return
+        now = _now()
+        async with conn.cursor() as cur:
+            await cur.execute(
+                '''
+                UPDATE "TelegramAccount"
+                SET "loginStatus" = %s::"TelegramLoginStatus", "errorMessage" = %s, "lastEventAt" = %s, "updatedAt" = %s
+                WHERE "id" = %s
+                ''',
+                (status, error_message, now, now, account["telegramAccountId"]),
+            )
+            await cur.execute(
+                '''
+                UPDATE "ChannelAccount"
+                SET "status" = 'ERROR', "updatedAt" = %s
+                WHERE "id" = %s
+                ''',
+                (now, account["channelAccountId"]),
+            )

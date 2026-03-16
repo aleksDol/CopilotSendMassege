@@ -55,7 +55,7 @@ async def _load_connected_account(
     if not account:
         raise WorkerError("TELEGRAM_ACCOUNT_NOT_FOUND", "Telegram account not found for workspace", 404)
 
-    if account["loginStatus"] != "CONNECTED":
+    if account["loginStatus"] not in ("CONNECTED", "ERROR"):
         raise WorkerError("TELEGRAM_NOT_CONNECTED", "Telegram account is not connected", 400)
 
     if not account.get("sessionDataEncrypted"):
@@ -64,16 +64,27 @@ async def _load_connected_account(
     return account
 
 
-async def _set_sync_markers(conn: psycopg.AsyncConnection, telegram_account_id: str) -> None:
+async def _set_sync_markers(
+    conn: psycopg.AsyncConnection, telegram_account_id: str, channel_account_id: str
+) -> None:
     now = _now()
     async with conn.cursor() as cur:
         await cur.execute(
             '''
             UPDATE "TelegramAccount"
-            SET "lastSyncAt" = %s, "lastEventAt" = %s, "errorMessage" = NULL, "updatedAt" = %s
+            SET "lastSyncAt" = %s, "lastEventAt" = %s, "errorMessage" = NULL,
+                "loginStatus" = 'CONNECTED', "updatedAt" = %s
             WHERE "id" = %s
             ''',
             (now, now, now, telegram_account_id),
+        )
+        await cur.execute(
+            '''
+            UPDATE "ChannelAccount"
+            SET "status" = 'ACTIVE', "updatedAt" = %s
+            WHERE "id" = %s
+            ''',
+            (now, channel_account_id),
         )
 
 
@@ -156,7 +167,7 @@ async def run_initial_sync(
                     )
                     result.messages_synced += 1
 
-            await _set_sync_markers(conn, account["telegramAccountId"])
+            await _set_sync_markers(conn, account["telegramAccountId"], account["channelAccountId"])
             return result
         finally:
             await client.disconnect()

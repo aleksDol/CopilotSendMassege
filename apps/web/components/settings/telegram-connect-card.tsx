@@ -169,9 +169,15 @@ export function TelegramConnectCard({
           </div>
         ) : null}
 
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {(error || (flowStatus === "error" && account?.errorMessage)) ? (
+          <p className="text-sm text-destructive">{error || account?.errorMessage}</p>
+        ) : null}
 
-        <Button variant="outline" disabled={loading || !isConnected} onClick={() => void onSync()}>
+        <Button
+          variant="outline"
+          disabled={loading || (flowStatus !== "connected" && flowStatus !== "error")}
+          onClick={() => void onSync()}
+        >
           Синхронизировать вручную
         </Button>
       </CardContent>

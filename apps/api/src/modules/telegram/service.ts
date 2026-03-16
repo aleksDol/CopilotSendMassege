@@ -10,6 +10,7 @@ type Scope = {
 
 const TG_LOGIN_REQUIRED = "LOGIN_REQUIRED" as unknown as TelegramLoginStatus;
 const TG_CONNECTED = "CONNECTED" as unknown as TelegramLoginStatus;
+const TG_ERROR = "ERROR" as unknown as TelegramLoginStatus;
 
 const mapTelegramStatus = (status: TelegramLoginStatus): string => status.toLowerCase();
 
@@ -253,7 +254,7 @@ export const triggerInitialSync = async (
   const connectedAccount = await app.prisma.telegramAccount.findFirst({
     where: {
       phone: payload?.phone,
-      loginStatus: TG_CONNECTED,
+      loginStatus: { in: [TG_CONNECTED, TG_ERROR] },
       channelAccount: {
         companyId: scope.companyId,
         channelType: ChannelType.TELEGRAM

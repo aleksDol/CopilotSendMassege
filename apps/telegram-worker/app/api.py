@@ -21,6 +21,7 @@ from app.schemas import (
 from app.services.auth_flow import (
     WorkerError,
     mark_error,
+    mark_error_by_channel,
     poll_qr_login,
     start_login,
     start_qr_login,
@@ -148,8 +149,9 @@ async def internal_sync(payload: SyncRequest) -> dict:
         except WorkerError:
             raise
         except Exception as exc:
-            if payload.phone:
-                await mark_error(payload.company_id, payload.phone, str(exc), "ERROR")
+            await mark_error_by_channel(
+                payload.company_id, payload.channel_account_id, str(exc), "ERROR"
+            )
             raise WorkerError("TELEGRAM_SYNC_FAILED", "Failed to sync Telegram dialogs", 500) from exc
 
         return {
