@@ -138,7 +138,7 @@ export const startConnectQr = async (app: FastifyInstance, scope: Scope) => {
   const response = (await worker.startLoginQr({
     companyId: scope.companyId,
     channelAccountId: channel.id
-  })) as { qrSessionId: string; qrUrl: string; expiresAt: number };
+  })) as unknown as { qrSessionId: string; qrUrl: string; expiresAt: number };
   return response;
 };
 
