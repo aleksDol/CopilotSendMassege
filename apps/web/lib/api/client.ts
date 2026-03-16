@@ -6,15 +6,17 @@ type RequestOptions = {
   query?: Record<string, string | number | boolean | undefined | null>;
 };
 
-// В браузере по умолчанию ходим на /api текущего домена (через nginx),
-// на сервере (SSR) оставляем возможность использовать полный URL из env.
-const API_URL =
-  typeof window === "undefined"
-    ? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
-    : process.env.NEXT_PUBLIC_API_URL ?? "/api";
+function getApiBase(): string {
+  if (typeof window !== "undefined") {
+    return (process.env.NEXT_PUBLIC_API_URL ?? "").trim() || `${window.location.origin}/api`;
+  }
+  return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+}
 
 const buildUrl = (path: string, query?: RequestOptions["query"]) => {
-  const url = new URL(path, API_URL);
+  const base = getApiBase().replace(/\/$/, "") + "/";
+  const pathStr = path.startsWith("/") ? path.slice(1) : path;
+  const url = new URL(pathStr, base);
   if (query) {
     for (const [key, value] of Object.entries(query)) {
       if (value === undefined || value === null || value === "") {
