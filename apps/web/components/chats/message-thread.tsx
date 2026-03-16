@@ -4,7 +4,7 @@ import { formatDateTime } from "@/lib/utils/date";
 
 export function MessageThread({ items }: { items: MessageItem[] }) {
   return (
-    <div className="flex h-full flex-col gap-2 overflow-y-auto rounded-lg border border-border bg-card p-4">
+    <div className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto p-4">
       {items.map((message) => (
         <div
           key={message.id}

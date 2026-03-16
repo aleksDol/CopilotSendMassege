@@ -13,21 +13,33 @@ export const useDashboardOverview = () => {
   });
 };
 
-export const useConversations = (filters: { waitingForReply?: boolean; leadStage?: string; limit?: number }) => {
+export const useConversations = (filters: {
+  waitingForReply?: boolean;
+  leadStage?: string;
+  limit?: number;
+  refetchInterval?: number;
+}) => {
   const { token } = useAuth();
+  const { refetchInterval, ...queryFilters } = filters;
   return useQuery({
-    queryKey: ["conversations", filters],
-    queryFn: () => conversationsApi.list(token ?? "", filters),
-    enabled: Boolean(token)
+    queryKey: ["conversations", queryFilters],
+    queryFn: () => conversationsApi.list(token ?? "", queryFilters),
+    enabled: Boolean(token),
+    refetchInterval: refetchInterval ?? false
   });
 };
 
-export const useConversationMessages = (conversationId?: string, limit = 50) => {
+export const useConversationMessages = (
+  conversationId?: string,
+  limit = 50,
+  refetchInterval?: number
+) => {
   const { token } = useAuth();
   return useQuery({
     queryKey: ["messages", conversationId, limit],
     queryFn: () => conversationsApi.messages(token ?? "", conversationId ?? "", { limit }),
-    enabled: Boolean(token && conversationId)
+    enabled: Boolean(token && conversationId),
+    refetchInterval: refetchInterval ?? false
   });
 };
 
@@ -122,6 +134,7 @@ export const useSendMessageMutation = (conversationId: string) => {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["messages", conversationId] });
       void qc.invalidateQueries({ queryKey: ["conversations"] });
+      void qc.invalidateQueries({ queryKey: ["dashboard-overview"] });
     }
   });
 };
