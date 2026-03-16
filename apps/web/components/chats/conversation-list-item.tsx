@@ -24,13 +24,13 @@ export function ConversationListItemRow({
         <div className="truncate font-medium">{item.title}</div>
         <div className="text-xs text-muted-foreground">{formatRelativeTime(item.lastMessageAt)}</div>
       </div>
-      <p className="mt-1 truncate text-sm text-muted-foreground">{item.lastMessagePreview ?? "Пока нет сообщений"}</p>
+      <p className="mt-1 truncate text-sm text-muted-foreground">{item.lastMessagePreview ?? "No messages yet"}</p>
       <div className="mt-2 flex flex-wrap gap-2">
         <Badge variant="outline">{item.leadStage}</Badge>
         <Badge variant="secondary">{item.leadTemperature}</Badge>
-        {item.isWaitingForReply ? <Badge variant="warning">ожидает</Badge> : null}
+        {item.isWaitingForReply ? <Badge variant="warning">waiting</Badge> : null}
         {item.unansweredClientMessageCount > 0 ? (
-          <Badge variant="outline">{item.unansweredClientMessageCount} непрочитанных</Badge>
+          <Badge variant="outline">{item.unansweredClientMessageCount} unanswered</Badge>
         ) : null}
       </div>
     </button>

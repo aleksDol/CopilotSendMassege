@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { ConversationList } from "@/components/chats/conversation-list";
 import { MessageThread } from "@/components/chats/message-thread";
 import { MessageComposer } from "@/components/chats/message-composer";
@@ -15,13 +15,17 @@ import {
   useConversationMessages,
   useConversations,
   useSendMessageMutation,
-  useSuggestReplyMutation
+  useSuggestReplyMutation,
+  useTelegramAccount
 } from "@/lib/hooks/use-app-data";
+import { useChatsRealtime } from "@/lib/hooks/use-chats-realtime";
 import { aiApi } from "@/lib/api/ai";
+import { telegramApi } from "@/lib/api/telegram";
 import { useAuth } from "@/lib/auth/context";
 
 const CONVERSATIONS_POLL_INTERVAL_MS = 8_000;
 const MESSAGES_POLL_INTERVAL_MS = 3_000;
+const TELEGRAM_AUTO_SYNC_INTERVAL_MS = 15_000;
 
 export default function ChatsPage() {
   const params = useSearchParams();
@@ -56,6 +60,8 @@ export default function ChatsPage() {
 
   const selectedId = selectedConversationId ?? conversations.data?.items[0]?.conversationId ?? null;
 
+  useChatsRealtime(selectedId);
+
   useEffect(() => {
     if (!selectedConversationId && conversations.data?.items.length) {
       setSelectedConversationId(conversations.data.items[0].conversationId);
@@ -64,6 +70,7 @@ export default function ChatsPage() {
 
   const messages = useConversationMessages(selectedId ?? undefined, 50, MESSAGES_POLL_INTERVAL_MS);
   const suggestions = useAiSuggestions(selectedId ?? undefined);
+  const telegramAccount = useTelegramAccount();
 
   const sendMessage = useSendMessageMutation(selectedId ?? "");
   const suggestMutation = useSuggestReplyMutation(selectedId ?? "");
@@ -84,6 +91,30 @@ export default function ChatsPage() {
 
   const latestSuggestion = useMemo(() => suggestions.data?.items[0] ?? null, [suggestions.data]);
 
+  useEffect(() => {
+    if (!token) return;
+    if ((telegramAccount.data?.loginStatus ?? telegramAccount.data?.status) !== "connected") {
+      return;
+    }
+
+    let inFlight = false;
+    const timer = setInterval(async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        await telegramApi.sync(token, { dialogsLimit: 20, messagesPerDialog: 20 });
+      } catch {
+        // silent by design: this is background sync assistance
+      } finally {
+        inFlight = false;
+      }
+    }, TELEGRAM_AUTO_SYNC_INTERVAL_MS);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [telegramAccount.data?.loginStatus, telegramAccount.data?.status, token]);
+
   const handleSend = async (text: string) => {
     if (!selectedId?.trim()) return;
     setSendError(null);
@@ -91,27 +122,26 @@ export default function ChatsPage() {
       await sendMessage.mutateAsync(text);
       setComposerText("");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Не удалось отправить сообщение";
+      const message = err instanceof Error ? err.message : "Failed to send message";
       setSendError(message);
     }
   };
 
   if (conversations.isLoading) {
-    return <LoadingState label="Загрузка диалогов..." />;
+    return <LoadingState label="Loading conversations..." />;
   }
 
   if (!conversations.data || conversations.data.items.length === 0) {
-    return <EmptyState title="Пока нет диалогов" description="Подключите Telegram и синхронизируйте диалоги в онбординге." />;
+    return <EmptyState title="No conversations yet" description="Connect Telegram and run sync to populate inbox." />;
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden md:flex-row">
-      {/* Left: chat list — как в мессенджере, на всю высоту */}
-      <aside className="flex min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-lg border border-border bg-card md:w-[280px] xl:w-[320px]">
+    <div className="flex min-h-0 flex-1 gap-4 overflow-hidden p-4 md:p-6">
+      <aside className="flex h-[320px] min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-lg border border-border bg-card lg:h-full lg:w-[300px]">
         <div className="shrink-0 border-b border-border px-4 py-3">
-          <h2 className="font-semibold">Диалоги</h2>
+          <h2 className="font-semibold">Chats</h2>
         </div>
-        <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-hidden p-3">
           <ConversationList
             items={conversations.data.items}
             selectedId={selectedId}
@@ -122,60 +152,57 @@ export default function ChatsPage() {
         </div>
       </aside>
 
-      {/* Center: сообщения выбранного чата — на всю высоту */}
       <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
         <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
           <MessageThread items={messages.data?.items ?? []} />
         </div>
-        <div className="shrink-0">
-          <MessageComposer
-            value={composerText}
-            onChange={(v) => {
-              setComposerText(v);
-              if (sendError) setSendError(null);
-            }}
-            isSending={sendMessage.isPending}
-            sendDisabled={!selectedId?.trim()}
-            onSend={handleSend}
-            sendError={sendError}
-          />
-        </div>
+        <MessageComposer
+          value={composerText}
+          onChange={(v) => {
+            setComposerText(v);
+            if (sendError) setSendError(null);
+          }}
+          isSending={sendMessage.isPending}
+          sendDisabled={!selectedId?.trim()}
+          onSend={handleSend}
+          sendError={sendError}
+        />
       </section>
 
-      {/* Right: ИИ-агент / копилот — на всю высоту */}
-      <aside className="hidden min-h-0 w-[360px] shrink-0 flex-col overflow-hidden xl:flex">
+      <aside className="hidden h-full min-h-0 w-[360px] shrink-0 flex-col overflow-hidden lg:flex">
         <div className="min-h-0 flex-1 overflow-y-auto">
-        <AiSuggestionPanel
-          suggestion={latestSuggestion}
-          context={lastSuggestionContext}
-          isLoading={suggestMutation.isPending || suggestions.isFetching}
-          onInsert={(text) => setComposerText((prev) => (prev ? `${prev}\n${text}` : text))}
-          onSuggest={async (mode) => {
-            setAiError(null);
-            try {
-              const response = await suggestMutation.mutateAsync(mode);
-              setLastSuggestionContext(response.context);
-            } catch (error) {
-              const message = error instanceof Error ? error.message : "Не удалось сгенерировать подсказку";
-              setAiError(message);
-            }
-          }}
-          onAccept={async (suggestionId) => {
-            await acceptMutation.mutateAsync(suggestionId);
-          }}
-          onReject={async (suggestionId) => {
-            await rejectMutation.mutateAsync(suggestionId);
-          }}
-        />
-        {aiError?.includes("ai_limit_reached") ? (
-          <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-            Лимит AI по текущему тарифу исчерпан. <Link href="/settings/billing" className="underline">Улучшить тариф</Link>.
-          </div>
-        ) : aiError ? (
-          <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-            {aiError}
-          </div>
-        ) : null}
+          <AiSuggestionPanel
+            suggestion={latestSuggestion}
+            context={lastSuggestionContext}
+            isLoading={suggestMutation.isPending || suggestions.isFetching}
+            onInsert={(text) => setComposerText((prev) => (prev ? `${prev}\n${text}` : text))}
+            onSuggest={async (mode) => {
+              setAiError(null);
+              try {
+                const response = await suggestMutation.mutateAsync(mode);
+                setLastSuggestionContext(response.context);
+              } catch (error) {
+                const message = error instanceof Error ? error.message : "Failed to generate suggestion";
+                setAiError(message);
+              }
+            }}
+            onAccept={async (suggestionId) => {
+              await acceptMutation.mutateAsync(suggestionId);
+            }}
+            onReject={async (suggestionId) => {
+              await rejectMutation.mutateAsync(suggestionId);
+            }}
+          />
+
+          {aiError?.includes("ai_limit_reached") ? (
+            <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              AI limit reached for current plan. <Link href="/settings/billing" className="underline">Upgrade plan</Link>.
+            </div>
+          ) : aiError ? (
+            <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+              {aiError}
+            </div>
+          ) : null}
         </div>
       </aside>
     </div>

@@ -29,7 +29,7 @@ export function MessageComposer({
     setLocalError(null);
     if (submittingRef.current || isSending || sendDisabled) return;
     if (!value.trim()) {
-      setLocalError("Сообщение не может быть пустым");
+      setLocalError("Message cannot be empty");
       return;
     }
     submittingRef.current = true;
@@ -42,14 +42,11 @@ export function MessageComposer({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-2 rounded-lg border border-border bg-card p-3">
-      <Textarea value={value} onChange={(event) => onChange(event.target.value)} placeholder="Введите ответ..." rows={3} />
+      <Textarea value={value} onChange={(event) => onChange(event.target.value)} placeholder="Type your reply..." rows={3} />
       {displayError ? <p className="text-xs text-destructive">{displayError}</p> : null}
       <div className="flex justify-end">
-        <Button
-          type="submit"
-          disabled={isSending || sendDisabled}
-        >
-          {isSending ? "Отправка..." : "Отправить"}
+        <Button type="submit" disabled={isSending || sendDisabled}>
+          {isSending ? "Sending..." : "Send"}
         </Button>
       </div>
     </form>

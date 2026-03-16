@@ -37,28 +37,28 @@ export function ConversationList({
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <Input
-        placeholder="Поиск диалогов"
+        placeholder="Search chats"
         value={filters.search}
         onChange={(event) => onFiltersChange({ ...filters, search: event.target.value })}
       />
       <div className="grid grid-cols-2 gap-2">
         <Select
           options={[
-            { label: "Все", value: "all" },
-            { label: "Ожидают ответа", value: "true" },
-            { label: "Не ожидают", value: "false" }
+            { label: "All", value: "all" },
+            { label: "Waiting", value: "true" },
+            { label: "Not waiting", value: "false" }
           ]}
           value={filters.waitingForReply}
           onChange={(event) => onFiltersChange({ ...filters, waitingForReply: event.target.value })}
         />
         <Select
           options={[
-            { label: "Любой этап", value: "all" },
-            { label: "новый", value: "new" },
-            { label: "контакт", value: "contacted" },
-            { label: "квалифицирован", value: "qualified" },
-            { label: "предложение", value: "proposal" },
-            { label: "переговоры", value: "negotiation" }
+            { label: "Any stage", value: "all" },
+            { label: "New", value: "new" },
+            { label: "Contacted", value: "contacted" },
+            { label: "Qualified", value: "qualified" },
+            { label: "Proposal", value: "proposal" },
+            { label: "Negotiation", value: "negotiation" }
           ]}
           value={filters.leadStage}
           onChange={(event) => onFiltersChange({ ...filters, leadStage: event.target.value })}
@@ -73,7 +73,7 @@ export function ConversationList({
             onSelect={() => onSelect(item.conversationId)}
           />
         ))}
-        {filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">Нет диалогов</p> : null}
+        {filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No chats found</p> : null}
       </div>
     </div>
   );

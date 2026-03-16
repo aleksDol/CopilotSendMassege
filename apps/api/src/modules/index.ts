@@ -8,6 +8,7 @@ import followUpRoutes from "./follow-up/routes.js";
 import healthRoutes from "./health/routes.js";
 import ingestionRoutes from "./ingestion/routes.js";
 import messageRoutes from "./messages/routes.js";
+import realtimeRoutes from "./realtime/routes.js";
 import tasksRoutes from "./tasks/routes.js";
 import telegramRoutes from "./telegram/routes.js";
 import usageRoutes from "./usage/routes.js";
@@ -19,6 +20,7 @@ import workspaceRoutes from "./workspace/routes.js";
 const apiModules: FastifyPluginAsync = async (app) => {
   await app.register(healthRoutes);
   await app.register(ingestionRoutes);
+  await app.register(realtimeRoutes);
   await app.register(followUpRoutes);
   await app.register(authRoutes);
   await app.register(aiRoutes);

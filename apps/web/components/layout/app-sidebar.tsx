@@ -20,17 +20,17 @@ import { cn } from "@/lib/utils/cn";
 const SIDEBAR_STORAGE_KEY = "app-sidebar-collapsed";
 
 const navItems = [
-  { href: "/dashboard", label: "Дашборд", icon: LayoutDashboard },
-  { href: "/chats", label: "Чаты", icon: MessageCircle },
-  { href: "/tasks", label: "Задачи", icon: CheckSquare }
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/chats", label: "Chats", icon: MessageCircle },
+  { href: "/tasks", label: "Tasks", icon: CheckSquare }
 ];
 
 const settingsItems = [
-  { href: "/settings/knowledge", label: "База знаний", icon: BookOpen },
-  { href: "/settings/reply-policy", label: "Политика ответов", icon: ShieldCheck },
-  { href: "/settings/telegram", label: "Подключение Telegram", icon: Smartphone },
-  { href: "/settings/billing", label: "Оплата", icon: CreditCard },
-  { href: "/settings/team", label: "Команда", icon: Users }
+  { href: "/settings/knowledge", label: "Knowledge Base", icon: BookOpen },
+  { href: "/settings/reply-policy", label: "Reply Policy", icon: ShieldCheck },
+  { href: "/settings/telegram", label: "Telegram Connection", icon: Smartphone },
+  { href: "/settings/billing", label: "Billing", icon: CreditCard },
+  { href: "/settings/team", label: "Team", icon: Users }
 ];
 
 function getStoredCollapsed(): boolean {
@@ -74,7 +74,7 @@ export function AppSidebar() {
         {!collapsed && (
           <div className="min-w-0 px-2">
             <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">AI Sales Assistant</div>
-            <div className="truncate text-lg font-semibold">Панель управления</div>
+            <div className="truncate text-lg font-semibold">Control panel</div>
           </div>
         )}
         <button
@@ -84,8 +84,8 @@ export function AppSidebar() {
             "rounded-lg p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground",
             collapsed && "mx-auto"
           )}
-          title={collapsed ? "Развернуть меню" : "Свернуть меню"}
-          aria-label={collapsed ? "Развернуть меню" : "Свернуть меню"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {collapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
         </button>
@@ -113,9 +113,7 @@ export function AppSidebar() {
         })}
       </nav>
 
-      {!collapsed && (
-        <div className="px-4 pt-4 text-xs uppercase tracking-[0.2em] text-muted-foreground">Настройки</div>
-      )}
+      {!collapsed && <div className="px-4 pt-4 text-xs uppercase tracking-[0.2em] text-muted-foreground">Settings</div>}
       <nav className="space-y-1 px-2 pt-2">
         {settingsItems.map((item) => {
           const Icon = item.icon;
@@ -138,9 +136,7 @@ export function AppSidebar() {
         })}
       </nav>
 
-      {!collapsed && (
-        <div className="mt-8 px-4 text-xs text-muted-foreground">MVP v1</div>
-      )}
+      {!collapsed && <div className="mt-8 px-4 text-xs text-muted-foreground">MVP v1</div>}
     </aside>
   );
 }

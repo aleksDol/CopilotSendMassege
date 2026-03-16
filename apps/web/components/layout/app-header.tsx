@@ -16,9 +16,11 @@ export function AppHeader() {
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border bg-background/80 px-4 backdrop-blur md:px-8">
       <div className="flex items-center gap-3">
-        <div className="text-sm text-muted-foreground">Рабочее пространство</div>
+        <div className="text-sm text-muted-foreground">Workspace</div>
         <div className="font-semibold">{company?.name ?? "-"}</div>
-        <Badge variant={loginStatus === "connected" ? "success" : "warning"}>{loginStatus === "connected" ? "подключён" : loginStatus === "login_required" ? "требуется вход" : loginStatus}</Badge>
+        <Badge variant={loginStatus === "connected" ? "success" : "warning"}>
+          {loginStatus === "connected" ? "connected" : loginStatus === "login_required" ? "login required" : loginStatus}
+        </Badge>
       </div>
 
       <div className="flex items-center gap-2">
@@ -30,16 +32,11 @@ export function AppHeader() {
         </Link>
         <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm">
           <UserRound className="h-4 w-4 text-muted-foreground" />
-          <span>{user?.fullName ?? "Пользователь"}</span>
+          <span>{user?.fullName ?? "User"}</span>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="gap-2 text-muted-foreground hover:text-foreground"
-          onClick={logout}
-        >
+        <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={logout}>
           <LogOut className="h-4 w-4" />
-          Выйти
+          Logout
         </Button>
       </div>
     </header>

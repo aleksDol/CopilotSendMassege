@@ -26,5 +26,6 @@ export const telegramApi = {
       { phone, password },
       { token }
     ),
-  sync: (token: string) => apiClient.post<{ status: string }>("/telegram/sync", {}, { token })
+  sync: (token: string, payload?: { dialogsLimit?: number; messagesPerDialog?: number; phone?: string }) =>
+    apiClient.post<{ status: string }>("/telegram/sync", payload ?? {}, { token })
 };

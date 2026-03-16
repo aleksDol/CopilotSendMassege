@@ -2,6 +2,7 @@ import { ChannelType, MessageDirection, MessageType, Prisma } from "@prisma/clie
 import type { FastifyInstance } from "fastify";
 import { invalidateCacheByPrefix } from "../../lib/cache.js";
 import { AppError } from "../../lib/errors.js";
+import { realtimeHub } from "../../lib/realtime.js";
 import { invalidateConversationCaches } from "../conversations/service.js";
 import { upsertParticipant } from "../participants/service.js";
 import { ConversationStateService } from "../state/service.js";
@@ -171,6 +172,13 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
 
   await invalidateConversationCaches(app, companyId);
   await invalidateCacheByPrefix(app, `cache:dashboard:${companyId}:`);
+  realtimeHub.publish({
+    type: "message_ingested",
+    companyId,
+    conversationId: conversation.id,
+    messageId: message.id,
+    sentAt: message.sentAt.toISOString()
+  });
 
   return {
     ok: true,
