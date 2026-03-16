@@ -6,7 +6,12 @@ type RequestOptions = {
   query?: Record<string, string | number | boolean | undefined | null>;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+// В браузере по умолчанию ходим на /api текущего домена (через nginx),
+// на сервере (SSR) оставляем возможность использовать полный URL из env.
+const API_URL =
+  typeof window === "undefined"
+    ? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
+    : process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
 const buildUrl = (path: string, query?: RequestOptions["query"]) => {
   const url = new URL(path, API_URL);
