@@ -143,7 +143,7 @@ async def run_initial_sync(
 
                     await push_message_event(
                         {
-                            "telegramAccountId": account["telegramAccountId"],
+                            "telegramAccountId": str(account["telegramAccountId"]),
                             "externalConversationId": str(dialog.id),
                             "externalMessageId": str(message.id),
                             "senderExternalId": sender_external_id,
@@ -200,7 +200,7 @@ async def send_message(
 
             await push_message_event(
                 {
-                    "telegramAccountId": account["telegramAccountId"],
+                    "telegramAccountId": str(account["telegramAccountId"]),
                     "externalConversationId": external_conversation_id,
                     "externalMessageId": str(sent.id),
                     "senderExternalId": str(me.id),
