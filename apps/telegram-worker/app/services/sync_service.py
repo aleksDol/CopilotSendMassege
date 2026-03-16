@@ -205,16 +205,21 @@ async def send_message(
                 raise WorkerError("RECONNECT_REQUIRED", "Telegram session expired, reconnect required", 400)
 
             me = await client.get_me()
-            # Resolve entity so Telethon has a proper InputPeer (avoids "Invalid external conversation id")
+            # Resolve to InputPeer; for bare IDs Telethon only looks in cache, so we may need to fill cache via get_dialogs first
             try:
-                entity = await client.get_entity(peer)
-            except (ValueError, TypeError) as e:
-                raise WorkerError(
-                    "INVALID_CONVERSATION_ID",
-                    f"Could not resolve conversation: {e!s}",
-                    400,
-                ) from e
-            sent = await client.send_message(entity=entity, message=text)
+                input_entity = await client.get_input_entity(peer)
+            except (ValueError, TypeError):
+                # Entity not in cache (e.g. after session restart). Load dialogs so the peer gets cached.
+                try:
+                    await client.get_dialogs(limit=100)
+                    input_entity = await client.get_input_entity(peer)
+                except (ValueError, TypeError) as e:
+                    raise WorkerError(
+                        "INVALID_CONVERSATION_ID",
+                        f"Could not resolve conversation: {e!s}",
+                        400,
+                    ) from e
+            sent = await client.send_message(entity=input_entity, message=text)
 
             await push_message_event(
                 {
