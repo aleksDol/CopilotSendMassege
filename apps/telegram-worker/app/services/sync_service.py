@@ -173,6 +173,16 @@ async def run_initial_sync(
             await client.disconnect()
 
 
+def _parse_peer_id(raw: str) -> int | str:
+    """Normalize external_conversation_id for Telethon: strip and convert numeric to int."""
+    s = (raw or "").strip()
+    if not s:
+        raise WorkerError("INVALID_CONVERSATION_ID", "External conversation id is empty", 400)
+    if s.lstrip("-").isdigit():
+        return int(s)
+    return s
+
+
 async def send_message(
     company_id: str,
     channel_account_id: str,
@@ -180,6 +190,8 @@ async def send_message(
     text: str,
     crypto: SessionCrypto,
 ) -> dict[str, Any]:
+    peer = _parse_peer_id(external_conversation_id)
+
     async with get_connection() as conn:
         account = await _load_connected_account(conn, company_id, channel_account_id)
         session = crypto.decrypt(account["sessionDataEncrypted"])
@@ -193,9 +205,15 @@ async def send_message(
                 raise WorkerError("RECONNECT_REQUIRED", "Telegram session expired, reconnect required", 400)
 
             me = await client.get_me()
-            entity: int | str = (
-                int(external_conversation_id) if external_conversation_id.lstrip("-").isdigit() else external_conversation_id
-            )
+            # Resolve entity so Telethon has a proper InputPeer (avoids "Invalid external conversation id")
+            try:
+                entity = await client.get_entity(peer)
+            except (ValueError, TypeError) as e:
+                raise WorkerError(
+                    "INVALID_CONVERSATION_ID",
+                    f"Could not resolve conversation: {e!s}",
+                    400,
+                ) from e
             sent = await client.send_message(entity=entity, message=text)
 
             await push_message_event(
