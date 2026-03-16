@@ -8,8 +8,26 @@ from fastapi.responses import JSONResponse
 from app.auth import verify_internal_token
 from app.config import settings
 from app.crypto import SessionCrypto
-from app.schemas import SendMessageRequest, StartLoginRequest, SyncRequest, VerifyCodeRequest, VerifyPasswordRequest
-from app.services.auth_flow import WorkerError, mark_error, start_login, verify_code, verify_password
+from app.schemas import (
+    PollLoginQrRequest,
+    SendMessageRequest,
+    StartLoginQrRequest,
+    StartLoginRequest,
+    SyncRequest,
+    VerifyCodeRequest,
+    VerifyPasswordQrRequest,
+    VerifyPasswordRequest,
+)
+from app.services.auth_flow import (
+    WorkerError,
+    mark_error,
+    poll_qr_login,
+    start_login,
+    start_qr_login,
+    verify_code,
+    verify_password,
+    verify_password_qr,
+)
 from app.services.sync_service import run_initial_sync, send_message
 
 logger = logging.getLogger("telegram-worker")
@@ -84,6 +102,35 @@ async def internal_verify_password(payload: VerifyPasswordRequest) -> dict:
         except Exception as exc:
             await mark_error(payload.company_id, payload.phone, str(exc), "ERROR")
             raise WorkerError("TELEGRAM_VERIFY_PASSWORD_FAILED", "Failed to verify Telegram password", 500) from exc
+
+
+@app.post("/internal/telegram/start-login-qr", dependencies=[Depends(verify_internal_token)])
+async def internal_start_login_qr(payload: StartLoginQrRequest) -> dict:
+    logger.info("start-login-qr requested for company=%s channelAccount=%s", payload.company_id, payload.channel_account_id)
+    async with concurrency_limiter:
+        try:
+            return await start_qr_login(payload.company_id, payload.channel_account_id, crypto)
+        except WorkerError:
+            raise
+        except Exception as exc:
+            raise WorkerError("TELEGRAM_QR_START_FAILED", f"Failed to start QR login: {exc}", 500) from exc
+
+
+@app.post("/internal/telegram/poll-login-qr", dependencies=[Depends(verify_internal_token)])
+async def internal_poll_login_qr(payload: PollLoginQrRequest) -> dict:
+    return poll_qr_login(payload.qr_session_id)
+
+
+@app.post("/internal/telegram/verify-password-qr", dependencies=[Depends(verify_internal_token)])
+async def internal_verify_password_qr(payload: VerifyPasswordQrRequest) -> dict:
+    logger.info("verify-password-qr requested for qrSessionId=%s", payload.qr_session_id)
+    async with concurrency_limiter:
+        try:
+            return await verify_password_qr(payload.qr_session_id, payload.password, crypto)
+        except WorkerError:
+            raise
+        except Exception as exc:
+            raise WorkerError("TELEGRAM_VERIFY_PASSWORD_QR_FAILED", "Failed to verify Telegram password", 500) from exc
 
 
 @app.post("/internal/telegram/sync", dependencies=[Depends(verify_internal_token)])

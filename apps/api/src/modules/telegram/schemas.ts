@@ -27,3 +27,12 @@ export const telegramSyncSchema = z
   })
   .optional()
   .nullable();
+
+export const telegramPollQrSchema = z.object({
+  qrSessionId: z.string().uuid()
+});
+
+export const telegramVerifyPasswordQrSchema = z.object({
+  qrSessionId: z.string().uuid(),
+  password: z.string().min(1).max(256)
+});

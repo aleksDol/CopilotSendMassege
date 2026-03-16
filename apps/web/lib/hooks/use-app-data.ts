@@ -186,6 +186,21 @@ export const useTelegramActions = () => {
   };
 
   return {
+    startConnectQr: useMutation({
+      mutationFn: () => telegramApi.startConnectQr(token ?? ""),
+      onSuccess: refresh
+    }),
+    pollLoginQr: useMutation({
+      mutationFn: (qrSessionId: string) => telegramApi.pollLoginQr(token ?? "", qrSessionId),
+      onSuccess: (data) => {
+        if (data?.status === "connected") refresh();
+      }
+    }),
+    verifyPasswordQr: useMutation({
+      mutationFn: ({ qrSessionId, password }: { qrSessionId: string; password: string }) =>
+        telegramApi.verifyPasswordQr(token ?? "", qrSessionId, password),
+      onSuccess: refresh
+    }),
     startConnect: useMutation({
       mutationFn: (phone: string) => telegramApi.startConnect(token ?? "", phone),
       onSuccess: refresh

@@ -1,8 +1,11 @@
+import asyncio
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
 import psycopg
+from telethon import TelegramClient
 from telethon.errors import (
     FloodWaitError,
     PasswordHashInvalidError,
@@ -15,6 +18,245 @@ from telethon.errors import (
 from app.crypto import SessionCrypto
 from app.db import get_connection
 from app.telegram_client import create_client
+
+# In-memory store for QR login sessions (key: qr_session_id)
+QR_LOGIN_SESSIONS: dict[str, dict[str, Any]] = {}
+QR_LOGIN_TIMEOUT_SEC = 60
+
+
+async def _qr_login_wait_task(
+    qr_session_id: str,
+    qr_login: Any,
+    client: TelegramClient,
+    account: dict[str, Any],
+    crypto: SessionCrypto,
+    company_id: str,
+    channel_account_id: str,
+) -> None:
+    state = QR_LOGIN_SESSIONS.get(qr_session_id)
+    if not state:
+        return
+    try:
+        await asyncio.wait_for(qr_login.wait(), timeout=QR_LOGIN_TIMEOUT_SEC)
+    except asyncio.TimeoutError:
+        state["status"] = "expired"
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+        return
+    except SessionPasswordNeededError:
+        state["status"] = "password_required"
+        return
+    except Exception as exc:
+        state["status"] = "error"
+        state["error_message"] = str(exc)
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+        return
+
+    try:
+        me = await client.get_me()
+        encrypted_session = crypto.encrypt(client.session.save())
+        display_name = " ".join(part for part in [me.first_name, me.last_name] if part).strip() or (me.username or str(me.id))
+        phone = me.phone or ""
+        api_dc_id = getattr(client.session, "dc_id", None)
+
+        async with get_connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    '''
+                    UPDATE "TelegramAccount"
+                    SET
+                      "phone" = %s,
+                      "sessionDataEncrypted" = %s,
+                      "telegramUserId" = %s,
+                      "username" = %s,
+                      "apiDcId" = %s,
+                      "authPhoneCodeHash" = NULL,
+                      "loginStatus" = 'CONNECTED',
+                      "errorMessage" = NULL,
+                      "lastEventAt" = %s,
+                      "updatedAt" = %s
+                    WHERE "id" = %s
+                    ''',
+                    (
+                        phone,
+                        encrypted_session,
+                        str(me.id),
+                        me.username,
+                        api_dc_id,
+                        _now(),
+                        _now(),
+                        account["telegramAccountId"],
+                    ),
+                )
+                await cur.execute(
+                    '''
+                    UPDATE "ChannelAccount"
+                    SET "displayName" = %s, "status" = 'ACTIVE', "updatedAt" = %s
+                    WHERE "id" = %s
+                    ''',
+                    (display_name, _now(), account["channelAccountId"]),
+                )
+        state["status"] = "connected"
+    except Exception as exc:
+        state["status"] = "error"
+        state["error_message"] = str(exc)
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+
+
+async def start_qr_login(company_id: str, channel_account_id: str, crypto: SessionCrypto) -> dict[str, Any]:
+    async with get_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                '''
+                SELECT ta."id" AS "telegramAccountId", ta."channelAccountId", ta."phone"
+                FROM "TelegramAccount" ta
+                JOIN "ChannelAccount" ca ON ca."id" = ta."channelAccountId"
+                WHERE ca."companyId" = %s AND ta."channelAccountId" = %s AND ca."channelType" = 'TELEGRAM'
+                LIMIT 1
+                ''',
+                (company_id, channel_account_id),
+            )
+            row = await cur.fetchone()
+    if not row:
+        raise WorkerError("TELEGRAM_ACCOUNT_NOT_FOUND", "Telegram account is not initialized", 404)
+
+    account = dict(row)
+    client = create_client(None)
+    qr_session_id = str(uuid.uuid4())
+    now_ts = datetime.now(timezone.utc).timestamp()
+    expires_at = now_ts + QR_LOGIN_TIMEOUT_SEC
+
+    state: dict[str, Any] = {
+        "status": "pending",
+        "account": account,
+        "client": client,
+        "company_id": company_id,
+        "channel_account_id": channel_account_id,
+        "expires_at": expires_at,
+        "qr_url": None,
+    }
+    QR_LOGIN_SESSIONS[qr_session_id] = state
+
+    try:
+        await client.connect()
+        qr_login = await client.qr_login()
+        state["qr_url"] = qr_login.url
+        asyncio.create_task(
+            _qr_login_wait_task(
+                qr_session_id, qr_login, client, account, crypto, company_id, channel_account_id
+            )
+        )
+    except Exception as exc:
+        state["status"] = "error"
+        state["error_message"] = str(exc)
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+        QR_LOGIN_SESSIONS.pop(qr_session_id, None)
+        raise WorkerError("TELEGRAM_QR_START_FAILED", f"Failed to start QR login: {exc}", 500) from exc
+
+    return {
+        "qrSessionId": qr_session_id,
+        "qrUrl": state["qr_url"],
+        "expiresAt": int(expires_at * 1000),
+    }
+
+
+def poll_qr_login(qr_session_id: str) -> dict[str, Any]:
+    state = QR_LOGIN_SESSIONS.get(qr_session_id)
+    if not state:
+        return {"status": "expired", "expiresAt": 0, "errorMessage": None}
+    now_ts = datetime.now(timezone.utc).timestamp()
+    if state.get("expires_at") and now_ts > state["expires_at"] and state.get("status") == "pending":
+        state["status"] = "expired"
+    return {
+        "status": state["status"],
+        "expiresAt": int((state.get("expires_at") or 0) * 1000),
+        "errorMessage": state.get("error_message"),
+    }
+
+
+async def verify_password_qr(qr_session_id: str, password: str, crypto: SessionCrypto) -> dict[str, Any]:
+    state = QR_LOGIN_SESSIONS.get(qr_session_id)
+    if not state:
+        raise WorkerError("QR_SESSION_EXPIRED", "QR session not found or expired", 404)
+    if state.get("status") != "password_required":
+        raise WorkerError("QR_PASSWORD_NOT_NEEDED", "Session is not waiting for password", 400)
+    client: TelegramClient = state["client"]
+    account = state["account"]
+    try:
+        await client.sign_in(password=password)
+    except PasswordHashInvalidError as exc:
+        raise WorkerError("INVALID_PASSWORD", "Invalid Telegram 2FA password", 400) from exc
+    except Exception as exc:
+        state["status"] = "error"
+        state["error_message"] = str(exc)
+        raise WorkerError("TELEGRAM_VERIFY_PASSWORD_FAILED", "Failed to verify Telegram password", 500) from exc
+
+    result: dict[str, Any] = {"status": "connected", "requiresPassword": False}
+    try:
+        me = await client.get_me()
+        encrypted_session = crypto.encrypt(client.session.save())
+        display_name = " ".join(part for part in [me.first_name, me.last_name] if part).strip() or (me.username or str(me.id))
+        phone = me.phone or ""
+        api_dc_id = getattr(client.session, "dc_id", None)
+
+        async with get_connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    '''
+                    UPDATE "TelegramAccount"
+                    SET
+                      "phone" = %s,
+                      "sessionDataEncrypted" = %s,
+                      "telegramUserId" = %s,
+                      "username" = %s,
+                      "apiDcId" = %s,
+                      "authPhoneCodeHash" = NULL,
+                      "loginStatus" = 'CONNECTED',
+                      "errorMessage" = NULL,
+                      "lastEventAt" = %s,
+                      "updatedAt" = %s
+                    WHERE "id" = %s
+                    ''',
+                    (
+                        phone,
+                        encrypted_session,
+                        str(me.id),
+                        me.username,
+                        api_dc_id,
+                        _now(),
+                        _now(),
+                        account["telegramAccountId"],
+                    ),
+                )
+                await cur.execute(
+                    '''
+                    UPDATE "ChannelAccount"
+                    SET "displayName" = %s, "status" = 'ACTIVE', "updatedAt" = %s
+                    WHERE "id" = %s
+                    ''',
+                    (display_name, _now(), account["channelAccountId"]),
+                )
+        state["status"] = "connected"
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+        QR_LOGIN_SESSIONS.pop(qr_session_id, None)
+
+    return result
 
 
 @dataclass

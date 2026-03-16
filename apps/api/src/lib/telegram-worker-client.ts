@@ -69,6 +69,18 @@ export class TelegramWorkerClient {
     return this.post("/internal/telegram/start-login", payload);
   }
 
+  startLoginQr(payload: WorkerPayload) {
+    return this.post("/internal/telegram/start-login-qr", payload);
+  }
+
+  pollLoginQr(payload: WorkerPayload) {
+    return this.post("/internal/telegram/poll-login-qr", payload);
+  }
+
+  verifyPasswordQr(payload: WorkerPayload) {
+    return this.post("/internal/telegram/verify-password-qr", payload);
+  }
+
   verifyCode(payload: WorkerPayload) {
     return this.post("/internal/telegram/verify-code", payload);
   }

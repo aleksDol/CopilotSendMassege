@@ -3,19 +3,41 @@ import { getCompanyScope } from "../../lib/request-context.js";
 import { parseWithSchema } from "../../lib/validation.js";
 import {
   telegramConnectStartSchema,
+  telegramPollQrSchema,
   telegramSyncSchema,
   telegramVerifyCodeSchema,
+  telegramVerifyPasswordQrSchema,
   telegramVerifyPasswordSchema
 } from "./schemas.js";
 import {
   getTelegramAccount,
+  pollLoginQr,
   startConnect,
+  startConnectQr,
   triggerInitialSync,
   verifyCode,
-  verifyPassword
+  verifyPassword,
+  verifyPasswordQr
 } from "./service.js";
 
 const telegramRoutes: FastifyPluginAsync = async (app) => {
+  app.post("/telegram/connect/start-qr", { preHandler: [app.authenticate] }, async (request) => {
+    const scope = getCompanyScope(request);
+    return startConnectQr(app, scope);
+  });
+
+  app.post("/telegram/connect/poll-qr", { preHandler: [app.authenticate] }, async (request) => {
+    const scope = getCompanyScope(request);
+    const body = parseWithSchema(telegramPollQrSchema, request.body);
+    return pollLoginQr(app, scope, body);
+  });
+
+  app.post("/telegram/connect/verify-password-qr", { preHandler: [app.authenticate] }, async (request) => {
+    const scope = getCompanyScope(request);
+    const body = parseWithSchema(telegramVerifyPasswordQrSchema, request.body);
+    return verifyPasswordQr(app, scope, body);
+  });
+
   app.post("/telegram/connect/start", { preHandler: [app.authenticate] }, async (request) => {
     const scope = getCompanyScope(request);
     const body = parseWithSchema(telegramConnectStartSchema, request.body);

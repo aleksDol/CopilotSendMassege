@@ -22,14 +22,14 @@ export default function TelegramSettingsPage() {
       <TelegramConnectCard
         account={telegram.data}
         loading={
-          actions.startConnect.isPending ||
-          actions.verifyCode.isPending ||
-          actions.verifyPassword.isPending ||
+          actions.startConnectQr.isPending ||
+          actions.pollLoginQr.isPending ||
+          actions.verifyPasswordQr.isPending ||
           actions.sync.isPending
         }
-        onStart={(phone) => actions.startConnect.mutateAsync(phone)}
-        onVerifyCode={(phone, code) => actions.verifyCode.mutateAsync({ phone, code })}
-        onVerifyPassword={(phone, password) => actions.verifyPassword.mutateAsync({ phone, password })}
+        onStartQr={() => actions.startConnectQr.mutateAsync()}
+        onPollQr={(qrSessionId) => actions.pollLoginQr.mutateAsync(qrSessionId)}
+        onVerifyPasswordQr={(payload) => actions.verifyPasswordQr.mutateAsync(payload)}
         onSync={async () => {
           await actions.sync.mutateAsync();
         }}

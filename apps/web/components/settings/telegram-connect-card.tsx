@@ -1,125 +1,165 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { TelegramAccountResponse } from "@/lib/api/types";
 
+const POLL_INTERVAL_MS = 2500;
+
 export function TelegramConnectCard({
   account,
-  onStart,
-  onVerifyCode,
-  onVerifyPassword,
+  onStartQr,
+  onPollQr,
+  onVerifyPasswordQr,
   onSync,
   loading
 }: {
   account?: TelegramAccountResponse;
-  onStart: (phone: string) => Promise<{ status: string; requiresPassword?: boolean }>;
-  onVerifyCode: (phone: string, code: string) => Promise<{ status: string; requiresPassword?: boolean }>;
-  onVerifyPassword: (phone: string, password: string) => Promise<{ status: string; requiresPassword?: boolean }>;
+  onStartQr: () => Promise<{ qrSessionId: string; qrUrl: string; expiresAt: number }>;
+  onPollQr: (qrSessionId: string) => Promise<{ status: string; expiresAt: number; errorMessage?: string | null }>;
+  onVerifyPasswordQr: (payload: { qrSessionId: string; password: string }) => Promise<{ status: string }>;
   onSync: () => Promise<void>;
   loading?: boolean;
 }) {
-  const [phone, setPhone] = useState(account?.phone ?? "");
-  const [code, setCode] = useState("");
+  const flowStatus = account?.loginStatus ?? account?.status ?? "login_required";
+  const isConnected = flowStatus === "connected";
+
+  const [qrSessionId, setQrSessionId] = useState<string | null>(null);
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
+  const [expiresAt, setExpiresAt] = useState<number>(0);
+  const [qrStatus, setQrStatus] = useState<string>("pending");
   const [password, setPassword] = useState("");
-  const [flowStatus, setFlowStatus] = useState<string>(account?.loginStatus ?? account?.status ?? "login_required");
   const [error, setError] = useState<string | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+  }, []);
+
+  const startPolling = useCallback(
+    (sessionId: string) => {
+      stopPolling();
+      const id = setInterval(async () => {
+        try {
+          const result = await onPollQr(sessionId);
+          setQrStatus(result.status);
+          if (result.errorMessage) setError(result.errorMessage);
+          if (result.status === "connected" || result.status === "expired" || result.status === "error") {
+            stopPolling();
+            if (result.status === "connected") {
+              setQrSessionId(null);
+              setQrUrl(null);
+            }
+          }
+        } catch {
+          stopPolling();
+          setQrStatus("error");
+        }
+      }, POLL_INTERVAL_MS);
+      pollIntervalRef.current = id;
+    },
+    [onPollQr, stopPolling]
+  );
 
   useEffect(() => {
-    setPhone(account?.phone ?? "");
-    setFlowStatus(account?.loginStatus ?? account?.status ?? "login_required");
-  }, [account?.phone, account?.loginStatus, account?.status]);
+    return () => stopPolling();
+  }, [stopPolling]);
+
+  const handleStartQr = async () => {
+    setError(null);
+    setQrStatus("pending");
+    try {
+      const data = await onStartQr();
+      setQrSessionId(data.qrSessionId);
+      setQrUrl(data.qrUrl);
+      setExpiresAt(data.expiresAt);
+      startPolling(data.qrSessionId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось получить QR-код");
+    }
+  };
+
+  const handleRefreshQr = () => {
+    setQrSessionId(null);
+    setQrUrl(null);
+    setQrStatus("pending");
+    setError(null);
+    void handleStartQr();
+  };
+
+  const handleVerifyPassword = async () => {
+    if (!qrSessionId) return;
+    setError(null);
+    try {
+      await onVerifyPasswordQr({ qrSessionId, password });
+      setQrSessionId(null);
+      setQrUrl(null);
+      setQrStatus("connected");
+      stopPolling();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Неверный пароль");
+    }
+  };
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Подключение Telegram</CardTitle>
-        <CardDescription>Подключите личный аккаунт Telegram для синхронизации входящих.</CardDescription>
+        <CardDescription>Отсканируйте QR-код в приложении Telegram для входа.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center gap-2 text-sm">
           <span>Статус:</span>
-          <Badge variant={flowStatus === "connected" ? "success" : "warning"}>{flowStatus === "connected" ? "подключён" : flowStatus}</Badge>
+          <Badge variant={isConnected ? "success" : "warning"}>
+            {isConnected ? "подключён" : qrSessionId ? qrStatus : flowStatus}
+          </Badge>
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-2">
-          <div>
-            <div className="text-xs text-muted-foreground">Телефон</div>
-            <Input placeholder="+79991234567" value={phone} onChange={(event) => setPhone(event.target.value)} />
-          </div>
-          <div className="flex items-end">
-            <Button
-              className="w-full"
-              disabled={loading || !phone}
-              onClick={async () => {
-                setError(null);
-                try {
-                  const result = await onStart(phone);
-                  setFlowStatus(result.status);
-                } catch (startError) {
-                  setError(startError instanceof Error ? startError.message : "Не удалось начать подключение");
-                }
-              }}
-            >
-              Отправить код
-            </Button>
-          </div>
-        </div>
-
-        {(flowStatus === "code_sent" || flowStatus === "password_required") && (
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div>
-              <div className="text-xs text-muted-foreground">Код подтверждения</div>
-              <Input value={code} onChange={(event) => setCode(event.target.value)} />
-            </div>
-            <div className="flex items-end">
-              <Button
-                className="w-full"
-                variant="secondary"
-                disabled={loading || !phone || !code}
-                onClick={async () => {
-                  setError(null);
-                  try {
-                    const result = await onVerifyCode(phone, code);
-                    setFlowStatus(result.status);
-                  } catch (verifyError) {
-                    setError(verifyError instanceof Error ? verifyError.message : "Неверный или истёкший код");
-                  }
-                }}
-              >
-                Подтвердить код
-              </Button>
-            </div>
-          </div>
+        {!isConnected && !qrUrl && (
+          <Button className="w-full" disabled={loading} onClick={() => void handleStartQr()}>
+            Войти по QR-коду
+          </Button>
         )}
 
-        {flowStatus === "password_required" && (
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div>
-              <div className="text-xs text-muted-foreground">Пароль 2FA</div>
-              <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+        {qrUrl && (
+          <div className="flex flex-col items-center gap-3">
+            <div className="rounded-lg border bg-white p-3">
+              <QRCodeSVG value={qrUrl} size={220} level="M" />
             </div>
-            <div className="flex items-end">
-              <Button
-                className="w-full"
-                variant="secondary"
-                disabled={loading || !phone || !password}
-                onClick={async () => {
-                  setError(null);
-                  try {
-                    const result = await onVerifyPassword(phone, password);
-                    setFlowStatus(result.status);
-                  } catch (verifyError) {
-                    setError(verifyError instanceof Error ? verifyError.message : "Неверный пароль");
-                  }
-                }}
-              >
-                Подтвердить пароль
+            <p className="text-center text-sm text-muted-foreground">
+              Откройте Telegram → Настройки → Устройства → Войти по QR-коду
+            </p>
+            {qrStatus === "pending" && (
+              <p className="text-sm text-muted-foreground">Ожидание сканирования… QR действует 60 секунд.</p>
+            )}
+            {(qrStatus === "expired" || qrStatus === "error") && (
+              <Button variant="outline" disabled={loading} onClick={handleRefreshQr}>
+                Получить новый QR-код
               </Button>
-            </div>
+            )}
+            {qrStatus === "password_required" && (
+              <div className="flex w-full max-w-sm flex-col gap-2">
+                <div>
+                  <div className="text-xs text-muted-foreground">Пароль 2FA</div>
+                  <Input
+                    type="password"
+                    placeholder="Пароль двухэтапной аутентификации"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+                <Button disabled={loading || !password} onClick={() => void handleVerifyPassword()}>
+                  Подтвердить пароль
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
@@ -131,7 +171,7 @@ export function TelegramConnectCard({
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-        <Button variant="outline" disabled={loading || flowStatus !== "connected"} onClick={() => void onSync()}>
+        <Button variant="outline" disabled={loading || !isConnected} onClick={() => void onSync()}>
           Синхронизировать вручную
         </Button>
       </CardContent>

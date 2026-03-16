@@ -27,6 +27,20 @@ class SyncRequest(BaseModel):
     messages_per_dialog: int | None = Field(default=None, alias="messagesPerDialog")
 
 
+class StartLoginQrRequest(BaseModel):
+    company_id: str = Field(alias="companyId")
+    channel_account_id: str = Field(alias="channelAccountId")
+
+
+class PollLoginQrRequest(BaseModel):
+    qr_session_id: str = Field(alias="qrSessionId")
+
+
+class VerifyPasswordQrRequest(BaseModel):
+    qr_session_id: str = Field(alias="qrSessionId")
+    password: str
+
+
 class SendMessageRequest(BaseModel):
     company_id: str = Field(alias="companyId")
     channel_account_id: str = Field(alias="channelAccountId")

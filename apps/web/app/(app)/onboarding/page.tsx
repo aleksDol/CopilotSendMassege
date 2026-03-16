@@ -59,14 +59,14 @@ export default function OnboardingPage() {
           <TelegramConnectCard
             account={telegram.data}
             loading={
-              telegramActions.startConnect.isPending ||
-              telegramActions.verifyCode.isPending ||
-              telegramActions.verifyPassword.isPending ||
+              telegramActions.startConnectQr.isPending ||
+              telegramActions.pollLoginQr.isPending ||
+              telegramActions.verifyPasswordQr.isPending ||
               telegramActions.sync.isPending
             }
-            onStart={(phone) => telegramActions.startConnect.mutateAsync(phone)}
-            onVerifyCode={(phone, code) => telegramActions.verifyCode.mutateAsync({ phone, code })}
-            onVerifyPassword={(phone, password) => telegramActions.verifyPassword.mutateAsync({ phone, password })}
+            onStartQr={() => telegramActions.startConnectQr.mutateAsync()}
+            onPollQr={(qrSessionId) => telegramActions.pollLoginQr.mutateAsync(qrSessionId)}
+            onVerifyPasswordQr={(payload) => telegramActions.verifyPasswordQr.mutateAsync(payload)}
             onSync={async () => {
               await telegramActions.sync.mutateAsync();
             }}

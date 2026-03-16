@@ -83,6 +83,87 @@ const ensureChannelAndAccount = async (app: FastifyInstance, scope: Scope, phone
   return result;
 };
 
+const QR_EXTERNAL_ID = "telegram-qr";
+
+const ensureChannelAndAccountForQr = async (app: FastifyInstance, scope: Scope) => {
+  const result = await app.prisma.$transaction(async (tx) => {
+    let channel = await tx.channelAccount.findFirst({
+      where: {
+        companyId: scope.companyId,
+        channelType: ChannelType.TELEGRAM,
+        externalAccountId: QR_EXTERNAL_ID
+      },
+      include: { telegram: true }
+    });
+
+    if (!channel) {
+      channel = await tx.channelAccount.create({
+        data: {
+          companyId: scope.companyId,
+          channelType: ChannelType.TELEGRAM,
+          externalAccountId: QR_EXTERNAL_ID,
+          displayName: "Telegram",
+          status: ChannelAccountStatus.CONNECTING,
+          isPrimary: true,
+          createdByUserId: scope.userId
+        },
+        include: { telegram: true }
+      });
+    } else {
+      channel = await tx.channelAccount.update({
+        where: { id: channel.id },
+        data: { status: ChannelAccountStatus.CONNECTING },
+        include: { telegram: true }
+      });
+    }
+
+    await tx.telegramAccount.upsert({
+      where: { channelAccountId: channel.id },
+      update: { loginStatus: TG_LOGIN_REQUIRED, errorMessage: null },
+      create: {
+        channelAccountId: channel.id,
+        loginStatus: TG_LOGIN_REQUIRED
+      }
+    });
+
+    return channel;
+  });
+
+  return result;
+};
+
+export const startConnectQr = async (app: FastifyInstance, scope: Scope) => {
+  const channel = await ensureChannelAndAccountForQr(app, scope);
+  const worker = getWorkerClient(app);
+  const response = (await worker.startLoginQr({
+    companyId: scope.companyId,
+    channelAccountId: channel.id
+  })) as { qrSessionId: string; qrUrl: string; expiresAt: number };
+  return response;
+};
+
+export const pollLoginQr = async (
+  app: FastifyInstance,
+  _scope: Scope,
+  payload: { qrSessionId: string }
+) => {
+  const worker = getWorkerClient(app);
+  return (await worker.pollLoginQr({ qrSessionId: payload.qrSessionId })) as {
+    status: string;
+    expiresAt: number;
+    errorMessage?: string | null;
+  };
+};
+
+export const verifyPasswordQr = async (
+  app: FastifyInstance,
+  _scope: Scope,
+  payload: { qrSessionId: string; password: string }
+) => {
+  const worker = getWorkerClient(app);
+  return worker.verifyPasswordQr({ qrSessionId: payload.qrSessionId, password: payload.password });
+};
+
 export const startConnect = async (app: FastifyInstance, scope: Scope, payload: { phone: string }) => {
   const channel = await ensureChannelAndAccount(app, scope, payload.phone);
 
