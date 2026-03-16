@@ -64,7 +64,7 @@ export function ConversationList({
           onChange={(event) => onFiltersChange({ ...filters, leadStage: event.target.value })}
         />
       </div>
-      <div className="flex-1 space-y-2 overflow-y-auto pr-1">
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
         {filtered.map((item) => (
           <ConversationListItemRow
             key={item.conversationId}

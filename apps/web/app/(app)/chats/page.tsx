@@ -20,8 +20,8 @@ import {
 import { aiApi } from "@/lib/api/ai";
 import { useAuth } from "@/lib/auth/context";
 
-const CONVERSATIONS_POLL_INTERVAL_MS = 12_000;
-const MESSAGES_POLL_INTERVAL_MS = 5_000;
+const CONVERSATIONS_POLL_INTERVAL_MS = 8_000;
+const MESSAGES_POLL_INTERVAL_MS = 3_000;
 
 export default function ChatsPage() {
   const params = useSearchParams();
@@ -105,9 +105,9 @@ export default function ChatsPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 gap-4 -m-4 md:-m-8 p-4 md:p-8">
-      {/* Left: chat list */}
-      <aside className="flex w-[280px] xl:w-[320px] shrink-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden md:flex-row">
+      {/* Left: chat list — как в мессенджере, на всю высоту */}
+      <aside className="flex min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-lg border border-border bg-card md:w-[280px] xl:w-[320px]">
         <div className="shrink-0 border-b border-border px-4 py-3">
           <h2 className="font-semibold">Диалоги</h2>
         </div>
@@ -122,8 +122,8 @@ export default function ChatsPage() {
         </div>
       </aside>
 
-      {/* Center: message thread + composer */}
-      <section className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden">
+      {/* Center: сообщения выбранного чата — на всю высоту */}
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
         <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
           <MessageThread items={messages.data?.items ?? []} />
         </div>
@@ -142,8 +142,9 @@ export default function ChatsPage() {
         </div>
       </section>
 
-      {/* Right: AI panel */}
-      <aside className="hidden w-[360px] shrink-0 overflow-y-auto xl:block">
+      {/* Right: ИИ-агент / копилот — на всю высоту */}
+      <aside className="hidden min-h-0 w-[360px] shrink-0 flex-col overflow-hidden xl:flex">
+        <div className="min-h-0 flex-1 overflow-y-auto">
         <AiSuggestionPanel
           suggestion={latestSuggestion}
           context={lastSuggestionContext}
@@ -175,6 +176,7 @@ export default function ChatsPage() {
             {aiError}
           </div>
         ) : null}
+        </div>
       </aside>
     </div>
   );

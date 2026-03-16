@@ -25,7 +25,8 @@ export const useConversations = (filters: {
     queryKey: ["conversations", queryFilters],
     queryFn: () => conversationsApi.list(token ?? "", queryFilters),
     enabled: Boolean(token),
-    refetchInterval: refetchInterval ?? false
+    refetchInterval: refetchInterval ?? false,
+    refetchIntervalInBackground: true
   });
 };
 
@@ -39,7 +40,8 @@ export const useConversationMessages = (
     queryKey: ["messages", conversationId, limit],
     queryFn: () => conversationsApi.messages(token ?? "", conversationId ?? "", { limit }),
     enabled: Boolean(token && conversationId),
-    refetchInterval: refetchInterval ?? false
+    refetchInterval: refetchInterval ?? false,
+    refetchIntervalInBackground: true
   });
 };
 
