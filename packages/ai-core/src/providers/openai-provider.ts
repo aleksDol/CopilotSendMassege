@@ -71,10 +71,10 @@ const buildStructuredResponseFormat = () => ({
           type: "string"
         },
         confidence: {
-          type: "number"
+          type: ["number", "null"]
         }
       },
-      required: ["suggestion"]
+      required: ["suggestion", "confidence"]
     }
   }
 });
