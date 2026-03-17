@@ -15,17 +15,14 @@ import {
   useConversationMessages,
   useConversations,
   useSendMessageMutation,
-  useSuggestReplyMutation,
-  useTelegramAccount
+  useSuggestReplyMutation
 } from "@/lib/hooks/use-app-data";
 import { useChatsRealtime, type NewMessagePayload } from "@/lib/hooks/use-chats-realtime";
 import { aiApi } from "@/lib/api/ai";
-import { telegramApi } from "@/lib/api/telegram";
 import { useAuth } from "@/lib/auth/context";
 
 const CONVERSATIONS_POLL_INTERVAL_MS = 8_000;
 const MESSAGES_POLL_INTERVAL_MS = 3_000;
-const TELEGRAM_AUTO_SYNC_INTERVAL_MS = 15_000;
 
 export default function ChatsPage() {
   const params = useSearchParams();
@@ -95,7 +92,6 @@ export default function ChatsPage() {
 
   const messages = useConversationMessages(selectedId ?? undefined, 50, MESSAGES_POLL_INTERVAL_MS);
   const suggestions = useAiSuggestions(selectedId ?? undefined);
-  const telegramAccount = useTelegramAccount();
 
   const sendMessage = useSendMessageMutation(selectedId ?? "");
   const suggestMutation = useSuggestReplyMutation(selectedId ?? "");
@@ -115,30 +111,6 @@ export default function ChatsPage() {
   });
 
   const latestSuggestion = useMemo(() => suggestions.data?.items[0] ?? null, [suggestions.data]);
-
-  useEffect(() => {
-    if (!token) return;
-    if ((telegramAccount.data?.loginStatus ?? telegramAccount.data?.status) !== "connected") {
-      return;
-    }
-
-    let inFlight = false;
-    const timer = setInterval(async () => {
-      if (inFlight) return;
-      inFlight = true;
-      try {
-        await telegramApi.sync(token, { dialogsLimit: 20, messagesPerDialog: 20 });
-      } catch {
-        // silent by design: this is background sync assistance
-      } finally {
-        inFlight = false;
-      }
-    }, TELEGRAM_AUTO_SYNC_INTERVAL_MS);
-
-    return () => {
-      clearInterval(timer);
-    };
-  }, [telegramAccount.data?.loginStatus, telegramAccount.data?.status, token]);
 
   const handleSend = async (text: string) => {
     if (!selectedId?.trim()) return;

@@ -29,6 +29,25 @@ def _resolve_conversation_type(entity: Any) -> str:
     return "direct"
 
 
+async def list_connected_accounts() -> list[dict[str, Any]]:
+    async with get_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                '''
+                SELECT
+                  ca."companyId",
+                  ta."channelAccountId"
+                FROM "TelegramAccount" ta
+                JOIN "ChannelAccount" ca ON ca."id" = ta."channelAccountId"
+                WHERE ca."channelType" = 'TELEGRAM'
+                  AND ta."loginStatus" = 'CONNECTED'
+                  AND ta."sessionDataEncrypted" IS NOT NULL
+                '''
+            )
+            rows = await cur.fetchall()
+    return rows or []
+
+
 async def _load_connected_account(
     conn: psycopg.AsyncConnection, company_id: str, channel_account_id: str
 ) -> dict[str, Any]:

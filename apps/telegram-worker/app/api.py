@@ -31,7 +31,7 @@ from app.services.auth_flow import (
     verify_password,
     verify_password_qr,
 )
-from app.services.sync_service import run_initial_sync, send_message
+from app.services.sync_service import list_connected_accounts, run_initial_sync, send_message
 
 logger = logging.getLogger("telegram-worker")
 logging.basicConfig(
@@ -44,6 +44,7 @@ concurrency_limiter = asyncio.Semaphore(settings.telegram_worker_concurrency)
 
 app = FastAPI(title="telegram-worker", version="0.1.0")
 crypto = SessionCrypto(settings.telegram_session_encryption_key)
+auto_sync_task: asyncio.Task | None = None
 
 
 @app.exception_handler(WorkerError)
@@ -65,7 +66,76 @@ async def metrics() -> dict[str, float | int]:
     return {
         "uptimeSeconds": round(time.time() - started_at, 2),
         "configuredConcurrency": settings.telegram_worker_concurrency,
+        "autoSyncEnabled": int(settings.telegram_auto_sync_enabled),
     }
+
+
+async def _auto_sync_loop() -> None:
+    interval = max(5, settings.telegram_auto_sync_interval_seconds)
+    dialogs_limit = max(1, settings.telegram_auto_sync_dialog_limit)
+    messages_limit = max(1, settings.telegram_auto_sync_messages_per_dialog)
+
+    logger.info(
+        "telegram auto-sync enabled: interval=%ss dialogsLimit=%s messagesPerDialog=%s",
+        interval,
+        dialogs_limit,
+        messages_limit,
+    )
+
+    while True:
+        try:
+            accounts = await list_connected_accounts()
+            for account in accounts:
+                try:
+                    async with concurrency_limiter:
+                        await run_initial_sync(
+                            company_id=account["companyId"],
+                            channel_account_id=account["channelAccountId"],
+                            dialogs_limit=dialogs_limit,
+                            messages_per_dialog=messages_limit,
+                            crypto=crypto,
+                        )
+                except WorkerError as exc:
+                    logger.warning(
+                        "auto-sync worker error for company=%s channelAccount=%s code=%s message=%s",
+                        account["companyId"],
+                        account["channelAccountId"],
+                        exc.code,
+                        exc.message,
+                    )
+                except Exception as exc:  # pragma: no cover - defensive log
+                    logger.exception(
+                        "auto-sync failed for company=%s channelAccount=%s: %s",
+                        account["companyId"],
+                        account["channelAccountId"],
+                        exc,
+                    )
+        except Exception as exc:  # pragma: no cover - defensive log
+            logger.exception("auto-sync iteration failed: %s", exc)
+
+        await asyncio.sleep(interval)
+
+
+@app.on_event("startup")
+async def _startup_auto_sync() -> None:
+    global auto_sync_task
+    if not settings.telegram_auto_sync_enabled:
+        logger.info("telegram auto-sync disabled")
+        return
+
+    auto_sync_task = asyncio.create_task(_auto_sync_loop())
+
+
+@app.on_event("shutdown")
+async def _shutdown_auto_sync() -> None:
+    global auto_sync_task
+    if auto_sync_task:
+        auto_sync_task.cancel()
+        try:
+            await auto_sync_task
+        except asyncio.CancelledError:
+            pass
+        auto_sync_task = None
 
 
 @app.post("/internal/telegram/start-login", dependencies=[Depends(verify_internal_token)])
