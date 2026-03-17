@@ -33,21 +33,28 @@ function handleMessageIngested(
   queryClient: ReturnType<typeof useQueryClient>
 ) {
   const cid = parsed.conversationId;
+  if (!cid) return;
+
   const isOutbound = parsed.isOutbound === true;
-  const isSelected = cid && selectedIdRef.current === cid;
+  const isSelected = selectedIdRef.current === cid;
 
   if (isSelected) {
     void queryClient.invalidateQueries({ queryKey: ["messages", cid] });
     void queryClient.invalidateQueries({ queryKey: ["ai-suggestions", cid] });
+    return;
   }
 
-  if (cid && onNewMessage && !isSelected && !isOutbound) {
-    onNewMessage({
-      conversationId: cid,
-      lastMessagePreview: parsed.lastMessagePreview ?? null,
-      conversationTitle: parsed.conversationTitle ?? null
-    });
-  }
+  if (isOutbound) return;
+
+  onNewMessage?.({
+    conversationId: cid,
+    lastMessagePreview: parsed.lastMessagePreview ?? null,
+    conversationTitle: parsed.conversationTitle ?? null
+  });
+
+  requestAnimationFrame(() => {
+    void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+  });
 }
 
 export function useChatsRealtime(
