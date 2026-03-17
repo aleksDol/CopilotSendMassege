@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import { ChannelAccountStatus, type Prisma } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { invalidateCacheByPrefix, readThroughCache } from "../../lib/cache.js";
 import { decodeConversationCursor, encodeConversationCursor } from "../../lib/cursor.js";
@@ -29,7 +29,8 @@ export const listConversations = async (
     ],
     loader: async () => {
       const conversationFilter: Prisma.ConversationWhereInput = {
-        companyId: params.companyId
+        companyId: params.companyId,
+        channelAccount: { status: { not: ChannelAccountStatus.DISCONNECTED } }
       };
 
       if (params.status && params.status !== "all") {

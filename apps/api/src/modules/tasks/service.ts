@@ -1,4 +1,4 @@
-import { Prisma, TaskPriority, TaskStatus, TaskType } from "@prisma/client";
+import { ChannelAccountStatus, Prisma, TaskPriority, TaskStatus, TaskType } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { invalidateCacheByPrefix } from "../../lib/cache.js";
 import { AppError } from "../../lib/errors.js";
@@ -424,7 +424,8 @@ export const listConversationTasks = async (
   const conversation = await app.prisma.conversation.findFirst({
     where: {
       id: params.conversationId,
-      companyId: params.companyId
+      companyId: params.companyId,
+      channelAccount: { status: { not: ChannelAccountStatus.DISCONNECTED } }
     },
     select: { id: true }
   });

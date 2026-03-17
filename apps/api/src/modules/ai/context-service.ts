@@ -1,4 +1,5 @@
 import type { AIMessage } from "@repo/ai-core";
+import { ChannelAccountStatus } from "@prisma/client";
 import type { Conversation, ConversationState, KnowledgeItem, ReplyPolicy } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { readThroughCache } from "../../lib/cache.js";
@@ -34,7 +35,8 @@ export class AIContextService {
     const conversation = await this.app.prisma.conversation.findFirst({
       where: {
         id: params.conversationId,
-        companyId: params.companyId
+        companyId: params.companyId,
+        channelAccount: { status: { not: ChannelAccountStatus.DISCONNECTED } }
       }
     });
 

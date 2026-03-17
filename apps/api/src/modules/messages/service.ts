@@ -1,4 +1,4 @@
-import { ChannelType } from "@prisma/client";
+import { ChannelAccountStatus, ChannelType } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { decodeMessageCursor, encodeMessageCursor } from "../../lib/cursor.js";
 import { AppError } from "../../lib/errors.js";
@@ -25,7 +25,8 @@ export const listConversationMessages = async (
   const conversation = await app.prisma.conversation.findFirst({
     where: {
       id: params.conversationId,
-      companyId: params.companyId
+      companyId: params.companyId,
+      channelAccount: { status: { not: ChannelAccountStatus.DISCONNECTED } }
     },
     select: { id: true }
   });
@@ -122,7 +123,8 @@ export const sendConversationMessage = async (
       id: params.conversationId,
       companyId: params.companyId,
       channelAccount: {
-        channelType: ChannelType.TELEGRAM
+        channelType: ChannelType.TELEGRAM,
+        status: { not: ChannelAccountStatus.DISCONNECTED }
       }
     },
     include: {

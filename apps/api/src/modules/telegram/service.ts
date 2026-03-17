@@ -1,7 +1,8 @@
-import { ChannelType, ChannelAccountStatus, TelegramLoginStatus } from "@prisma/client";
+import { ChannelAccountStatus, ChannelType, TelegramLoginStatus } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { AppError } from "../../lib/errors.js";
 import { TelegramWorkerClient } from "../../lib/telegram-worker-client.js";
+import { invalidateConversationCaches } from "../conversations/service.js";
 
 type Scope = {
   companyId: string;
@@ -321,6 +322,8 @@ export const disconnectTelegram = async (app: FastifyInstance, scope: Scope) => 
       });
     });
   }
+
+  await invalidateConversationCaches(app, scope.companyId);
 
   return { status: "disconnected" };
 };

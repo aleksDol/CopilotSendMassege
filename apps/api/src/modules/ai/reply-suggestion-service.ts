@@ -4,7 +4,7 @@ import {
   type LLMProvider,
   type ReplySuggestionMode
 } from "@repo/ai-core";
-import { Prisma, SuggestionStatus, SuggestionType, UsageMetricType } from "@prisma/client";
+import { ChannelAccountStatus, Prisma, SuggestionStatus, SuggestionType, UsageMetricType } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { invalidateCacheByPrefix } from "../../lib/cache.js";
 import { AppError } from "../../lib/errors.js";
@@ -320,7 +320,11 @@ export class ReplySuggestionService {
 
   async listSuggestions(params: { companyId: string; conversationId: string; limit: number }) {
     const conversation = await this.app.prisma.conversation.findFirst({
-      where: { id: params.conversationId, companyId: params.companyId },
+      where: {
+        id: params.conversationId,
+        companyId: params.companyId,
+        channelAccount: { status: { not: ChannelAccountStatus.DISCONNECTED } }
+      },
       select: { id: true }
     });
 
