@@ -46,3 +46,8 @@ class SendMessageRequest(BaseModel):
     channel_account_id: str = Field(alias="channelAccountId")
     external_conversation_id: str = Field(alias="externalConversationId")
     text: str
+
+
+class LogoutRequest(BaseModel):
+    company_id: str = Field(alias="companyId")
+    channel_account_id: str = Field(alias="channelAccountId")

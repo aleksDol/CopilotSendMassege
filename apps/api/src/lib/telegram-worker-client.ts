@@ -96,4 +96,8 @@ export class TelegramWorkerClient {
   sendMessage(payload: WorkerPayload) {
     return this.post("/internal/telegram/send-message", payload);
   }
+
+  logout(payload: WorkerPayload) {
+    return this.post("/internal/telegram/logout", payload);
+  }
 }

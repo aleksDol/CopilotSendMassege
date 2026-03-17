@@ -11,6 +11,7 @@ import {
 } from "./schemas.js";
 import {
   getTelegramAccount,
+  disconnectTelegram,
   pollLoginQr,
   startConnect,
   startConnectQr,
@@ -70,6 +71,11 @@ const telegramRoutes: FastifyPluginAsync = async (app) => {
     const body = parseWithSchema(telegramSyncSchema, request.body);
 
     return triggerInitialSync(app, scope, body ?? undefined);
+  });
+
+  app.post("/telegram/logout", { preHandler: [app.authenticate] }, async (request) => {
+    const scope = getCompanyScope(request);
+    return disconnectTelegram(app, scope);
   });
 };
 

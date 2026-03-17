@@ -232,6 +232,10 @@ export const useTelegramActions = () => {
     sync: useMutation({
       mutationFn: () => telegramApi.sync(token ?? ""),
       onSuccess: refresh
+    }),
+    logout: useMutation({
+      mutationFn: () => telegramApi.logout(token ?? ""),
+      onSuccess: refresh
     })
   };
 };

@@ -9,6 +9,7 @@ from app.auth import verify_internal_token
 from app.config import settings
 from app.crypto import SessionCrypto
 from app.schemas import (
+    LogoutRequest,
     PollLoginQrRequest,
     SendMessageRequest,
     StartLoginQrRequest,
@@ -20,6 +21,7 @@ from app.schemas import (
 )
 from app.services.auth_flow import (
     WorkerError,
+    logout_and_clear_session,
     mark_error,
     mark_error_by_channel,
     poll_qr_login,
@@ -182,3 +184,16 @@ async def internal_send_message(payload: SendMessageRequest) -> dict:
             raise
         except Exception as exc:
             raise WorkerError("TELEGRAM_SEND_FAILED", "Failed to send Telegram message", 500) from exc
+
+
+@app.post("/internal/telegram/logout", dependencies=[Depends(verify_internal_token)])
+async def internal_logout(payload: LogoutRequest) -> dict:
+    logger.info("logout requested for company=%s channelAccount=%s", payload.company_id, payload.channel_account_id)
+    async with concurrency_limiter:
+        try:
+            return await logout_and_clear_session(payload.company_id, payload.channel_account_id, crypto)
+        except WorkerError:
+            raise
+        except Exception as exc:
+            await mark_error_by_channel(payload.company_id, payload.channel_account_id, str(exc), "ERROR")
+            raise WorkerError("TELEGRAM_LOGOUT_FAILED", "Failed to logout Telegram session", 500) from exc

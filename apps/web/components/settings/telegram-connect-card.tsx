@@ -16,6 +16,7 @@ export function TelegramConnectCard({
   onPollQr,
   onVerifyPasswordQr,
   onSync,
+  onLogout,
   loading
 }: {
   account?: TelegramAccountResponse;
@@ -23,6 +24,7 @@ export function TelegramConnectCard({
   onPollQr: (qrSessionId: string) => Promise<{ status: string; expiresAt: number; errorMessage?: string | null }>;
   onVerifyPasswordQr: (payload: { qrSessionId: string; password: string }) => Promise<{ status: string }>;
   onSync: () => Promise<void>;
+  onLogout: () => Promise<void>;
   loading?: boolean;
 }) {
   const flowStatus = account?.loginStatus ?? account?.status ?? "login_required";
@@ -179,6 +181,14 @@ export function TelegramConnectCard({
           onClick={() => void onSync()}
         >
           Синхронизировать вручную
+        </Button>
+
+        <Button
+          variant="destructive"
+          disabled={loading || (flowStatus !== "connected" && flowStatus !== "error" && flowStatus !== "reconnect_required")}
+          onClick={() => void onLogout()}
+        >
+          Выйти из Telegram
         </Button>
       </CardContent>
     </Card>

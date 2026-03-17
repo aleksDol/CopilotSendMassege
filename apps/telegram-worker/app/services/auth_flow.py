@@ -24,6 +24,85 @@ QR_LOGIN_SESSIONS: dict[str, dict[str, Any]] = {}
 QR_LOGIN_TIMEOUT_SEC = 60
 
 
+async def logout_and_clear_session(company_id: str, channel_account_id: str, crypto: SessionCrypto) -> dict[str, str]:
+    """
+    Best-effort logout from Telegram and clear stored session in DB.
+    Designed to be idempotent and safe even if the session is already invalid.
+    """
+    now = _now()
+    session_encrypted: str | None = None
+    telegram_account_id: str | None = None
+
+    async with get_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                '''
+                SELECT ta."id" AS "telegramAccountId", ta."sessionDataEncrypted"
+                FROM "TelegramAccount" ta
+                JOIN "ChannelAccount" ca ON ca."id" = ta."channelAccountId"
+                WHERE ca."companyId" = %s AND ta."channelAccountId" = %s AND ca."channelType" = 'TELEGRAM'
+                LIMIT 1
+                ''',
+                (company_id, channel_account_id),
+            )
+            row = await cur.fetchone()
+
+        if row:
+            telegram_account_id = str(row["telegramAccountId"])
+            session_encrypted = row.get("sessionDataEncrypted")
+
+    # Best-effort remote logout (ignore failures)
+    if session_encrypted:
+        try:
+            session = crypto.decrypt(session_encrypted)
+            client = create_client(session)
+            try:
+                await client.connect()
+                if await client.is_user_authorized():
+                    try:
+                        await client.log_out()
+                    except Exception:
+                        pass
+            finally:
+                try:
+                    await client.disconnect()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    # Clear DB session + mark disconnected
+    async with get_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                '''
+                UPDATE "TelegramAccount"
+                SET
+                  "sessionDataEncrypted" = NULL,
+                  "telegramUserId" = NULL,
+                  "username" = NULL,
+                  "apiDcId" = NULL,
+                  "authPhoneCodeHash" = NULL,
+                  "loginStatus" = 'LOGIN_REQUIRED',
+                  "errorMessage" = NULL,
+                  "lastEventAt" = %s,
+                  "updatedAt" = %s
+                WHERE "channelAccountId" = %s
+                ''',
+                (now, now, channel_account_id),
+            )
+            await cur.execute(
+                '''
+                UPDATE "ChannelAccount"
+                SET "status" = 'DISCONNECTED', "updatedAt" = %s
+                WHERE "id" = %s
+                ''',
+                (now, channel_account_id),
+            )
+
+    return {"status": "disconnected"}
+
+
 async def _qr_login_wait_task(
     qr_session_id: str,
     qr_login: Any,

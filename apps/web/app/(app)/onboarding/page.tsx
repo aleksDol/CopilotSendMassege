@@ -62,13 +62,17 @@ export default function OnboardingPage() {
               telegramActions.startConnectQr.isPending ||
               telegramActions.pollLoginQr.isPending ||
               telegramActions.verifyPasswordQr.isPending ||
-              telegramActions.sync.isPending
+              telegramActions.sync.isPending ||
+              telegramActions.logout.isPending
             }
             onStartQr={() => telegramActions.startConnectQr.mutateAsync()}
             onPollQr={(qrSessionId) => telegramActions.pollLoginQr.mutateAsync(qrSessionId)}
             onVerifyPasswordQr={(payload) => telegramActions.verifyPasswordQr.mutateAsync(payload)}
             onSync={async () => {
               await telegramActions.sync.mutateAsync();
+            }}
+            onLogout={async () => {
+              await telegramActions.logout.mutateAsync();
             }}
           />
 

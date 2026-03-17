@@ -25,13 +25,17 @@ export default function TelegramSettingsPage() {
           actions.startConnectQr.isPending ||
           actions.pollLoginQr.isPending ||
           actions.verifyPasswordQr.isPending ||
-          actions.sync.isPending
+          actions.sync.isPending ||
+          actions.logout.isPending
         }
         onStartQr={() => actions.startConnectQr.mutateAsync()}
         onPollQr={(qrSessionId) => actions.pollLoginQr.mutateAsync(qrSessionId)}
         onVerifyPasswordQr={(payload) => actions.verifyPasswordQr.mutateAsync(payload)}
         onSync={async () => {
           await actions.sync.mutateAsync();
+        }}
+        onLogout={async () => {
+          await actions.logout.mutateAsync();
         }}
       />
     </div>

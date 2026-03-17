@@ -279,3 +279,48 @@ export const triggerInitialSync = async (
     messagesPerDialog: payload?.messagesPerDialog
   });
 };
+
+export const disconnectTelegram = async (app: FastifyInstance, scope: Scope) => {
+  const channelAccounts = await app.prisma.channelAccount.findMany({
+    where: { companyId: scope.companyId, channelType: ChannelType.TELEGRAM },
+    select: { id: true }
+  });
+
+  if (!channelAccounts.length) {
+    return { status: "not_connected" };
+  }
+
+  const worker = getWorkerClient(app);
+
+  for (const account of channelAccounts) {
+    // Best-effort remote logout + session cleanup inside worker
+    try {
+      await worker.logout({ companyId: scope.companyId, channelAccountId: account.id });
+    } catch {
+      // Continue with DB cleanup even if worker is unavailable
+    }
+
+    await app.prisma.$transaction(async (tx) => {
+      // Keep chats/messages/AI suggestions. Only clear auth/session and mark disconnected.
+      await tx.telegramAccount.updateMany({
+        where: { channelAccountId: account.id },
+        data: {
+          sessionDataEncrypted: null,
+          telegramUserId: null,
+          username: null,
+          apiDcId: null,
+          authPhoneCodeHash: null,
+          loginStatus: TG_LOGIN_REQUIRED,
+          errorMessage: null
+        }
+      });
+
+      await tx.channelAccount.update({
+        where: { id: account.id },
+        data: { status: ChannelAccountStatus.DISCONNECTED }
+      });
+    });
+  }
+
+  return { status: "disconnected" };
+};

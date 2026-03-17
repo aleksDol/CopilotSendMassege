@@ -9,7 +9,7 @@ from app.config import settings
 from app.crypto import SessionCrypto
 from app.db import get_connection
 from app.internal_api_client import push_message_event
-from app.services.auth_flow import WorkerError
+from app.services.auth_flow import WorkerError, mark_error_by_channel
 from app.telegram_client import create_client
 
 
@@ -108,6 +108,12 @@ async def run_initial_sync(
             await client.connect()
 
             if not await client.is_user_authorized():
+                await mark_error_by_channel(
+                    company_id,
+                    channel_account_id,
+                    "Telegram session expired, reconnect required",
+                    "RECONNECT_REQUIRED",
+                )
                 raise WorkerError("RECONNECT_REQUIRED", "Telegram session expired, reconnect required", 400)
 
             me = await client.get_me()
@@ -202,6 +208,12 @@ async def send_message(
             await client.connect()
 
             if not await client.is_user_authorized():
+                await mark_error_by_channel(
+                    company_id,
+                    channel_account_id,
+                    "Telegram session expired, reconnect required",
+                    "RECONNECT_REQUIRED",
+                )
                 raise WorkerError("RECONNECT_REQUIRED", "Telegram session expired, reconnect required", 400)
 
             me = await client.get_me()
