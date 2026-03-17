@@ -34,15 +34,14 @@ function handleMessageIngested(
 ) {
   const cid = parsed.conversationId;
   const isOutbound = parsed.isOutbound === true;
+  const isSelected = cid && selectedIdRef.current === cid;
 
-  void queryClient.invalidateQueries({ queryKey: ["conversations"] });
-  void queryClient.invalidateQueries({ queryKey: ["dashboard-overview"] });
-  if (cid && selectedIdRef.current === cid) {
+  if (isSelected) {
     void queryClient.invalidateQueries({ queryKey: ["messages", cid] });
     void queryClient.invalidateQueries({ queryKey: ["ai-suggestions", cid] });
   }
 
-  if (cid && onNewMessage && cid !== selectedIdRef.current && !isOutbound) {
+  if (cid && onNewMessage && !isSelected && !isOutbound) {
     onNewMessage({
       conversationId: cid,
       lastMessagePreview: parsed.lastMessagePreview ?? null,
@@ -88,8 +87,7 @@ export function useChatsRealtime(
         const parsed = JSON.parse(event.data) as ParsedEvent;
         handleMessageIngested(parsed, selectedIdRef, onNewMessageRef.current, queryClient);
       } catch {
-        void queryClient.invalidateQueries({ queryKey: ["conversations"] });
-        void queryClient.invalidateQueries({ queryKey: ["dashboard-overview"] });
+        // ignore parse errors
       }
     };
 
