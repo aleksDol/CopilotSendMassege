@@ -4,6 +4,8 @@ export type RealtimeEvent = {
   conversationId: string;
   messageId: string;
   sentAt: string;
+  lastMessagePreview?: string | null;
+  conversationTitle?: string | null;
 };
 
 type Listener = (event: RealtimeEvent) => void;

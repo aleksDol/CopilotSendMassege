@@ -172,12 +172,16 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
 
   await invalidateConversationCaches(app, companyId);
   await invalidateCacheByPrefix(app, `cache:dashboard:${companyId}:`);
+  const conversationTitle = conversation.title ?? payload.conversationTitle ?? null;
+  const lastMessagePreview = (payload.text ?? "").slice(0, 240) || null;
   realtimeHub.publish({
     type: "message_ingested",
     companyId,
     conversationId: conversation.id,
     messageId: message.id,
-    sentAt: message.sentAt.toISOString()
+    sentAt: message.sentAt.toISOString(),
+    lastMessagePreview: lastMessagePreview || undefined,
+    conversationTitle: conversationTitle ?? undefined
   });
 
   return {

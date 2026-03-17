@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ConversationListItemRow } from "./conversation-list-item";
@@ -8,13 +9,15 @@ export function ConversationList({
   selectedId,
   onSelect,
   filters,
-  onFiltersChange
+  onFiltersChange,
+  unreadByConversationId = {}
 }: {
   items: ConversationListItem[];
   selectedId: string | null;
   onSelect: (conversationId: string) => void;
   filters: { search: string; waitingForReply: string; leadStage: string };
   onFiltersChange: (filters: { search: string; waitingForReply: string; leadStage: string }) => void;
+  unreadByConversationId?: Record<string, { lastMessagePreview?: string | null; conversationTitle?: string | null }>;
 }) {
   const filtered = items.filter((item) => {
     const searchMatch = filters.search
@@ -33,6 +36,12 @@ export function ConversationList({
 
     return searchMatch && waitingMatch && stageMatch;
   });
+
+  const sorted = useMemo(() => {
+    const unread = filtered.filter((item) => item.conversationId in unreadByConversationId && item.conversationId !== selectedId);
+    const read = filtered.filter((item) => !(item.conversationId in unreadByConversationId) || item.conversationId === selectedId);
+    return [...unread, ...read];
+  }, [filtered, unreadByConversationId, selectedId]);
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
@@ -65,15 +74,21 @@ export function ConversationList({
         />
       </div>
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-        {filtered.map((item) => (
-          <ConversationListItemRow
-            key={item.conversationId}
-            item={item}
-            selected={selectedId === item.conversationId}
-            onSelect={() => onSelect(item.conversationId)}
-          />
-        ))}
-        {filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No chats found</p> : null}
+        {sorted.map((item) => {
+          const unread = item.conversationId in unreadByConversationId && item.conversationId !== selectedId;
+          const unreadData = unreadByConversationId[item.conversationId];
+          return (
+            <ConversationListItemRow
+              key={item.conversationId}
+              item={item}
+              selected={selectedId === item.conversationId}
+              onSelect={() => onSelect(item.conversationId)}
+              hasUnread={unread}
+              unreadPreview={unreadData?.lastMessagePreview ?? undefined}
+            />
+          );
+        })}
+        {sorted.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No chats found</p> : null}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
@@ -18,7 +18,7 @@ import {
   useSuggestReplyMutation,
   useTelegramAccount
 } from "@/lib/hooks/use-app-data";
-import { useChatsRealtime } from "@/lib/hooks/use-chats-realtime";
+import { useChatsRealtime, type NewMessagePayload } from "@/lib/hooks/use-chats-realtime";
 import { aiApi } from "@/lib/api/ai";
 import { telegramApi } from "@/lib/api/telegram";
 import { useAuth } from "@/lib/auth/context";
@@ -41,7 +41,32 @@ export default function ChatsPage() {
     leadStage: "all"
   });
 
-  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(initialConversation);
+  const [selectedConversationId, setSelectedConversationIdState] = useState<string | null>(initialConversation);
+  const [unreadByConversationId, setUnreadByConversationId] = useState<
+    Record<string, { lastMessagePreview?: string | null; conversationTitle?: string | null }>
+  >({});
+
+  const setSelectedConversationId = useCallback((id: string | null) => {
+    setSelectedConversationIdState(id);
+    if (id) {
+      setUnreadByConversationId((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }
+  }, []);
+
+  const handleNewMessageInOtherChat = useCallback((payload: NewMessagePayload) => {
+    setUnreadByConversationId((prev) => ({
+      ...prev,
+      [payload.conversationId]: {
+        lastMessagePreview: payload.lastMessagePreview ?? null,
+        conversationTitle: payload.conversationTitle ?? null
+      }
+    }));
+  }, []);
+
   const [composerText, setComposerText] = useState("");
   const [lastSuggestionContext, setLastSuggestionContext] = useState<{
     leadStage: string | null;
@@ -60,7 +85,7 @@ export default function ChatsPage() {
 
   const selectedId = selectedConversationId ?? conversations.data?.items[0]?.conversationId ?? null;
 
-  useChatsRealtime(selectedId);
+  useChatsRealtime(selectedId, handleNewMessageInOtherChat);
 
   useEffect(() => {
     if (!selectedConversationId && conversations.data?.items.length) {
@@ -148,6 +173,7 @@ export default function ChatsPage() {
             onSelect={setSelectedConversationId}
             filters={filters}
             onFiltersChange={setFilters}
+            unreadByConversationId={unreadByConversationId}
           />
         </div>
       </aside>

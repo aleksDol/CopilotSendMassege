@@ -6,7 +6,16 @@ import { useAuth } from "@/lib/auth/context";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
-export function useChatsRealtime(selectedConversationId: string | null) {
+export type NewMessagePayload = {
+  conversationId: string;
+  lastMessagePreview?: string | null;
+  conversationTitle?: string | null;
+};
+
+export function useChatsRealtime(
+  selectedConversationId: string | null,
+  onNewMessageInOtherChat?: (payload: NewMessagePayload) => void
+) {
   const { token, isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
 
@@ -31,8 +40,20 @@ export function useChatsRealtime(selectedConversationId: string | null) {
 
     source.addEventListener("message_ingested", (event) => {
       try {
-        const parsed = JSON.parse((event as MessageEvent).data) as { conversationId?: string };
-        refresh(parsed.conversationId);
+        const parsed = JSON.parse((event as MessageEvent).data) as {
+          conversationId?: string;
+          lastMessagePreview?: string | null;
+          conversationTitle?: string | null;
+        };
+        const cid = parsed.conversationId;
+        refresh(cid);
+        if (cid && cid !== selectedConversationId && onNewMessageInOtherChat) {
+          onNewMessageInOtherChat({
+            conversationId: cid,
+            lastMessagePreview: parsed.lastMessagePreview ?? null,
+            conversationTitle: parsed.conversationTitle ?? null
+          });
+        }
       } catch {
         refresh();
       }
@@ -45,5 +66,5 @@ export function useChatsRealtime(selectedConversationId: string | null) {
     return () => {
       source.close();
     };
-  }, [isAuthenticated, queryClient, selectedConversationId, token]);
+  }, [isAuthenticated, onNewMessageInOtherChat, queryClient, selectedConversationId, token]);
 }
