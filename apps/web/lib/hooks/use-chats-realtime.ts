@@ -46,6 +46,9 @@ function handleMessageIngested(
 
   if (isOutbound) return;
 
+  // Refetch conversations list so new chats (first-time senders) appear in the panel immediately
+  void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+
   onNewMessage?.({
     conversationId: cid,
     lastMessagePreview: parsed.lastMessagePreview ?? null,
