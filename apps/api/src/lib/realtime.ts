@@ -6,6 +6,7 @@ export type RealtimeEvent = {
   sentAt: string;
   lastMessagePreview?: string | null;
   conversationTitle?: string | null;
+  isOutbound?: boolean;
 };
 
 type Listener = (event: RealtimeEvent) => void;

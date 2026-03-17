@@ -1,10 +1,16 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth/context";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+function getRealtimeBaseUrl(): string {
+  if (typeof window !== "undefined") {
+    const env = (process.env.NEXT_PUBLIC_API_URL ?? "").trim();
+    return env || `${window.location.origin}/api`;
+  }
+  return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+}
 
 export type NewMessagePayload = {
   conversationId: string;
@@ -12,59 +18,90 @@ export type NewMessagePayload = {
   conversationTitle?: string | null;
 };
 
+type ParsedEvent = {
+  type?: string;
+  conversationId?: string;
+  lastMessagePreview?: string | null;
+  conversationTitle?: string | null;
+  isOutbound?: boolean;
+};
+
+function handleMessageIngested(
+  parsed: ParsedEvent,
+  selectedIdRef: React.MutableRefObject<string | null>,
+  onNewMessage: ((p: NewMessagePayload) => void) | undefined,
+  queryClient: ReturnType<typeof useQueryClient>
+) {
+  const cid = parsed.conversationId;
+  const isOutbound = parsed.isOutbound === true;
+
+  void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+  void queryClient.invalidateQueries({ queryKey: ["dashboard-overview"] });
+  if (cid && selectedIdRef.current === cid) {
+    void queryClient.invalidateQueries({ queryKey: ["messages", cid] });
+    void queryClient.invalidateQueries({ queryKey: ["ai-suggestions", cid] });
+  }
+
+  if (cid && onNewMessage && cid !== selectedIdRef.current && !isOutbound) {
+    onNewMessage({
+      conversationId: cid,
+      lastMessagePreview: parsed.lastMessagePreview ?? null,
+      conversationTitle: parsed.conversationTitle ?? null
+    });
+  }
+}
+
 export function useChatsRealtime(
   selectedConversationId: string | null,
   onNewMessageInOtherChat?: (payload: NewMessagePayload) => void
 ) {
   const { token, isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
+  const selectedIdRef = useRef<string | null>(selectedConversationId);
+  const onNewMessageRef = useRef(onNewMessageInOtherChat);
+
+  selectedIdRef.current = selectedConversationId;
+  onNewMessageRef.current = onNewMessageInOtherChat;
 
   useEffect(() => {
     if (!isAuthenticated || !token) {
       return;
     }
 
-    const url = new URL("/realtime/events", API_URL);
+    const base = getRealtimeBaseUrl().replace(/\/$/, "");
+    const url = new URL(base + "/realtime/events");
     url.searchParams.set("token", token);
-
     const source = new EventSource(url.toString());
 
-    const refresh = (conversationId?: string) => {
-      void queryClient.invalidateQueries({ queryKey: ["conversations"] });
-      void queryClient.invalidateQueries({ queryKey: ["dashboard-overview"] });
-      if (conversationId && selectedConversationId === conversationId) {
-        void queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
-        void queryClient.invalidateQueries({ queryKey: ["ai-suggestions", conversationId] });
-      }
-    };
-
-    source.addEventListener("message_ingested", (event) => {
+    const handler = (event: MessageEvent) => {
       try {
-        const parsed = JSON.parse((event as MessageEvent).data) as {
-          conversationId?: string;
-          lastMessagePreview?: string | null;
-          conversationTitle?: string | null;
-        };
-        const cid = parsed.conversationId;
-        refresh(cid);
-        if (cid && cid !== selectedConversationId && onNewMessageInOtherChat) {
-          onNewMessageInOtherChat({
-            conversationId: cid,
-            lastMessagePreview: parsed.lastMessagePreview ?? null,
-            conversationTitle: parsed.conversationTitle ?? null
-          });
-        }
+        const parsed = JSON.parse(event.data) as ParsedEvent;
+        if (parsed.type !== "message_ingested") return;
+        handleMessageIngested(parsed, selectedIdRef, onNewMessageRef.current, queryClient);
       } catch {
-        refresh();
+        // ignore parse errors
       }
-    });
-
-    source.onerror = () => {
-      // SSE reconnect is handled by EventSource automatically.
     };
+
+    const handlerNamed = (event: MessageEvent) => {
+      try {
+        const parsed = JSON.parse(event.data) as ParsedEvent;
+        handleMessageIngested(parsed, selectedIdRef, onNewMessageRef.current, queryClient);
+      } catch {
+        void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+        void queryClient.invalidateQueries({ queryKey: ["dashboard-overview"] });
+      }
+    };
+
+    source.addEventListener("message_ingested", handlerNamed);
+    source.addEventListener("message", handler);
+
+    source.onerror = () => {};
 
     return () => {
+      source.removeEventListener("message_ingested", handlerNamed);
+      source.removeEventListener("message", handler);
       source.close();
     };
-  }, [isAuthenticated, onNewMessageInOtherChat, queryClient, selectedConversationId, token]);
+  }, [isAuthenticated, queryClient, token]);
 }

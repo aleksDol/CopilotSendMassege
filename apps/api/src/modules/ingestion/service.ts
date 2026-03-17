@@ -181,7 +181,8 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
     messageId: message.id,
     sentAt: message.sentAt.toISOString(),
     lastMessagePreview: lastMessagePreview || undefined,
-    conversationTitle: conversationTitle ?? undefined
+    conversationTitle: conversationTitle ?? undefined,
+    isOutbound: payload.isOutgoing ?? false
   });
 
   return {
