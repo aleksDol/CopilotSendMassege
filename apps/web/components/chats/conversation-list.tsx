@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ConversationListItemRow } from "./conversation-list-item";
@@ -37,12 +36,6 @@ export function ConversationList({
     return searchMatch && waitingMatch && stageMatch;
   });
 
-  const sorted = useMemo(() => {
-    const unread = filtered.filter((item) => item.conversationId in unreadByConversationId && item.conversationId !== selectedId);
-    const read = filtered.filter((item) => !(item.conversationId in unreadByConversationId) || item.conversationId === selectedId);
-    return [...unread, ...read];
-  }, [filtered, unreadByConversationId, selectedId]);
-
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <Input
@@ -74,8 +67,8 @@ export function ConversationList({
         />
       </div>
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-        {sorted.map((item) => {
-          const unread = item.conversationId in unreadByConversationId && item.conversationId !== selectedId;
+        {filtered.map((item) => {
+          const hasUnread = item.conversationId in unreadByConversationId && item.conversationId !== selectedId;
           const unreadData = unreadByConversationId[item.conversationId];
           return (
             <ConversationListItemRow
@@ -83,12 +76,12 @@ export function ConversationList({
               item={item}
               selected={selectedId === item.conversationId}
               onSelect={() => onSelect(item.conversationId)}
-              hasUnread={unread}
+              hasUnread={hasUnread}
               unreadPreview={unreadData?.lastMessagePreview ?? undefined}
             />
           );
         })}
-        {sorted.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No chats found</p> : null}
+        {filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No chats found</p> : null}
       </div>
     </div>
   );

@@ -51,10 +51,6 @@ function handleMessageIngested(
     lastMessagePreview: parsed.lastMessagePreview ?? null,
     conversationTitle: parsed.conversationTitle ?? null
   });
-
-  requestAnimationFrame(() => {
-    void queryClient.invalidateQueries({ queryKey: ["conversations"] });
-  });
 }
 
 export function useChatsRealtime(
