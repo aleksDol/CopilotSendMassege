@@ -32,6 +32,7 @@ from app.services.auth_flow import (
     verify_password_qr,
 )
 from app.services.sync_service import list_connected_accounts, run_initial_sync, send_message
+from app.services.live_listener import LiveListenerManager
 
 logger = logging.getLogger("telegram-worker")
 logging.basicConfig(
@@ -45,6 +46,8 @@ concurrency_limiter = asyncio.Semaphore(settings.telegram_worker_concurrency)
 app = FastAPI(title="telegram-worker", version="0.1.0")
 crypto = SessionCrypto(settings.telegram_session_encryption_key)
 auto_sync_task: asyncio.Task | None = None
+live_listener_task: asyncio.Task | None = None
+live_listener_manager: LiveListenerManager | None = None
 
 
 @app.exception_handler(WorkerError)
@@ -118,17 +121,23 @@ async def _auto_sync_loop() -> None:
 
 @app.on_event("startup")
 async def _startup_auto_sync() -> None:
-    global auto_sync_task
+    global auto_sync_task, live_listener_task, live_listener_manager
     if not settings.telegram_auto_sync_enabled:
         logger.info("telegram auto-sync disabled")
-        return
+    else:
+        auto_sync_task = asyncio.create_task(_auto_sync_loop())
 
-    auto_sync_task = asyncio.create_task(_auto_sync_loop())
+    if settings.telegram_live_listener_enabled:
+        live_listener_manager = LiveListenerManager(crypto)
+        live_listener_task = asyncio.create_task(live_listener_manager.run())
+        logger.info("telegram live listener enabled")
+    else:
+        logger.info("telegram live listener disabled")
 
 
 @app.on_event("shutdown")
 async def _shutdown_auto_sync() -> None:
-    global auto_sync_task
+    global auto_sync_task, live_listener_task, live_listener_manager
     if auto_sync_task:
         auto_sync_task.cancel()
         try:
@@ -136,6 +145,21 @@ async def _shutdown_auto_sync() -> None:
         except asyncio.CancelledError:
             pass
         auto_sync_task = None
+
+    if live_listener_manager:
+        try:
+            await live_listener_manager.stop()
+        except Exception:
+            pass
+        live_listener_manager = None
+
+    if live_listener_task:
+        live_listener_task.cancel()
+        try:
+            await live_listener_task
+        except asyncio.CancelledError:
+            pass
+        live_listener_task = None
 
 
 @app.post("/internal/telegram/start-login", dependencies=[Depends(verify_internal_token)])

@@ -109,6 +109,33 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
     }
   });
 
+  // Idempotency guard: worker sync and live-listener can deliver the same message.
+  // If we already have this message, do NOT update conversation_state counters again.
+  const existing = await app.prisma.message.findUnique({
+    where: {
+      conversationId_externalMessageId: {
+        conversationId: conversation.id,
+        externalMessageId: payload.externalMessageId
+      }
+    },
+    select: { id: true }
+  });
+  if (existing) {
+    await app.prisma.telegramAccount.update({
+      where: { id: telegramAccount.id },
+      data: {
+        lastEventAt: new Date(),
+        errorMessage: null
+      }
+    });
+
+    return {
+      ok: true,
+      conversationId: conversation.id,
+      messageId: existing.id
+    };
+  }
+
   const message = await app.prisma.message.upsert({
     where: {
       conversationId_externalMessageId: {
