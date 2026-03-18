@@ -203,17 +203,18 @@ export default function ChatsPage() {
   const sendMessage = useSendMessageMutation(selectedId ?? "");
   const suggestMutation = useSuggestReplyMutation(selectedId ?? "");
 
+  const aiSuggestionsScope = company?.id ?? "";
   const acceptMutation = useMutation({
     mutationFn: (suggestionId: string) => aiApi.accept(token ?? "", suggestionId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["ai-suggestions", selectedId] });
+      void queryClient.invalidateQueries({ queryKey: ["ai-suggestions", aiSuggestionsScope, selectedId] });
     }
   });
 
   const rejectMutation = useMutation({
     mutationFn: (suggestionId: string) => aiApi.reject(token ?? "", suggestionId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["ai-suggestions", selectedId] });
+      void queryClient.invalidateQueries({ queryKey: ["ai-suggestions", aiSuggestionsScope, selectedId] });
     }
   });
 

@@ -33,24 +33,26 @@ function handleMessageIngested(
   parsed: ParsedEvent,
   selectedIdRef: React.MutableRefObject<string | null>,
   onNewMessage: ((p: NewMessagePayload) => void) | undefined,
-  queryClient: ReturnType<typeof useQueryClient>
+  queryClient: ReturnType<typeof useQueryClient>,
+  companyId: string
 ) {
   const cid = parsed.conversationId;
   if (!cid) return;
 
   const isOutbound = parsed.isOutbound === true;
   const isSelected = selectedIdRef.current === cid;
+  const scope = companyId ?? "";
 
   if (isSelected) {
-    void queryClient.invalidateQueries({ queryKey: ["messages", cid] });
-    void queryClient.invalidateQueries({ queryKey: ["ai-suggestions", cid] });
+    void queryClient.invalidateQueries({ queryKey: ["messages", scope, cid] });
+    void queryClient.invalidateQueries({ queryKey: ["ai-suggestions", scope, cid] });
     return;
   }
 
   if (isOutbound) return;
 
   let conversationFound = false;
-  queryClient.setQueriesData<ConversationListResponse>({ queryKey: ["conversations"] }, (current) => {
+  queryClient.setQueriesData<ConversationListResponse>({ queryKey: ["conversations", scope] }, (current) => {
     if (!current) {
       return current;
     }
@@ -87,7 +89,7 @@ function handleMessageIngested(
 
   if (!conversationFound) {
     // New chat: request full list to include freshly created conversation.
-    void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    void queryClient.invalidateQueries({ queryKey: ["conversations", scope] });
   }
 
   onNewMessage?.({
@@ -102,10 +104,11 @@ export function useChatsRealtime(
   selectedConversationId: string | null,
   onNewMessageInOtherChat?: (payload: NewMessagePayload) => void
 ) {
-  const { token, isAuthenticated } = useAuth();
+  const { token, company, isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
   const selectedIdRef = useRef<string | null>(selectedConversationId);
   const onNewMessageRef = useRef(onNewMessageInOtherChat);
+  const companyId = company?.id ?? "";
 
   selectedIdRef.current = selectedConversationId;
   onNewMessageRef.current = onNewMessageInOtherChat;
@@ -123,7 +126,7 @@ export function useChatsRealtime(
     const handlerNamed = (event: MessageEvent) => {
       try {
         const parsed = JSON.parse(event.data) as ParsedEvent;
-        handleMessageIngested(parsed, selectedIdRef, onNewMessageRef.current, queryClient);
+        handleMessageIngested(parsed, selectedIdRef, onNewMessageRef.current, queryClient, companyId);
       } catch {
         // ignore parse errors
       }
@@ -137,5 +140,5 @@ export function useChatsRealtime(
       source.removeEventListener("message_ingested", handlerNamed);
       source.close();
     };
-  }, [isAuthenticated, queryClient, token]);
+  }, [isAuthenticated, queryClient, token, companyId]);
 }
