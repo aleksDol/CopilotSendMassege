@@ -16,7 +16,11 @@ export function ConversationListItemRow({
   hasUnread?: boolean;
   unreadPreview?: string | null;
 }) {
-  const preview = hasUnread && (unreadPreview != null && unreadPreview !== "") ? unreadPreview : item.lastMessagePreview;
+  const normalizePreview = (value?: string | null) => {
+    const v = (value ?? "").trim();
+    return v.length ? v : null;
+  };
+  const preview = hasUnread ? normalizePreview(unreadPreview) ?? normalizePreview(item.lastMessagePreview) : normalizePreview(item.lastMessagePreview);
   return (
     <button
       onClick={onSelect}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
@@ -80,9 +80,12 @@ export default function ChatsPage() {
     refetchInterval: CONVERSATIONS_POLL_INTERVAL_MS
   });
 
-  // IMPORTANT: avoid auto-switching the selected chat when the list refetches/reorders.
-  // We only set the initial selection once (see effect below).
-  const selectedId = selectedConversationId ?? null;
+  // Avoid selection jumps on refetch/reorder, but still pick an initial chat once.
+  const initialSelectedIdRef = useRef<string | null>(null);
+  if (initialSelectedIdRef.current === null && !selectedConversationId) {
+    initialSelectedIdRef.current = conversations.data?.items[0]?.conversationId ?? null;
+  }
+  const selectedId = selectedConversationId ?? initialSelectedIdRef.current ?? null;
 
   useChatsRealtime(selectedId, handleNewMessageInOtherChat);
 
@@ -174,7 +177,7 @@ export default function ChatsPage() {
           <AiSuggestionPanel
             suggestion={latestSuggestion}
             context={lastSuggestionContext}
-            isLoading={suggestMutation.isPending || suggestions.isFetching}
+            isLoading={suggestMutation.isPending}
             onInsert={(text) => setComposerText((prev) => (prev ? `${prev}\n${text}` : text))}
             onSuggest={async (mode) => {
               setAiError(null);

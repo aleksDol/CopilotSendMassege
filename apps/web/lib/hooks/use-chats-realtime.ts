@@ -78,16 +78,6 @@ export function useChatsRealtime(
     url.searchParams.set("token", token);
     const source = new EventSource(url.toString());
 
-    const handler = (event: MessageEvent) => {
-      try {
-        const parsed = JSON.parse(event.data) as ParsedEvent;
-        if (parsed.type !== "message_ingested") return;
-        handleMessageIngested(parsed, selectedIdRef, onNewMessageRef.current, queryClient);
-      } catch {
-        // ignore parse errors
-      }
-    };
-
     const handlerNamed = (event: MessageEvent) => {
       try {
         const parsed = JSON.parse(event.data) as ParsedEvent;
@@ -98,13 +88,11 @@ export function useChatsRealtime(
     };
 
     source.addEventListener("message_ingested", handlerNamed);
-    source.addEventListener("message", handler);
 
     source.onerror = () => {};
 
     return () => {
       source.removeEventListener("message_ingested", handlerNamed);
-      source.removeEventListener("message", handler);
       source.close();
     };
   }, [isAuthenticated, queryClient, token]);
