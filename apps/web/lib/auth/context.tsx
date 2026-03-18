@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { clearStoredToken, getStoredToken, setStoredToken } from "@/lib/auth/token";
 import { apiClient } from "@/lib/api/client";
@@ -34,6 +35,7 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [company, setCompany] = useState<AuthCompany | null>(null);
@@ -44,7 +46,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(null);
     setUser(null);
     setCompany(null);
-  }, []);
+    // Clear all cached API data so the next account never sees the previous account's data (chats, messages, etc.)
+    queryClient.clear();
+  }, [queryClient]);
 
   const refreshMe = useCallback(async () => {
     const stored = getStoredToken();
