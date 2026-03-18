@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     telegram_live_listener_enabled: bool = Field(default=True, alias="TELEGRAM_LIVE_LISTENER_ENABLED")
     telegram_live_listener_refresh_seconds: int = Field(default=20, alias="TELEGRAM_LIVE_LISTENER_REFRESH_SECONDS")
+    telegram_live_listener_log_events: bool = Field(default=False, alias="TELEGRAM_LIVE_LISTENER_LOG_EVENTS")
 
 
 settings = Settings()

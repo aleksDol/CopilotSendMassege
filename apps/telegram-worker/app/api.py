@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
@@ -66,10 +67,19 @@ async def health() -> dict[str, bool]:
 
 @app.get("/metrics")
 async def metrics() -> dict[str, float | int]:
+    active_listeners = live_listener_manager.active_listener_count() if live_listener_manager else 0
+    last_refresh_age_s = 0
+    if live_listener_manager and live_listener_manager.last_refresh_at:
+        last_refresh_age_s = max(
+            0, int((datetime.now(timezone.utc) - live_listener_manager.last_refresh_at).total_seconds())
+        )
     return {
         "uptimeSeconds": round(time.time() - started_at, 2),
         "configuredConcurrency": settings.telegram_worker_concurrency,
         "autoSyncEnabled": int(settings.telegram_auto_sync_enabled),
+        "liveListenerEnabled": int(settings.telegram_live_listener_enabled),
+        "liveListenerActiveCount": active_listeners,
+        "liveListenerLastRefreshAgeSeconds": last_refresh_age_s,
     }
 
 

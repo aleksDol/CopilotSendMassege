@@ -87,6 +87,41 @@ async def _mark_last_event(telegram_account_id: str) -> None:
         return
 
 
+async def _push_with_retry(
+    telegram_account_id: str,
+    payload: dict[str, Any],
+    *,
+    attempts: int = 4,
+    base_delay_s: float = 0.4,
+) -> None:
+    """
+    Deliver message event to API reliably.
+    We retry on transient failures (network / 5xx) and log final failure loudly.
+    """
+    delay = base_delay_s
+    last_exc: Exception | None = None
+    for i in range(attempts):
+        try:
+            await push_message_event(payload)
+            return
+        except Exception as exc:
+            last_exc = exc
+            is_last = i == attempts - 1
+            if is_last:
+                logger.warning(
+                    "listener ingestion push failed telegramAccountId=%s externalConversationId=%s externalMessageId=%s err=%s",
+                    telegram_account_id,
+                    payload.get("externalConversationId"),
+                    payload.get("externalMessageId"),
+                    exc,
+                )
+                return
+            await asyncio.sleep(delay)
+            delay = min(5.0, delay * 2.0)
+    if last_exc:
+        logger.warning("listener ingestion push failed telegramAccountId=%s err=%s", telegram_account_id, last_exc)
+
+
 async def _run_account_listener(account: ConnectedAccount, crypto: SessionCrypto, stop: asyncio.Event) -> None:
     session = crypto.decrypt(account.session_data_encrypted)
     reconnect_backoff = 1.0
@@ -144,39 +179,48 @@ async def _run_account_listener(account: ConnectedAccount, crypto: SessionCrypto
                     else:
                         conversation_title = getattr(chat, "title", None)
 
-                    await push_message_event(
-                        {
-                            "telegramAccountId": account.telegram_account_id,
-                            "externalConversationId": str(event.chat_id),
-                            "externalMessageId": str(msg.id),
-                            "senderExternalId": sender_external_id,
-                            "senderType": sender_type,
-                            "senderFullName": sender_full_name,
-                            "senderUsername": sender_username,
-                            "text": text,
-                            "sentAt": msg.date.isoformat() if getattr(msg, "date", None) else _now().isoformat(),
-                            "isOutgoing": is_outgoing,
-                            "replyToExternalMessageId": str(msg.reply_to.reply_to_msg_id)
-                            if getattr(msg, "reply_to", None)
-                            else None,
-                            "rawPayload": {
-                                "id": msg.id,
-                                "out": is_outgoing,
-                                "senderId": sender_id,
-                                "dialogType": conversation_type,
-                                "hasMedia": has_attachment,
-                            },
-                            "conversationTitle": conversation_title,
-                            "hasAttachment": has_attachment,
-                        }
-                    )
+                    external_conversation_id = str(event.chat_id) if getattr(event, "chat_id", None) is not None else None
+                    if not external_conversation_id or external_conversation_id == "None":
+                        return
+
+                    payload = {
+                        "telegramAccountId": account.telegram_account_id,
+                        "externalConversationId": external_conversation_id,
+                        "externalMessageId": str(msg.id),
+                        "senderExternalId": sender_external_id,
+                        "senderType": sender_type,
+                        "senderFullName": sender_full_name,
+                        "senderUsername": sender_username,
+                        "text": text,
+                        "sentAt": msg.date.isoformat() if getattr(msg, "date", None) else _now().isoformat(),
+                        "isOutgoing": is_outgoing,
+                        "replyToExternalMessageId": str(msg.reply_to.reply_to_msg_id)
+                        if getattr(msg, "reply_to", None)
+                        else None,
+                        "rawPayload": {
+                            "id": msg.id,
+                            "out": is_outgoing,
+                            "senderId": sender_id,
+                            "dialogType": conversation_type,
+                            "hasMedia": has_attachment,
+                        },
+                        "conversationTitle": conversation_title,
+                        "hasAttachment": has_attachment,
+                    }
+
+                    if settings.telegram_live_listener_log_events:
+                        logger.info(
+                            "listener event telegramAccountId=%s externalConversationId=%s externalMessageId=%s senderExternalId=%s",
+                            account.telegram_account_id,
+                            external_conversation_id,
+                            payload.get("externalMessageId"),
+                            sender_external_id,
+                        )
+
+                    await _push_with_retry(account.telegram_account_id, payload)
                     await _mark_last_event(account.telegram_account_id)
                 except Exception as exc:
-                    logger.debug(
-                        "listener handler error telegramAccountId=%s: %s",
-                        account.telegram_account_id,
-                        exc,
-                    )
+                    logger.warning("listener handler error telegramAccountId=%s err=%s", account.telegram_account_id, exc)
 
             # Incoming-only reduces noise and avoids looping on our own outbound messages.
             client.add_event_handler(on_new_message, events.NewMessage(incoming=True))
@@ -223,6 +267,7 @@ class LiveListenerManager:
         self._crypto = crypto
         self._stop = asyncio.Event()
         self._tasks: dict[str, asyncio.Task] = {}
+        self.last_refresh_at: datetime | None = None
 
     async def run(self) -> None:
         refresh = max(5, int(settings.telegram_live_listener_refresh_seconds))
@@ -232,6 +277,7 @@ class LiveListenerManager:
             try:
                 accounts = await _list_connected_accounts_for_listener()
                 desired = {a.telegram_account_id: a for a in accounts}
+                self.last_refresh_at = _now()
 
                 # stop removed
                 for tid, task in list(self._tasks.items()):
@@ -262,4 +308,7 @@ class LiveListenerManager:
         if self._tasks:
             await asyncio.gather(*self._tasks.values(), return_exceptions=True)
         self._tasks.clear()
+
+    def active_listener_count(self) -> int:
+        return sum(1 for t in self._tasks.values() if t and not t.done())
 
