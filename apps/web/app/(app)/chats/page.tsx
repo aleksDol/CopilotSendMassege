@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
@@ -24,13 +24,36 @@ import { useAuth } from "@/lib/auth/context";
 const CONVERSATIONS_POLL_INTERVAL_MS = 8_000;
 const MESSAGES_POLL_INTERVAL_MS = 3_000;
 
+const UNREAD_STORAGE_VERSION = "v1";
+const getUnreadStorageKey = (companyId?: string | null) =>
+  companyId ? `chats-unread:${UNREAD_STORAGE_VERSION}:${companyId}` : null;
+
+const readUnreadFromStorage = (
+  key: string | null
+): Record<string, { lastMessagePreview?: string | null; conversationTitle?: string | null; sentAt?: string | null }> => {
+  if (!key || typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return {};
+    return parsed as Record<string, { lastMessagePreview?: string | null; conversationTitle?: string | null; sentAt?: string | null }>;
+  } catch {
+    return {};
+  }
+};
+
 export default function ChatsPage() {
   const params = useSearchParams();
   const initialWaiting = params.get("waitingForReply") ?? "all";
   const initialConversation = params.get("conversationId");
 
-  const { token } = useAuth();
+  const { token, company } = useAuth();
   const queryClient = useQueryClient();
+  const unreadStorageKey = getUnreadStorageKey(company?.id);
 
   const [filters, setFilters] = useState({
     search: "",
@@ -40,8 +63,8 @@ export default function ChatsPage() {
 
   const [selectedConversationId, setSelectedConversationIdState] = useState<string | null>(initialConversation);
   const [unreadByConversationId, setUnreadByConversationId] = useState<
-    Record<string, { lastMessagePreview?: string | null; conversationTitle?: string | null }>
-  >({});
+    Record<string, { lastMessagePreview?: string | null; conversationTitle?: string | null; sentAt?: string | null }>
+  >(() => readUnreadFromStorage(unreadStorageKey));
 
   const setSelectedConversationId = useCallback((id: string | null) => {
     setSelectedConversationIdState(id);
@@ -59,7 +82,8 @@ export default function ChatsPage() {
       ...prev,
       [payload.conversationId]: {
         lastMessagePreview: payload.lastMessagePreview ?? null,
-        conversationTitle: payload.conversationTitle ?? null
+        conversationTitle: payload.conversationTitle ?? null,
+        sentAt: payload.sentAt ?? null
       }
     }));
   }, []);
@@ -80,14 +104,21 @@ export default function ChatsPage() {
     refetchInterval: CONVERSATIONS_POLL_INTERVAL_MS
   });
 
-  // Avoid selection jumps on refetch/reorder, but still pick an initial chat once.
-  const initialSelectedIdRef = useRef<string | null>(null);
-  if (initialSelectedIdRef.current === null && !selectedConversationId) {
-    initialSelectedIdRef.current = conversations.data?.items[0]?.conversationId ?? null;
-  }
-  const selectedId = selectedConversationId ?? initialSelectedIdRef.current ?? null;
+  const selectedId = selectedConversationId;
 
   useChatsRealtime(selectedId, handleNewMessageInOtherChat);
+
+  useEffect(() => {
+    setUnreadByConversationId(readUnreadFromStorage(unreadStorageKey));
+  }, [unreadStorageKey]);
+
+  useEffect(() => {
+    if (!unreadStorageKey || typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(unreadStorageKey, JSON.stringify(unreadByConversationId));
+  }, [unreadByConversationId, unreadStorageKey]);
 
   useEffect(() => {
     if (!selectedConversationId && conversations.data?.items.length) {

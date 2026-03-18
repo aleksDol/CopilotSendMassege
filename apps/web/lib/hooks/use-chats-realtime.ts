@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth/context";
+import type { ConversationListResponse } from "@/lib/api/types";
 
 function getRealtimeBaseUrl(): string {
   if (typeof window !== "undefined") {
@@ -16,6 +17,7 @@ export type NewMessagePayload = {
   conversationId: string;
   lastMessagePreview?: string | null;
   conversationTitle?: string | null;
+  sentAt?: string | null;
 };
 
 type ParsedEvent = {
@@ -24,6 +26,7 @@ type ParsedEvent = {
   lastMessagePreview?: string | null;
   conversationTitle?: string | null;
   isOutbound?: boolean;
+  sentAt?: string;
 };
 
 function handleMessageIngested(
@@ -46,13 +49,52 @@ function handleMessageIngested(
 
   if (isOutbound) return;
 
-  // Refetch conversations list so new chats (first-time senders) appear in the panel immediately
-  void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+  let conversationFound = false;
+  queryClient.setQueriesData<ConversationListResponse>({ queryKey: ["conversations"] }, (current) => {
+    if (!current) {
+      return current;
+    }
+
+    const nextItems = [...current.items];
+    const index = nextItems.findIndex((item) => item.conversationId === cid);
+    if (index === -1) {
+      return current;
+    }
+
+    conversationFound = true;
+    const currentItem = nextItems[index];
+    const lastMessagePreview = parsed.lastMessagePreview ?? currentItem.lastMessagePreview;
+    const lastMessageAt = parsed.sentAt ?? currentItem.lastMessageAt;
+
+    nextItems[index] = {
+      ...currentItem,
+      title: parsed.conversationTitle ?? currentItem.title,
+      lastMessagePreview,
+      lastMessageAt,
+      isWaitingForReply: true,
+      unansweredClientMessageCount: Math.max(currentItem.unansweredClientMessageCount + 1, 1)
+    };
+
+    nextItems.sort((a, b) => {
+      if (!a.lastMessageAt && !b.lastMessageAt) return 0;
+      if (!a.lastMessageAt) return 1;
+      if (!b.lastMessageAt) return -1;
+      return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
+    });
+
+    return { ...current, items: nextItems };
+  });
+
+  if (!conversationFound) {
+    // New chat: request full list to include freshly created conversation.
+    void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+  }
 
   onNewMessage?.({
     conversationId: cid,
     lastMessagePreview: parsed.lastMessagePreview ?? null,
-    conversationTitle: parsed.conversationTitle ?? null
+    conversationTitle: parsed.conversationTitle ?? null,
+    sentAt: parsed.sentAt ?? null
   });
 }
 

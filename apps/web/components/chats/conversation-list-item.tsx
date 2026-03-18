@@ -25,9 +25,9 @@ export function ConversationListItemRow({
     <button
       onClick={onSelect}
       className={cn(
-        "w-full rounded-lg border p-3 text-left transition",
+        "w-full rounded-lg border p-3 text-left transition-colors",
         selected ? "border-primary bg-primary/5" : "border-border bg-card hover:bg-muted",
-        hasUnread && !selected && "border-red-500 border-2 bg-red-50/50 dark:bg-red-950/20"
+        hasUnread && !selected && "bg-red-50/50 ring-2 ring-red-500 dark:bg-red-950/20"
       )}
     >
       <div className="flex items-center justify-between gap-2">
