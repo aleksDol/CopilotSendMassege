@@ -89,108 +89,133 @@ async def _mark_last_event(telegram_account_id: str) -> None:
 
 async def _run_account_listener(account: ConnectedAccount, crypto: SessionCrypto, stop: asyncio.Event) -> None:
     session = crypto.decrypt(account.session_data_encrypted)
-    client = create_client(session)
+    reconnect_backoff = 1.0
 
-    try:
-        await client.connect()
-        if not await client.is_user_authorized():
-            logger.warning("listener unauthorized telegramAccountId=%s", account.telegram_account_id)
-            return
-
-        me = await client.get_me()
-
-        async def on_new_message(event: events.NewMessage.Event) -> None:
-            try:
-                msg = event.message
-                if msg is None:
-                    return
-
-                chat = await event.get_chat()
-                if chat is None:
-                    return
-
-                # Keep parity with sync: ignore broadcast channels (non-megagroup)
-                if isinstance(chat, Channel) and not getattr(chat, "megagroup", False):
-                    return
-
-                conversation_type = _resolve_conversation_type(chat)
-                is_outgoing = bool(getattr(msg, "out", False))
-
-                sender = await event.get_sender()
-                sender_id = getattr(msg, "sender_id", None)
-
-                sender_external_id = str(sender_id if sender_id is not None else me.id)
-                sender_type = "self" if is_outgoing else "user"
-
-                sender_full_name = None
-                sender_username = None
-                if isinstance(sender, User):
-                    sender_full_name = (
-                        " ".join(part for part in [sender.first_name, sender.last_name] if part).strip() or None
-                    )
-                    sender_username = sender.username
-
-                text = msg.message if getattr(msg, "message", None) else None
-                has_attachment = bool(getattr(msg, "media", None))
-
-                conversation_title = None
-                if isinstance(chat, User):
-                    conversation_title = (
-                        " ".join(part for part in [chat.first_name, chat.last_name] if part).strip()
-                        or (chat.username or str(chat.id))
-                    )
-                else:
-                    conversation_title = getattr(chat, "title", None)
-
-                await push_message_event(
-                    {
-                        "telegramAccountId": account.telegram_account_id,
-                        "externalConversationId": str(event.chat_id),
-                        "externalMessageId": str(msg.id),
-                        "senderExternalId": sender_external_id,
-                        "senderType": sender_type,
-                        "senderFullName": sender_full_name,
-                        "senderUsername": sender_username,
-                        "text": text,
-                        "sentAt": msg.date.isoformat() if getattr(msg, "date", None) else _now().isoformat(),
-                        "isOutgoing": is_outgoing,
-                        "replyToExternalMessageId": str(msg.reply_to.reply_to_msg_id)
-                        if getattr(msg, "reply_to", None)
-                        else None,
-                        "rawPayload": {
-                            "id": msg.id,
-                            "out": is_outgoing,
-                            "senderId": sender_id,
-                            "dialogType": conversation_type,
-                            "hasMedia": has_attachment,
-                        },
-                        "conversationTitle": conversation_title,
-                        "hasAttachment": has_attachment,
-                    }
-                )
-                await _mark_last_event(account.telegram_account_id)
-            except Exception as exc:
-                logger.debug("listener handler error telegramAccountId=%s: %s", account.telegram_account_id, exc)
-
-        client.add_event_handler(on_new_message, events.NewMessage())
-
-        logger.info(
-            "listener started company=%s channelAccount=%s telegramAccountId=%s",
-            account.company_id,
-            account.channel_account_id,
-            account.telegram_account_id,
-        )
-
-        # Keep the client alive until stop is set
-        while not stop.is_set():
-            await asyncio.sleep(0.5)
-
-    finally:
+    while not stop.is_set():
+        client = create_client(session)
         try:
-            await client.disconnect()
-        except Exception:
-            pass
-        logger.info("listener stopped telegramAccountId=%s", account.telegram_account_id)
+            await client.connect()
+            if not await client.is_user_authorized():
+                logger.warning("listener unauthorized telegramAccountId=%s", account.telegram_account_id)
+                return
+
+            me = await client.get_me()
+
+            async def on_new_message(event: events.NewMessage.Event) -> None:
+                try:
+                    msg = event.message
+                    if msg is None:
+                        return
+
+                    chat = await event.get_chat()
+                    if chat is None:
+                        return
+
+                    # Keep parity with sync: ignore broadcast channels (non-megagroup)
+                    if isinstance(chat, Channel) and not getattr(chat, "megagroup", False):
+                        return
+
+                    conversation_type = _resolve_conversation_type(chat)
+                    is_outgoing = bool(getattr(msg, "out", False))
+
+                    sender = await event.get_sender()
+                    sender_id = getattr(msg, "sender_id", None)
+
+                    sender_external_id = str(sender_id if sender_id is not None else me.id)
+                    sender_type = "self" if is_outgoing else "user"
+
+                    sender_full_name = None
+                    sender_username = None
+                    if isinstance(sender, User):
+                        sender_full_name = (
+                            " ".join(part for part in [sender.first_name, sender.last_name] if part).strip() or None
+                        )
+                        sender_username = sender.username
+
+                    text = msg.message if getattr(msg, "message", None) else None
+                    has_attachment = bool(getattr(msg, "media", None))
+
+                    conversation_title = None
+                    if isinstance(chat, User):
+                        conversation_title = (
+                            " ".join(part for part in [chat.first_name, chat.last_name] if part).strip()
+                            or (chat.username or str(chat.id))
+                        )
+                    else:
+                        conversation_title = getattr(chat, "title", None)
+
+                    await push_message_event(
+                        {
+                            "telegramAccountId": account.telegram_account_id,
+                            "externalConversationId": str(event.chat_id),
+                            "externalMessageId": str(msg.id),
+                            "senderExternalId": sender_external_id,
+                            "senderType": sender_type,
+                            "senderFullName": sender_full_name,
+                            "senderUsername": sender_username,
+                            "text": text,
+                            "sentAt": msg.date.isoformat() if getattr(msg, "date", None) else _now().isoformat(),
+                            "isOutgoing": is_outgoing,
+                            "replyToExternalMessageId": str(msg.reply_to.reply_to_msg_id)
+                            if getattr(msg, "reply_to", None)
+                            else None,
+                            "rawPayload": {
+                                "id": msg.id,
+                                "out": is_outgoing,
+                                "senderId": sender_id,
+                                "dialogType": conversation_type,
+                                "hasMedia": has_attachment,
+                            },
+                            "conversationTitle": conversation_title,
+                            "hasAttachment": has_attachment,
+                        }
+                    )
+                    await _mark_last_event(account.telegram_account_id)
+                except Exception as exc:
+                    logger.debug(
+                        "listener handler error telegramAccountId=%s: %s",
+                        account.telegram_account_id,
+                        exc,
+                    )
+
+            # Incoming-only reduces noise and avoids looping on our own outbound messages.
+            client.add_event_handler(on_new_message, events.NewMessage(incoming=True))
+
+            logger.info(
+                "listener connected company=%s channelAccount=%s telegramAccountId=%s",
+                account.company_id,
+                account.channel_account_id,
+                account.telegram_account_id,
+            )
+
+            reconnect_backoff = 1.0
+
+            # Wait until either stop is requested or Telegram connection drops.
+            done, _pending = await asyncio.wait(
+                {asyncio.create_task(stop.wait()), asyncio.create_task(client.disconnected)},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for t in done:
+                _ = t.result() if not t.cancelled() else None
+
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("listener error telegramAccountId=%s: %s", account.telegram_account_id, exc)
+        finally:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+
+        if stop.is_set():
+            break
+
+        # Backoff reconnect to avoid tight loops on network flaps.
+        await asyncio.sleep(min(15.0, reconnect_backoff))
+        reconnect_backoff = min(15.0, reconnect_backoff * 2.0)
+
+    logger.info("listener stopped telegramAccountId=%s", account.telegram_account_id)
 
 
 class LiveListenerManager:
