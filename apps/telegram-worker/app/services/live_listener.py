@@ -235,12 +235,19 @@ async def _run_account_listener(account: ConnectedAccount, crypto: SessionCrypto
             reconnect_backoff = 1.0
 
             # Wait until either stop is requested or Telegram connection drops.
-            done, _pending = await asyncio.wait(
-                {asyncio.create_task(stop.wait()), asyncio.create_task(client.disconnected)},
+            stop_task = asyncio.create_task(stop.wait())
+            # telethon's `client.disconnected` is a Future (not a coroutine). `create_task` would crash.
+            disconnected_fut = asyncio.ensure_future(client.disconnected)
+
+            done, pending = await asyncio.wait(
+                {stop_task, disconnected_fut},
                 return_when=asyncio.FIRST_COMPLETED,
             )
             for t in done:
-                _ = t.result() if not t.cancelled() else None
+                if not t.cancelled():
+                    _ = t.result()
+            for t in pending:
+                t.cancel()
 
         except asyncio.CancelledError:
             raise
