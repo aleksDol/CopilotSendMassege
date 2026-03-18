@@ -67,12 +67,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [logout]);
 
-  const setSession = useCallback((nextToken: string, nextUser: AuthUser, nextCompany: AuthCompany) => {
-    setStoredToken(nextToken);
-    setToken(nextToken);
-    setUser(nextUser);
-    setCompany(nextCompany);
-  }, []);
+  const setSession = useCallback(
+    (nextToken: string, nextUser: AuthUser, nextCompany: AuthCompany) => {
+      // Clear any cached data from a previous account so the new session never sees it
+      queryClient.clear();
+      setStoredToken(nextToken);
+      setToken(nextToken);
+      setUser(nextUser);
+      setCompany(nextCompany);
+    },
+    [queryClient]
+  );
 
   useEffect(() => {
     const init = async () => {
