@@ -80,6 +80,8 @@ async def metrics() -> dict[str, float | int]:
         "liveListenerEnabled": int(settings.telegram_live_listener_enabled),
         "liveListenerActiveCount": active_listeners,
         "liveListenerLastRefreshAgeSeconds": last_refresh_age_s,
+        "liveListenerDesiredAccountCount": live_listener_manager.last_desired_count if live_listener_manager else 0,
+        "liveListenerTaskErrorCount": live_listener_manager.last_task_error_count if live_listener_manager else 0,
     }
 
 

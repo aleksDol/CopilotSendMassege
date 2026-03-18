@@ -268,6 +268,21 @@ class LiveListenerManager:
         self._stop = asyncio.Event()
         self._tasks: dict[str, asyncio.Task] = {}
         self.last_refresh_at: datetime | None = None
+        self.last_desired_count: int = 0
+        self.last_task_error_count: int = 0
+        self._last_task_error: str | None = None
+
+    def _attach_task_observers(self, telegram_account_id: str, task: asyncio.Task) -> None:
+        def _done(t: asyncio.Task) -> None:
+            if t.cancelled():
+                return
+            exc = t.exception()
+            if exc:
+                self.last_task_error_count += 1
+                self._last_task_error = f"{telegram_account_id}: {exc!s}"
+                logger.warning("listener task crashed telegramAccountId=%s err=%s", telegram_account_id, exc)
+
+        task.add_done_callback(_done)
 
     async def run(self) -> None:
         refresh = max(5, int(settings.telegram_live_listener_refresh_seconds))
@@ -278,6 +293,7 @@ class LiveListenerManager:
                 accounts = await _list_connected_accounts_for_listener()
                 desired = {a.telegram_account_id: a for a in accounts}
                 self.last_refresh_at = _now()
+                self.last_desired_count = len(desired)
 
                 # stop removed
                 for tid, task in list(self._tasks.items()):
@@ -289,7 +305,9 @@ class LiveListenerManager:
                 for tid, acct in desired.items():
                     if tid in self._tasks and not self._tasks[tid].done():
                         continue
-                    self._tasks[tid] = asyncio.create_task(_run_account_listener(acct, self._crypto, self._stop))
+                    task = asyncio.create_task(_run_account_listener(acct, self._crypto, self._stop))
+                    self._attach_task_observers(tid, task)
+                    self._tasks[tid] = task
 
             except Exception as exc:
                 logger.warning("live-listener refresh failed: %s", exc)
@@ -311,4 +329,7 @@ class LiveListenerManager:
 
     def active_listener_count(self) -> int:
         return sum(1 for t in self._tasks.values() if t and not t.done())
+
+    def last_task_error(self) -> str | None:
+        return self._last_task_error
 
