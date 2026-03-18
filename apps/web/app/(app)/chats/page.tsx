@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ConversationList } from "@/components/chats/conversation-list";
 import { MessageThread } from "@/components/chats/message-thread";
 import { MessageComposer } from "@/components/chats/message-composer";
@@ -28,6 +28,21 @@ const UNREAD_STORAGE_VERSION = "v1";
 const getUnreadStorageKey = (companyId?: string | null) =>
   companyId ? `chats-unread:${UNREAD_STORAGE_VERSION}:${companyId}` : null;
 
+const SELECTED_STORAGE_VERSION = "v1";
+const getSelectedStorageKey = (companyId?: string | null) =>
+  companyId ? `chats-selected:${SELECTED_STORAGE_VERSION}:${companyId}` : null;
+
+const readSelectedFromStorage = (key: string | null): string | null => {
+  if (!key || typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    const v = (raw ?? "").trim();
+    return v.length ? v : null;
+  } catch {
+    return null;
+  }
+};
+
 const readUnreadFromStorage = (
   key: string | null
 ): Record<string, { lastMessagePreview?: string | null; conversationTitle?: string | null; sentAt?: string | null }> => {
@@ -47,6 +62,8 @@ const readUnreadFromStorage = (
 };
 
 export default function ChatsPage() {
+  const router = useRouter();
+  const pathname = usePathname();
   const params = useSearchParams();
   const initialWaiting = params.get("waitingForReply") ?? "all";
   const initialConversation = params.get("conversationId");
@@ -54,6 +71,7 @@ export default function ChatsPage() {
   const { token, company } = useAuth();
   const queryClient = useQueryClient();
   const unreadStorageKey = getUnreadStorageKey(company?.id);
+  const selectedStorageKey = getSelectedStorageKey(company?.id);
 
   const [filters, setFilters] = useState({
     search: "",
@@ -68,6 +86,23 @@ export default function ChatsPage() {
 
   const setSelectedConversationId = useCallback((id: string | null) => {
     setSelectedConversationIdState(id);
+
+    // Persist last selected as a fallback when URL doesn't specify a chat
+    try {
+      if (selectedStorageKey && typeof window !== "undefined") {
+        if (id) window.localStorage.setItem(selectedStorageKey, id);
+        else window.localStorage.removeItem(selectedStorageKey);
+      }
+    } catch {
+      // ignore storage failures
+    }
+
+    // URL is the source of truth for restore-on-refresh
+    const next = new URLSearchParams(params.toString());
+    if (id) next.set("conversationId", id);
+    else next.delete("conversationId");
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+
     if (id) {
       setUnreadByConversationId((prev) => {
         const next = { ...prev };
@@ -75,7 +110,7 @@ export default function ChatsPage() {
         return next;
       });
     }
-  }, []);
+  }, [params, pathname, router, selectedStorageKey]);
 
   const handleNewMessageInOtherChat = useCallback((payload: NewMessagePayload) => {
     setUnreadByConversationId((prev) => ({
@@ -107,6 +142,26 @@ export default function ChatsPage() {
   const selectedId = selectedConversationId;
 
   useChatsRealtime(selectedId, handleNewMessageInOtherChat);
+
+  // Sync selection from URL (back/forward, manual edits, refresh)
+  useEffect(() => {
+    const cid = params.get("conversationId");
+    if ((cid ?? null) !== selectedConversationId) {
+      setSelectedConversationIdState(cid);
+    }
+    // Intentionally depend only on params to avoid loops with router.replace
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
+
+  // If URL doesn't specify a chat, restore the last selected for this workspace
+  useEffect(() => {
+    if (selectedConversationId) return;
+    if (params.get("conversationId")) return;
+    const restored = readSelectedFromStorage(selectedStorageKey);
+    if (restored) {
+      setSelectedConversationId(restored);
+    }
+  }, [params, selectedConversationId, selectedStorageKey, setSelectedConversationId]);
 
   useEffect(() => {
     setUnreadByConversationId(readUnreadFromStorage(unreadStorageKey));
