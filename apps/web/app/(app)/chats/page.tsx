@@ -80,7 +80,9 @@ export default function ChatsPage() {
     refetchInterval: CONVERSATIONS_POLL_INTERVAL_MS
   });
 
-  const selectedId = selectedConversationId ?? conversations.data?.items[0]?.conversationId ?? null;
+  // IMPORTANT: avoid auto-switching the selected chat when the list refetches/reorders.
+  // We only set the initial selection once (see effect below).
+  const selectedId = selectedConversationId ?? null;
 
   useChatsRealtime(selectedId, handleNewMessageInOtherChat);
 
