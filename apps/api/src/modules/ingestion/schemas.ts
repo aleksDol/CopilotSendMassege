@@ -10,8 +10,9 @@ export const ingestionMessageSchema = z.object({
   externalMessageId: z.string().min(1).max(128),
   senderExternalId: z.string().min(1).max(128),
   senderType: z.enum(["user", "self", "system"]).default("user"),
-  senderFullName: z.string().min(1).max(120).optional(),
-  senderUsername: z.string().min(1).max(120).optional(),
+  // Worker may send nulls; accept them to avoid dropping ingestion events.
+  senderFullName: z.string().min(1).max(120).nullable().optional(),
+  senderUsername: z.string().min(1).max(120).nullable().optional(),
   text: z.string().max(10000).nullable().optional(),
   sentAt: isoDateSchema,
   isOutgoing: z.boolean(),

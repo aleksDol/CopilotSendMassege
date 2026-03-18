@@ -13,8 +13,8 @@ type MessageEventPayload = {
   externalMessageId: string;
   senderExternalId: string;
   senderType: "user" | "self" | "system";
-  senderFullName?: string;
-  senderUsername?: string;
+  senderFullName?: string | null;
+  senderUsername?: string | null;
   text?: string | null;
   sentAt: string;
   isOutgoing: boolean;

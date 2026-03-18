@@ -166,30 +166,32 @@ async def run_initial_sync(
 
                     text = message.message if getattr(message, "message", None) else None
 
-                    await push_message_event(
-                        {
-                            "telegramAccountId": str(account["telegramAccountId"]),
-                            "externalConversationId": str(dialog.id),
-                            "externalMessageId": str(message.id),
-                            "senderExternalId": sender_external_id,
-                            "senderType": sender_type,
-                            "senderFullName": sender_full_name,
-                            "senderUsername": sender_username,
-                            "text": text,
-                            "sentAt": message.date.isoformat(),
-                            "isOutgoing": is_outgoing,
-                            "replyToExternalMessageId": str(message.reply_to.reply_to_msg_id) if message.reply_to else None,
-                            "rawPayload": {
-                                "id": message.id,
-                                "out": is_outgoing,
-                                "senderId": sender_id,
-                                "dialogType": conversation_type,
-                                "hasMedia": bool(getattr(message, "media", None)),
-                            },
-                            "conversationTitle": dialog.title,
-                            "hasAttachment": bool(getattr(message, "media", None)),
-                        }
-                    )
+                    payload: dict[str, Any] = {
+                        "telegramAccountId": str(account["telegramAccountId"]),
+                        "externalConversationId": str(dialog.id),
+                        "externalMessageId": str(message.id),
+                        "senderExternalId": sender_external_id,
+                        "senderType": sender_type,
+                        "text": text,
+                        "sentAt": message.date.isoformat(),
+                        "isOutgoing": is_outgoing,
+                        "replyToExternalMessageId": str(message.reply_to.reply_to_msg_id) if message.reply_to else None,
+                        "rawPayload": {
+                            "id": message.id,
+                            "out": is_outgoing,
+                            "senderId": sender_id,
+                            "dialogType": conversation_type,
+                            "hasMedia": bool(getattr(message, "media", None)),
+                        },
+                        "conversationTitle": dialog.title,
+                        "hasAttachment": bool(getattr(message, "media", None)),
+                    }
+                    if sender_full_name:
+                        payload["senderFullName"] = sender_full_name
+                    if sender_username:
+                        payload["senderUsername"] = sender_username
+
+                    await push_message_event(payload)
                     result.messages_synced += 1
 
             await _set_sync_markers(conn, account["telegramAccountId"], account["channelAccountId"])
