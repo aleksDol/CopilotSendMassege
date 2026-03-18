@@ -43,6 +43,16 @@ const readSelectedFromStorage = (key: string | null): string | null => {
   }
 };
 
+/** Get conversationId from URL. Prefer params; on client fallback to window.location so we don't rely on useSearchParams being populated on first render (it can be empty during hydration). */
+const getConversationIdFromUrl = (params: URLSearchParams | null): string | null => {
+  const fromParams = params?.get("conversationId");
+  if (fromParams?.trim()) return fromParams.trim();
+  if (typeof window === "undefined") return null;
+  const urlParams = new URLSearchParams(window.location.search);
+  const fromWindow = urlParams.get("conversationId");
+  return fromWindow?.trim() ?? null;
+};
+
 const readUnreadFromStorage = (
   key: string | null
 ): Record<string, { lastMessagePreview?: string | null; conversationTitle?: string | null; sentAt?: string | null }> => {
@@ -143,20 +153,23 @@ export default function ChatsPage() {
 
   useChatsRealtime(selectedId, handleNewMessageInOtherChat);
 
-  // Sync selection from URL (back/forward, manual edits, refresh)
+  // Sync selection from URL (back/forward, manual edits, refresh).
+  // Use getConversationIdFromUrl so we read the real URL when params are empty on first render (Next.js hydration).
   useEffect(() => {
-    const cid = params.get("conversationId");
-    if ((cid ?? null) !== selectedConversationId) {
+    const cid = getConversationIdFromUrl(params);
+    if (cid !== selectedConversationId) {
       setSelectedConversationIdState(cid);
     }
     // Intentionally depend only on params to avoid loops with router.replace
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
 
-  // If URL doesn't specify a chat, restore the last selected for this workspace
+  // If URL doesn't specify a chat, restore the last selected for this workspace.
+  // Always check the real URL (window.location) so we don't restore over ?conversationId=... when params are empty on first render.
   useEffect(() => {
     if (selectedConversationId) return;
-    if (params.get("conversationId")) return;
+    const urlCid = getConversationIdFromUrl(params);
+    if (urlCid) return;
     const restored = readSelectedFromStorage(selectedStorageKey);
     if (restored) {
       setSelectedConversationId(restored);
@@ -175,11 +188,14 @@ export default function ChatsPage() {
     window.localStorage.setItem(unreadStorageKey, JSON.stringify(unreadByConversationId));
   }, [unreadByConversationId, unreadStorageKey]);
 
+  // Auto-select first conversation only when nothing is selected and URL doesn't specify a chat (avoid overwriting URL on slow hydration).
   useEffect(() => {
-    if (!selectedConversationId && conversations.data?.items.length) {
+    if (selectedConversationId) return;
+    if (getConversationIdFromUrl(params)) return;
+    if (conversations.data?.items.length) {
       setSelectedConversationId(conversations.data.items[0].conversationId);
     }
-  }, [selectedConversationId, conversations.data]);
+  }, [params, selectedConversationId, conversations.data, setSelectedConversationId]);
 
   const messages = useConversationMessages(selectedId ?? undefined, 50, MESSAGES_POLL_INTERVAL_MS);
   const suggestions = useAiSuggestions(selectedId ?? undefined);
