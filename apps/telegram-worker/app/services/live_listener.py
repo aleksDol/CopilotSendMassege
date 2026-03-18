@@ -48,7 +48,7 @@ async def _list_connected_accounts_for_listener() -> list[ConnectedAccount]:
                 FROM "TelegramAccount" ta
                 JOIN "ChannelAccount" ca ON ca."id" = ta."channelAccountId"
                 WHERE ca."channelType" = 'TELEGRAM'
-                  AND ta."loginStatus" = 'CONNECTED'
+                  AND ta."loginStatus" IN ('CONNECTED', 'ERROR')
                   AND ta."sessionDataEncrypted" IS NOT NULL
                 """
             )
