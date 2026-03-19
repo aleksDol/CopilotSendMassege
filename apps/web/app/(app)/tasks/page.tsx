@@ -12,7 +12,7 @@ import type { TaskItem } from "@/lib/api/types";
 
 export default function TasksPage() {
   const [filters, setFilters] = useState({
-    status: "all",
+    status: "open",
     taskType: "all",
     priority: "all"
   });
@@ -21,7 +21,7 @@ export default function TasksPage() {
 
   const query = useMemo(
     () => ({
-      status: filters.status === "all" ? undefined : filters.status,
+      status: filters.status,
       taskType: filters.taskType === "all" ? undefined : filters.taskType,
       priority: filters.priority === "all" ? undefined : filters.priority,
       limit: 100
@@ -63,8 +63,8 @@ export default function TasksPage() {
             value={filters.status}
             onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value }))}
             options={[
-              { label: "Все статусы", value: "all" },
               { label: "Открыта", value: "open" },
+              { label: "В работе", value: "in_progress" },
               { label: "Выполнена", value: "done" },
               { label: "Отменена", value: "canceled" }
             ]}
