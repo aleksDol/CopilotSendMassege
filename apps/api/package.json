@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "lint": "eslint .",
     "test": "node --test --import tsx src/test-runner.ts",
+    "migrate:split-telegram-conversations": "tsx src/scripts/split-mixed-telegram-conversations.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
