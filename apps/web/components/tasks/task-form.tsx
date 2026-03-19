@@ -76,9 +76,9 @@ export function TaskForm({
             onChange={(event) => setTaskType(event.target.value)}
             options={[
               { label: "Follow up", value: "follow_up" },
-              { label: "Ответить сейчас", value: "reply_now" },
-              { label: "Отправить оффер", value: "send_offer" },
-              { label: "Назначить звонок", value: "schedule_call" },
+              { label: "Звонок", value: "call" },
+              { label: "Сообщение", value: "message" },
+              { label: "Проверка", value: "review" },
               { label: "Вручную", value: "manual" }
             ]}
           />

@@ -65,7 +65,7 @@ export default function TasksPage() {
             options={[
               { label: "Все статусы", value: "all" },
               { label: "Открыта", value: "open" },
-              { label: "Выполнена", value: "completed" },
+              { label: "Выполнена", value: "done" },
               { label: "Отменена", value: "canceled" }
             ]}
           />
@@ -75,9 +75,9 @@ export default function TasksPage() {
             options={[
               { label: "Все типы", value: "all" },
               { label: "Follow up", value: "follow_up" },
-              { label: "Ответить сейчас", value: "reply_now" },
-              { label: "Отправить оффер", value: "send_offer" },
-              { label: "Назначить звонок", value: "schedule_call" },
+              { label: "Звонок", value: "call" },
+              { label: "Сообщение", value: "message" },
+              { label: "Проверка", value: "review" },
               { label: "Вручную", value: "manual" }
             ]}
           />
@@ -109,6 +109,13 @@ export default function TasksPage() {
                 setCreateOpen(false);
               }}
             />
+            {actions.createTask.error ? (
+              <p className="mt-3 text-sm text-destructive">
+                {actions.createTask.error instanceof Error
+                  ? actions.createTask.error.message
+                  : "Не удалось создать задачу. Проверьте поля и попробуйте снова."}
+              </p>
+            ) : null}
           </CardContent>
         </Card>
       ) : null}
