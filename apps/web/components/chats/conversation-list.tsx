@@ -68,7 +68,13 @@ export function ConversationList({
       </div>
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
         {filtered.map((item) => {
-          const hasUnread = item.conversationId in unreadByConversationId && item.conversationId !== selectedId;
+          // `unreadByConversationId` is a UI marker stored in localStorage.
+          // The red highlight + unread preview should only be shown when the backend
+          // considers the conversation as waiting for a reply, otherwise we can render stale markers.
+          const hasUnread =
+            item.conversationId in unreadByConversationId &&
+            item.conversationId !== selectedId &&
+            item.isWaitingForReply;
           const unreadData = unreadByConversationId[item.conversationId];
           return (
             <ConversationListItemRow

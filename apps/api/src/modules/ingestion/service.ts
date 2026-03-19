@@ -121,6 +121,22 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
     select: { id: true }
   });
   if (existing) {
+    // A duplicate event can happen (sync + live listener / retries).
+    // Previously we returned early, which could permanently leave `conversation_state`
+    // stale if the first attempt inserted the message but failed before state update.
+    const sentAt = new Date(payload.sentAt);
+    const preview = (payload.text ?? "").slice(0, 240) || null;
+    const currentState = await app.prisma.conversationState.findUnique({
+      where: { conversationId: conversation.id },
+      select: { lastMessageId: true, lastMessageAt: true }
+    });
+
+    const shouldApplyStateUpdate =
+      // If state already points to this message, don't repeat inbound counter increments.
+      currentState?.lastMessageId !== existing.id &&
+      // If we have no state yet, we must initialize it.
+      (!currentState?.lastMessageAt || sentAt.getTime() > currentState.lastMessageAt.getTime());
+
     await app.prisma.telegramAccount.update({
       where: { id: telegramAccount.id },
       data: {
@@ -128,6 +144,48 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
         errorMessage: null
       }
     });
+
+    if (shouldApplyStateUpdate) {
+      const stateService = new ConversationStateService(app.prisma);
+      if (payload.isOutgoing) {
+        await stateService.updateFromOutboundMessage({
+          conversationId: conversation.id,
+          messageId: existing.id,
+          sentAt,
+          preview
+        });
+      } else {
+        await stateService.updateFromInboundMessage({
+          conversationId: conversation.id,
+          messageId: existing.id,
+          sentAt,
+          preview
+        });
+      }
+
+      // We changed `conversation_state`, so all conversation list caches must be invalidated.
+      await invalidateConversationCaches(app, companyId);
+      await invalidateCacheByPrefix(app, `cache:dashboard:${companyId}:`);
+
+      const conversationTitle = conversation.title ?? payload.conversationTitle ?? null;
+      const lastMessagePreview = (payload.text ?? "").slice(0, 240) || null;
+      realtimeHub.publish({
+        type: "message_ingested",
+        companyId,
+        channelAccountId: conversation.channelAccountId,
+        conversationId: conversation.id,
+        messageId: existing.id,
+        sentAt: sentAt.toISOString(),
+        lastMessagePreview: lastMessagePreview || undefined,
+        conversationTitle: conversationTitle ?? undefined,
+        isOutbound: payload.isOutgoing ?? false
+      });
+    } else if (currentState?.lastMessageId === existing.id) {
+      // State seems already correct, but we still want to recover from cases where
+      // the first attempt failed after updating state and before cache invalidation.
+      await invalidateConversationCaches(app, companyId);
+      await invalidateCacheByPrefix(app, `cache:dashboard:${companyId}:`);
+    }
 
     return {
       ok: true,
