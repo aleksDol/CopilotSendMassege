@@ -4,6 +4,7 @@ import { invalidateCacheByPrefix } from "../../lib/cache.js";
 import { AppError } from "../../lib/errors.js";
 import { realtimeHub } from "../../lib/realtime.js";
 import { invalidateConversationCaches } from "../conversations/service.js";
+import { isSupportedTelegramMessagePayload } from "../conversations/support.js";
 import { upsertParticipant } from "../participants/service.js";
 import { ConversationStateService } from "../state/service.js";
 
@@ -63,6 +64,28 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
   const companyId = telegramAccount.channelAccount.companyId;
   const channelAccountId = telegramAccount.channelAccountId;
 
+  if (
+    !isSupportedTelegramMessagePayload({
+      senderType: payload.senderType,
+      senderExternalId: payload.senderExternalId,
+      senderUsername: payload.senderUsername,
+      isOutgoing: payload.isOutgoing,
+      rawPayload: payload.rawPayload
+    })
+  ) {
+    await app.prisma.telegramAccount.update({
+      where: { id: telegramAccount.id },
+      data: {
+        lastEventAt: new Date(),
+        errorMessage: null
+      }
+    });
+    return {
+      ok: true,
+      ignored: true
+    };
+  }
+
   const participant = await upsertParticipant({
     prisma: app.prisma,
     companyId,
@@ -72,7 +95,9 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
     username: payload.senderUsername ?? null,
     isSelf: payload.senderType === "self",
     metadata: {
-      senderType: payload.senderType
+      senderType: payload.senderType,
+      isBot: Boolean(payload.rawPayload?.peerIsBot) || (!payload.isOutgoing && Boolean(payload.senderUsername?.toLowerCase().endsWith("bot"))),
+      isServiceDialog: Boolean(payload.rawPayload?.isServiceDialog) || payload.senderExternalId === "777000"
     }
   });
 

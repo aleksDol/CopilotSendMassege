@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { decodeMessageCursor, encodeMessageCursor } from "../../lib/cursor.js";
 import { AppError } from "../../lib/errors.js";
 import { invalidateConversationCaches } from "../conversations/service.js";
+import { buildSupportedConversationWhere } from "../conversations/support.js";
 import { TelegramWorkerClient } from "../../lib/telegram-worker-client.js";
 
 const TG_CONNECTED = "CONNECTED" as unknown as TelegramLoginStatus;
@@ -55,6 +56,7 @@ export const listConversationMessages = async (
   const activeChannelAccountId = await requireActiveTelegramChannelAccountId(app, params.companyId, params.userId);
   const conversation = await app.prisma.conversation.findFirst({
     where: {
+      ...buildSupportedConversationWhere(),
       id: params.conversationId,
       companyId: params.companyId,
       channelAccountId: activeChannelAccountId,
@@ -156,6 +158,7 @@ export const sendConversationMessage = async (
   const activeChannelAccountId = await requireActiveTelegramChannelAccountId(app, params.companyId, params.userId);
   const conversation = await app.prisma.conversation.findFirst({
     where: {
+      ...buildSupportedConversationWhere(),
       id: params.conversationId,
       companyId: params.companyId,
       channelAccountId: activeChannelAccountId,

@@ -250,6 +250,20 @@ export default function ChatsPage() {
     }
   }, [params, selectedConversationId, conversations.data, setSelectedConversationId]);
 
+  // If previously selected chat became unsupported/hidden, switch to a safe available chat.
+  useEffect(() => {
+    if (!selectedConversationId) return;
+    const list = conversations.data?.items ?? [];
+    if (list.some((item) => item.conversationId === selectedConversationId)) return;
+
+    if (list.length > 0) {
+      setSelectedConversationId(list[0].conversationId);
+      return;
+    }
+
+    setSelectedConversationId(null);
+  }, [conversations.data?.items, selectedConversationId, setSelectedConversationId]);
+
   const messages = useConversationMessages(selectedId ?? undefined, 50, MESSAGES_POLL_INTERVAL_MS);
   const suggestions = useAiSuggestions(selectedId ?? undefined);
 

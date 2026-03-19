@@ -27,6 +27,20 @@ def _resolve_conversation_type(entity: Any) -> str:
     return "direct"
 
 
+def _is_supported_private_human_dialog(entity: Any) -> bool:
+    if not isinstance(entity, User):
+        return False
+    if getattr(entity, "bot", False):
+        return False
+    if getattr(entity, "is_self", False):
+        return False
+    if getattr(entity, "deleted", False):
+        return False
+    if getattr(entity, "support", False):
+        return False
+    return True
+
+
 @dataclass(frozen=True)
 class ConnectedAccount:
     telegram_account_id: str
@@ -146,8 +160,7 @@ async def _run_account_listener(account: ConnectedAccount, crypto: SessionCrypto
                     if chat is None:
                         return
 
-                    # Keep parity with sync: ignore broadcast channels (non-megagroup)
-                    if isinstance(chat, Channel) and not getattr(chat, "megagroup", False):
+                    if not _is_supported_private_human_dialog(chat):
                         return
 
                     conversation_type = _resolve_conversation_type(chat)
@@ -202,6 +215,9 @@ async def _run_account_listener(account: ConnectedAccount, crypto: SessionCrypto
                             "out": is_outgoing,
                             "senderId": sender_id,
                             "dialogType": conversation_type,
+                            "peerIsHuman": True,
+                            "peerIsBot": bool(getattr(chat, "bot", False)),
+                            "isServiceDialog": bool(getattr(chat, "support", False) or getattr(chat, "is_self", False)),
                             "hasMedia": has_attachment,
                         },
                         "conversationTitle": conversation_title,

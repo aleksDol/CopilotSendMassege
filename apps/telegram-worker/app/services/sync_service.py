@@ -29,6 +29,20 @@ def _resolve_conversation_type(entity: Any) -> str:
     return "direct"
 
 
+def _is_supported_private_human_dialog(entity: Any) -> bool:
+    if not isinstance(entity, User):
+        return False
+    if getattr(entity, "bot", False):
+        return False
+    if getattr(entity, "is_self", False):
+        return False
+    if getattr(entity, "deleted", False):
+        return False
+    if getattr(entity, "support", False):
+        return False
+    return True
+
+
 async def list_connected_accounts() -> list[dict[str, Any]]:
     async with get_connection() as conn:
         async with conn.cursor() as cur:
@@ -139,10 +153,7 @@ async def run_initial_sync(
 
             async for dialog in client.iter_dialogs(limit=dialogs_cap):
                 entity = dialog.entity
-                if not isinstance(entity, (User, Channel)):
-                    continue
-
-                if isinstance(entity, Channel) and not getattr(entity, "megagroup", False):
+                if not _is_supported_private_human_dialog(entity):
                     continue
 
                 result.dialogs_synced += 1
@@ -181,6 +192,9 @@ async def run_initial_sync(
                             "out": is_outgoing,
                             "senderId": sender_id,
                             "dialogType": conversation_type,
+                            "peerIsHuman": True,
+                            "peerIsBot": bool(getattr(entity, "bot", False)),
+                            "isServiceDialog": bool(getattr(entity, "support", False) or getattr(entity, "is_self", False)),
                             "hasMedia": bool(getattr(message, "media", None)),
                         },
                         "conversationTitle": dialog.title,
@@ -252,6 +266,13 @@ async def send_message(
                         f"Could not resolve conversation: {e!s}",
                         400,
                     ) from e
+            resolved_entity = await client.get_entity(input_entity)
+            if not _is_supported_private_human_dialog(resolved_entity):
+                raise WorkerError(
+                    "UNSUPPORTED_CHAT_TYPE",
+                    "Only private 1-to-1 chats with non-bot users are supported",
+                    400,
+                )
             sent = await client.send_message(entity=input_entity, message=text)
 
             await push_message_event(

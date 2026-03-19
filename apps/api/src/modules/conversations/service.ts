@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { invalidateCacheByPrefix, readThroughCache } from "../../lib/cache.js";
 import { decodeConversationCursor, encodeConversationCursor } from "../../lib/cursor.js";
 import { AppError } from "../../lib/errors.js";
+import { buildSupportedConversationWhere } from "./support.js";
 
 const TG_CONNECTED = "CONNECTED" as unknown as TelegramLoginStatus;
 const TG_ERROR = "ERROR" as unknown as TelegramLoginStatus;
@@ -55,6 +56,7 @@ export const listConversations = async (
       const conversationFilter: Prisma.ConversationWhereInput = {
         companyId: params.companyId,
         channelAccountId: activeTelegram.channelAccountId,
+        ...buildSupportedConversationWhere(),
         channelAccount: {
           status: { not: ChannelAccountStatus.DISCONNECTED },
           createdByUserId: params.userId
