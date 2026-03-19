@@ -12,8 +12,6 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils/cn";
 
 const startSteps = [
   {
@@ -199,19 +197,31 @@ export default function GettingStartedPage() {
             <CardTitle>Быстрые действия</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            <Link href="/settings/telegram" className={cn(buttonVariants({ variant: "default", size: "sm" }), "gap-2")}>
+            <Link
+              href="/settings/telegram"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:brightness-110"
+            >
               <Smartphone className="h-4 w-4" />
               Подключить Telegram
             </Link>
-            <Link href="/chats" className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "gap-2")}>
+            <Link
+              href="/chats"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-secondary px-3 text-sm font-medium text-secondary-foreground transition-colors hover:bg-secondary/80"
+            >
               <MessageCircle className="h-4 w-4" />
               Открыть чаты
             </Link>
-            <Link href="/settings/knowledge" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-2")}>
+            <Link
+              href="/settings/knowledge"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
+            >
               <BookOpen className="h-4 w-4" />
               Заполнить базу знаний
             </Link>
-            <Link href="/settings/reply-policy" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-2")}>
+            <Link
+              href="/settings/reply-policy"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
+            >
               <ShieldCheck className="h-4 w-4" />
               Настроить политику ответов
             </Link>
