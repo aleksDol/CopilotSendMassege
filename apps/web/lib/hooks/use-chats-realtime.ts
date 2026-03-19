@@ -44,8 +44,14 @@ function handleMessageIngested(
   const isSelected = selectedIdRef.current === cid;
 
   if (isSelected) {
-    void queryClient.invalidateQueries({ queryKey: ["messages", scope, cid] });
-    void queryClient.invalidateQueries({ queryKey: ["ai-suggestions", scope, cid] });
+    // Scope can become temporarily stale when switching Telegram accounts.
+    // Invalidate by conversationId to guarantee messages/suggestions refresh for the dialog.
+    void queryClient.invalidateQueries({
+      predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === "messages" && q.queryKey[2] === cid
+    });
+    void queryClient.invalidateQueries({
+      predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === "ai-suggestions" && q.queryKey[2] === cid
+    });
     return;
   }
 

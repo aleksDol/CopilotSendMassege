@@ -156,7 +156,12 @@ export const useSendMessageMutation = (conversationId: string) => {
   return useMutation({
     mutationFn: (text: string) => conversationsApi.sendMessage(token ?? "", conversationId, text),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["messages", scope, conversationId] });
+      // Scope can be stale briefly during Telegram account switching.
+      // Invalidate by conversationId to guarantee correct dialog refresh.
+      void qc.invalidateQueries({
+        predicate: (q) =>
+          Array.isArray(q.queryKey) && q.queryKey[0] === "messages" && q.queryKey[2] === conversationId
+      });
       void qc.invalidateQueries({ queryKey: ["conversations", scope] });
       void qc.invalidateQueries({ queryKey: ["dashboard-overview", baseScopeKey(company?.id, user?.id)] });
     }
@@ -173,7 +178,9 @@ export const useSuggestReplyMutation = (conversationId: string) => {
     mutationFn: (mode: "default" | "shorter" | "more_friendly" | "more_sales" | "handle_objection") =>
       aiApi.suggestReply(token ?? "", conversationId, mode),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["ai-suggestions", scope, conversationId] });
+      void qc.invalidateQueries({
+        predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === "ai-suggestions" && q.queryKey[2] === conversationId
+      });
     }
   });
 };
