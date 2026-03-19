@@ -190,8 +190,9 @@ async def _qr_login_wait_task(
                           "updatedAt"
                         ) VALUES (
                           %s,
-                          'TELEGRAM',
                           %s,
+                          %s,
+                          'TELEGRAM',
                           %s,
                           'ACTIVE',
                           FALSE,
@@ -432,9 +433,10 @@ async def verify_password_qr(qr_session_id: str, password: str, crypto: SessionC
                           "updatedAt"
                         ) VALUES (
                           %s,
-                          'TELEGRAM',
                           %s,
                           %s,
+                      'TELEGRAM',
+                      %s,
                           'ACTIVE',
                           FALSE,
                           %s,

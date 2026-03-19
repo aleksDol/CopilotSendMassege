@@ -1,7 +1,10 @@
 import type { FastifyPluginAsync } from "fastify";
 import { AppError } from "../../lib/errors.js";
 import { realtimeHub } from "../../lib/realtime.js";
-import { ChannelAccountStatus, ChannelType } from "@prisma/client";
+import { ChannelAccountStatus, ChannelType, TelegramLoginStatus } from "@prisma/client";
+
+const TG_CONNECTED = "CONNECTED" as unknown as TelegramLoginStatus;
+const TG_ERROR = "ERROR" as unknown as TelegramLoginStatus;
 
 const HEARTBEAT_MS = 20_000;
 
@@ -35,19 +38,26 @@ const realtimeRoutes: FastifyPluginAsync = async (app) => {
       throw new AppError(401, "UNAUTHORIZED", "Authentication required");
     }
 
-    const channel = await app.prisma.channelAccount.findFirst({
+    // Subscribe only to the same "active" telegram identity used by conversations/messages.
+    // Otherwise, when multiple telegram accounts exist, realtime events can arrive for the wrong account.
+    const activeTelegram = await app.prisma.telegramAccount.findFirst({
       where: {
-        companyId: user.companyId,
-        channelType: ChannelType.TELEGRAM,
-        createdByUserId: user.id,
-        status: { not: ChannelAccountStatus.DISCONNECTED }
+        loginStatus: { in: [TG_CONNECTED, TG_ERROR] },
+        channelAccount: {
+          companyId: user.companyId,
+          channelType: ChannelType.TELEGRAM,
+          createdByUserId: user.id,
+          status: { not: ChannelAccountStatus.DISCONNECTED }
+        }
       },
-      select: { id: true }
+      orderBy: { updatedAt: "desc" },
+      select: { channelAccountId: true }
     });
 
-    if (!channel) {
+    if (!activeTelegram) {
       throw new AppError(400, "TELEGRAM_NOT_CONNECTED", "Telegram account not connected");
     }
+    const channelAccountId = activeTelegram.channelAccountId;
 
     reply.hijack();
     reply.raw.writeHead(200, {
@@ -64,7 +74,7 @@ const realtimeRoutes: FastifyPluginAsync = async (app) => {
 
     writeEvent("ready", { ok: true, ts: Date.now() });
 
-    const unsubscribe = realtimeHub.subscribe(user.companyId, channel.id, (event) => {
+    const unsubscribe = realtimeHub.subscribe(user.companyId, channelAccountId, (event) => {
       writeEvent(event.type, event);
     });
 
