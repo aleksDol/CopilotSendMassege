@@ -223,7 +223,7 @@ async def _qr_login_wait_task(
                       "lastEventAt",
                       "updatedAt"
                     ) VALUES (
-                      %s, %s, %s, %s, %s, %s, NULL, 'CONNECTED', NULL, %s, %s
+                      %s, %s, %s, %s, %s, %s, %s, NULL, 'CONNECTED', NULL, %s, %s
                     )
                     ON CONFLICT ("channelAccountId") DO UPDATE SET
                       "phone" = EXCLUDED."phone",
@@ -463,7 +463,7 @@ async def verify_password_qr(qr_session_id: str, password: str, crypto: SessionC
                       "lastEventAt",
                       "updatedAt"
                     ) VALUES (
-                      %s, %s, %s, %s, %s, %s, NULL, 'CONNECTED', NULL, %s, %s
+                      %s, %s, %s, %s, %s, %s, %s, NULL, 'CONNECTED', NULL, %s, %s
                     )
                     ON CONFLICT ("channelAccountId") DO UPDATE SET
                       "phone" = EXCLUDED."phone",
