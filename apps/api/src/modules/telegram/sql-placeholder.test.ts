@@ -22,11 +22,23 @@ test("telegram-worker auth_flow ChannelAccount insert has correct placeholder co
   // id, companyId, externalAccountId, displayName, createdByUserId, updatedAt
   for (let i = 0; i < blocks.length; i += 1) {
     const block = blocks[i]?.[0] ?? "";
-    const placeholderCount = (block.match(/%s/g) ?? []).length;
+    const valuesPartMatch = block.match(/VALUES\s*\([\s\S]*?\)\s+RETURNING\s+"id"/m);
+    const valuesPart = valuesPartMatch?.[0] ?? "";
+    assert.ok(valuesPart.length > 0, `ChannelAccount insert block #${i + 1} has no VALUES(...) RETURNING "id" segment`);
+
+    const placeholderCount = (valuesPart.match(/%s/g) ?? []).length;
     assert.equal(
       placeholderCount,
       6,
       `ChannelAccount insert block #${i + 1} has wrong placeholder count (got ${placeholderCount}, expected 6)`
+    );
+
+    // Ensure channelType literal stays in correct position:
+    // VALUES (id, companyId, 'TELEGRAM', externalAccountId, displayName, 'ACTIVE', ...)
+    const valuesOrderRegex = /VALUES\s*\([\s\S]*?%s\s*,\s*%s\s*,\s*'TELEGRAM'\s*,\s*%s\s*,\s*%s[\s\S]*?'ACTIVE'/m;
+    assert.ok(
+      valuesOrderRegex.test(valuesPart),
+      `ChannelAccount insert block #${i + 1} has wrong VALUES order around 'TELEGRAM'`
     );
   }
 });
