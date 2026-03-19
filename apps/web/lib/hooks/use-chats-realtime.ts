@@ -34,14 +34,13 @@ function handleMessageIngested(
   selectedIdRef: React.MutableRefObject<string | null>,
   onNewMessage: ((p: NewMessagePayload) => void) | undefined,
   queryClient: ReturnType<typeof useQueryClient>,
-  companyId: string
+  scope: string
 ) {
   const cid = parsed.conversationId;
   if (!cid) return;
 
   const isOutbound = parsed.isOutbound === true;
   const isSelected = selectedIdRef.current === cid;
-  const scope = companyId ?? "";
 
   if (isSelected) {
     void queryClient.invalidateQueries({ queryKey: ["messages", scope, cid] });
@@ -104,11 +103,11 @@ export function useChatsRealtime(
   selectedConversationId: string | null,
   onNewMessageInOtherChat?: (payload: NewMessagePayload) => void
 ) {
-  const { token, company, isAuthenticated } = useAuth();
+  const { token, company, user, isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
   const selectedIdRef = useRef<string | null>(selectedConversationId);
   const onNewMessageRef = useRef(onNewMessageInOtherChat);
-  const companyId = company?.id ?? "";
+  const scope = `${company?.id ?? ""}:${user?.id ?? ""}`;
 
   selectedIdRef.current = selectedConversationId;
   onNewMessageRef.current = onNewMessageInOtherChat;
@@ -126,7 +125,7 @@ export function useChatsRealtime(
     const handlerNamed = (event: MessageEvent) => {
       try {
         const parsed = JSON.parse(event.data) as ParsedEvent;
-        handleMessageIngested(parsed, selectedIdRef, onNewMessageRef.current, queryClient, companyId);
+        handleMessageIngested(parsed, selectedIdRef, onNewMessageRef.current, queryClient, scope);
       } catch {
         // ignore parse errors
       }
@@ -140,5 +139,5 @@ export function useChatsRealtime(
       source.removeEventListener("message_ingested", handlerNamed);
       source.close();
     };
-  }, [isAuthenticated, queryClient, token, companyId]);
+  }, [isAuthenticated, queryClient, token, scope]);
 }

@@ -11,6 +11,7 @@ const conversationRoutes: FastifyPluginAsync = async (app) => {
 
     return listConversations(app, {
       companyId: scope.companyId,
+      userId: scope.userId,
       ...query
     });
   });

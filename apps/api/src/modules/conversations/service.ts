@@ -8,6 +8,7 @@ export const listConversations = async (
   app: FastifyInstance,
   params: {
     companyId: string;
+    userId: string;
     limit: number;
     cursor?: string;
     status?: "active" | "archived" | "all";
@@ -20,6 +21,7 @@ export const listConversations = async (
     keyParts: [
       "cache:conversations",
       params.companyId,
+      params.userId,
       params.limit,
       params.cursor,
       params.status,
@@ -30,7 +32,10 @@ export const listConversations = async (
     loader: async () => {
       const conversationFilter: Prisma.ConversationWhereInput = {
         companyId: params.companyId,
-        channelAccount: { status: { not: ChannelAccountStatus.DISCONNECTED } }
+        channelAccount: {
+          status: { not: ChannelAccountStatus.DISCONNECTED },
+          createdByUserId: params.userId
+        }
       };
 
       if (params.status && params.status !== "all") {

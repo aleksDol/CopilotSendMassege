@@ -204,6 +204,7 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
   realtimeHub.publish({
     type: "message_ingested",
     companyId,
+    channelAccountId: conversation.channelAccountId,
     conversationId: conversation.id,
     messageId: message.id,
     sentAt: message.sentAt.toISOString(),

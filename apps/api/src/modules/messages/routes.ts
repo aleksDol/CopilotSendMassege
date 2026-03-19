@@ -12,6 +12,7 @@ const messageRoutes: FastifyPluginAsync = async (app) => {
 
     return listConversationMessages(app, {
       companyId: scope.companyId,
+      userId: scope.userId,
       conversationId: params.id,
       ...query
     });

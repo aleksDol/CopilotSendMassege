@@ -16,6 +16,7 @@ export const listConversationMessages = async (
   app: FastifyInstance,
   params: {
     companyId: string;
+    userId: string;
     conversationId: string;
     before?: string;
     cursor?: string;
@@ -26,7 +27,10 @@ export const listConversationMessages = async (
     where: {
       id: params.conversationId,
       companyId: params.companyId,
-      channelAccount: { status: { not: ChannelAccountStatus.DISCONNECTED } }
+      channelAccount: {
+        status: { not: ChannelAccountStatus.DISCONNECTED },
+        createdByUserId: params.userId
+      }
     },
     select: { id: true }
   });
@@ -124,7 +128,8 @@ export const sendConversationMessage = async (
       companyId: params.companyId,
       channelAccount: {
         channelType: ChannelType.TELEGRAM,
-        status: { not: ChannelAccountStatus.DISCONNECTED }
+        status: { not: ChannelAccountStatus.DISCONNECTED },
+        createdByUserId: params.userId
       }
     },
     include: {

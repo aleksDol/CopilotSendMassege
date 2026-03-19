@@ -1,6 +1,7 @@
 export type RealtimeEvent = {
   type: "message_ingested";
   companyId: string;
+  channelAccountId: string;
   conversationId: string;
   messageId: string;
   sentAt: string;
@@ -12,25 +13,30 @@ export type RealtimeEvent = {
 type Listener = (event: RealtimeEvent) => void;
 
 class RealtimeHub {
-  private readonly listenersByCompany = new Map<string, Set<Listener>>();
+  private readonly listenersByScope = new Map<string, Set<Listener>>();
 
-  subscribe(companyId: string, listener: Listener): () => void {
-    const set = this.listenersByCompany.get(companyId) ?? new Set<Listener>();
+  private scopeKey(companyId: string, channelAccountId: string) {
+    return `${companyId}:${channelAccountId}`;
+  }
+
+  subscribe(companyId: string, channelAccountId: string, listener: Listener): () => void {
+    const key = this.scopeKey(companyId, channelAccountId);
+    const set = this.listenersByScope.get(key) ?? new Set<Listener>();
     set.add(listener);
-    this.listenersByCompany.set(companyId, set);
+    this.listenersByScope.set(key, set);
 
     return () => {
-      const current = this.listenersByCompany.get(companyId);
+      const current = this.listenersByScope.get(key);
       if (!current) return;
       current.delete(listener);
       if (current.size === 0) {
-        this.listenersByCompany.delete(companyId);
+        this.listenersByScope.delete(key);
       }
     };
   }
 
   publish(event: RealtimeEvent) {
-    const listeners = this.listenersByCompany.get(event.companyId);
+    const listeners = this.listenersByScope.get(this.scopeKey(event.companyId, event.channelAccountId));
     if (!listeners || listeners.size === 0) {
       return;
     }
