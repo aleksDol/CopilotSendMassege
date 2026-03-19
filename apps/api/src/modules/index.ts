@@ -16,6 +16,7 @@ import billingRoutes from "./billing/routes.js";
 import teamRoutes from "./team/routes.js";
 import userRoutes from "./users/routes.js";
 import workspaceRoutes from "./workspace/routes.js";
+import settingsRoutes from "./settings/routes.js";
 
 const apiModules: FastifyPluginAsync = async (app) => {
   await app.register(healthRoutes);
@@ -33,6 +34,7 @@ const apiModules: FastifyPluginAsync = async (app) => {
   await app.register(billingRoutes);
   await app.register(teamRoutes);
   await app.register(workspaceRoutes);
+  await app.register(settingsRoutes);
   await app.register(companyRoutes);
   await app.register(userRoutes);
 };
