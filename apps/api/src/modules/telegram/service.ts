@@ -99,6 +99,21 @@ const ensureChannelAndAccountForQr = async (app: FastifyInstance, scope: Scope) 
     });
 
     if (!channel) {
+      // Reuse user's existing Telegram channel account on reconnect.
+      // Without this fallback, reconnect can create an extra "telegram-qr" row and later
+      // fail on unique (companyId, channelType, externalAccountId) when worker binds actual Telegram id.
+      channel = await tx.channelAccount.findFirst({
+        where: {
+          companyId: scope.companyId,
+          channelType: ChannelType.TELEGRAM,
+          createdByUserId: scope.userId
+        },
+        orderBy: { updatedAt: "desc" },
+        include: { telegram: true }
+      });
+    }
+
+    if (!channel) {
       channel = await tx.channelAccount.create({
         data: {
           companyId: scope.companyId,
