@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth/context";
+import { useTelegramAccount } from "@/lib/hooks/use-app-data";
 import type { ConversationListResponse } from "@/lib/api/types";
 
 function getRealtimeBaseUrl(): string {
@@ -104,16 +105,21 @@ export function useChatsRealtime(
   onNewMessageInOtherChat?: (payload: NewMessagePayload) => void
 ) {
   const { token, company, user, isAuthenticated } = useAuth();
+  const telegram = useTelegramAccount();
   const queryClient = useQueryClient();
   const selectedIdRef = useRef<string | null>(selectedConversationId);
   const onNewMessageRef = useRef(onNewMessageInOtherChat);
-  const scope = `${company?.id ?? ""}:${user?.id ?? ""}`;
+  const channelAccountId = telegram.data?.channelAccountId ?? "";
+  const scope = `${company?.id ?? ""}:${user?.id ?? ""}:${channelAccountId}`;
 
   selectedIdRef.current = selectedConversationId;
   onNewMessageRef.current = onNewMessageInOtherChat;
 
   useEffect(() => {
-    if (!isAuthenticated || !token) {
+    const telegramStatus = telegram.data?.loginStatus ?? telegram.data?.status ?? "login_required";
+    const isTelegramConnected = telegramStatus === "connected" && Boolean(channelAccountId);
+
+    if (!isAuthenticated || !token || !isTelegramConnected) {
       return;
     }
 
@@ -139,5 +145,5 @@ export function useChatsRealtime(
       source.removeEventListener("message_ingested", handlerNamed);
       source.close();
     };
-  }, [isAuthenticated, queryClient, token, scope]);
+  }, [isAuthenticated, queryClient, token, scope, telegram.data, channelAccountId]);
 }

@@ -215,7 +215,8 @@ export const getTelegramAccount = async (app: FastifyInstance, scope: Scope) => 
     where: {
       channelAccount: {
         companyId: scope.companyId,
-        channelType: ChannelType.TELEGRAM
+        channelType: ChannelType.TELEGRAM,
+        createdByUserId: scope.userId
       }
     },
     orderBy: {
@@ -258,7 +259,8 @@ export const triggerInitialSync = async (
       loginStatus: { in: [TG_CONNECTED, TG_ERROR] },
       channelAccount: {
         companyId: scope.companyId,
-        channelType: ChannelType.TELEGRAM
+        channelType: ChannelType.TELEGRAM,
+        createdByUserId: scope.userId
       }
     },
     include: {
@@ -283,7 +285,7 @@ export const triggerInitialSync = async (
 
 export const disconnectTelegram = async (app: FastifyInstance, scope: Scope) => {
   const channelAccounts = await app.prisma.channelAccount.findMany({
-    where: { companyId: scope.companyId, channelType: ChannelType.TELEGRAM },
+    where: { companyId: scope.companyId, channelType: ChannelType.TELEGRAM, createdByUserId: scope.userId },
     select: { id: true }
   });
 

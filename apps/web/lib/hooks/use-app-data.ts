@@ -5,13 +5,13 @@ import { aiApi, billingApi, conversationsApi, dashboardApi, settingsApi, tasksAp
 import { useAuth } from "@/lib/auth/context";
 
 /** Scope key so cache is never shared between users/companies (accounts). */
-const scopeKey = (companyId: string | undefined, userId: string | undefined) =>
+const baseScopeKey = (companyId: string | undefined, userId: string | undefined) =>
   `${companyId ?? ""}:${userId ?? ""}`;
 
 export const useDashboardOverview = () => {
   const { token, company, user } = useAuth();
   return useQuery({
-    queryKey: ["dashboard-overview", scopeKey(company?.id, user?.id)],
+    queryKey: ["dashboard-overview", baseScopeKey(company?.id, user?.id)],
     queryFn: () => dashboardApi.overview(token ?? ""),
     enabled: Boolean(token)
   });
@@ -24,11 +24,16 @@ export const useConversations = (filters: {
   refetchInterval?: number;
 }) => {
   const { token, company, user } = useAuth();
+  const telegram = useTelegramAccount();
+  const telegramStatus = telegram.data?.loginStatus ?? telegram.data?.status ?? "login_required";
+  const channelAccountId = telegram.data?.channelAccountId ?? "";
+  const isTelegramConnected = telegramStatus === "connected" && Boolean(channelAccountId);
+  const scope = `${baseScopeKey(company?.id, user?.id)}:${channelAccountId}`;
   const { refetchInterval, ...queryFilters } = filters;
   return useQuery({
-    queryKey: ["conversations", scopeKey(company?.id, user?.id), queryFilters],
+    queryKey: ["conversations", scope, queryFilters],
     queryFn: () => conversationsApi.list(token ?? "", queryFilters),
-    enabled: Boolean(token),
+    enabled: Boolean(token && isTelegramConnected),
     refetchInterval: refetchInterval ?? false,
     refetchIntervalInBackground: true
   });
@@ -40,10 +45,15 @@ export const useConversationMessages = (
   refetchInterval?: number
 ) => {
   const { token, company, user } = useAuth();
+  const telegram = useTelegramAccount();
+  const telegramStatus = telegram.data?.loginStatus ?? telegram.data?.status ?? "login_required";
+  const channelAccountId = telegram.data?.channelAccountId ?? "";
+  const isTelegramConnected = telegramStatus === "connected" && Boolean(channelAccountId);
+  const scope = `${baseScopeKey(company?.id, user?.id)}:${channelAccountId}`;
   return useQuery({
-    queryKey: ["messages", scopeKey(company?.id, user?.id), conversationId, limit],
+    queryKey: ["messages", scope, conversationId, limit],
     queryFn: () => conversationsApi.messages(token ?? "", conversationId ?? "", { limit }),
-    enabled: Boolean(token && conversationId),
+    enabled: Boolean(token && conversationId && isTelegramConnected),
     refetchInterval: refetchInterval ?? false,
     refetchIntervalInBackground: true
   });
@@ -52,7 +62,7 @@ export const useConversationMessages = (
 export const useTasks = (filters: Record<string, string | number | boolean | undefined>) => {
   const { token, company, user } = useAuth();
   return useQuery({
-    queryKey: ["tasks", scopeKey(company?.id, user?.id), filters],
+    queryKey: ["tasks", baseScopeKey(company?.id, user?.id), filters],
     queryFn: () => tasksApi.list(token ?? "", filters),
     enabled: Boolean(token)
   });
@@ -61,7 +71,7 @@ export const useTasks = (filters: Record<string, string | number | boolean | und
 export const useTelegramAccount = () => {
   const { token, company, user } = useAuth();
   return useQuery({
-    queryKey: ["telegram-account", scopeKey(company?.id, user?.id)],
+    queryKey: ["telegram-account", baseScopeKey(company?.id, user?.id)],
     queryFn: () => telegramApi.account(token ?? ""),
     enabled: Boolean(token)
   });
@@ -70,7 +80,7 @@ export const useTelegramAccount = () => {
 export const useKnowledgeItems = () => {
   const { token, company, user } = useAuth();
   return useQuery({
-    queryKey: ["knowledge-items", scopeKey(company?.id, user?.id)],
+    queryKey: ["knowledge-items", baseScopeKey(company?.id, user?.id)],
     queryFn: () => settingsApi.listKnowledge(token ?? ""),
     enabled: Boolean(token),
     retry: false
@@ -80,7 +90,7 @@ export const useKnowledgeItems = () => {
 export const useReplyPolicy = () => {
   const { token, company, user } = useAuth();
   return useQuery({
-    queryKey: ["reply-policy", scopeKey(company?.id, user?.id)],
+    queryKey: ["reply-policy", baseScopeKey(company?.id, user?.id)],
     queryFn: () => settingsApi.getReplyPolicy(token ?? ""),
     enabled: Boolean(token),
     retry: false
@@ -89,17 +99,22 @@ export const useReplyPolicy = () => {
 
 export const useAiSuggestions = (conversationId?: string) => {
   const { token, company, user } = useAuth();
+  const telegram = useTelegramAccount();
+  const telegramStatus = telegram.data?.loginStatus ?? telegram.data?.status ?? "login_required";
+  const channelAccountId = telegram.data?.channelAccountId ?? "";
+  const isTelegramConnected = telegramStatus === "connected" && Boolean(channelAccountId);
+  const scope = `${baseScopeKey(company?.id, user?.id)}:${channelAccountId}`;
   return useQuery({
-    queryKey: ["ai-suggestions", scopeKey(company?.id, user?.id), conversationId],
+    queryKey: ["ai-suggestions", scope, conversationId],
     queryFn: () => aiApi.listSuggestions(token ?? "", conversationId ?? ""),
-    enabled: Boolean(token && conversationId)
+    enabled: Boolean(token && conversationId && isTelegramConnected)
   });
 };
 
 export const useBillingSubscription = () => {
   const { token, company, user } = useAuth();
   return useQuery({
-    queryKey: ["billing-subscription", scopeKey(company?.id, user?.id)],
+    queryKey: ["billing-subscription", baseScopeKey(company?.id, user?.id)],
     queryFn: () => billingApi.subscription(token ?? ""),
     enabled: Boolean(token)
   });
@@ -108,7 +123,7 @@ export const useBillingSubscription = () => {
 export const useBillingUsage = () => {
   const { token, company, user } = useAuth();
   return useQuery({
-    queryKey: ["billing-usage", scopeKey(company?.id, user?.id)],
+    queryKey: ["billing-usage", baseScopeKey(company?.id, user?.id)],
     queryFn: () => billingApi.usage(token ?? ""),
     enabled: Boolean(token)
   });
@@ -117,7 +132,7 @@ export const useBillingUsage = () => {
 export const useTeam = () => {
   const { token, company, user } = useAuth();
   return useQuery({
-    queryKey: ["team", scopeKey(company?.id, user?.id)],
+    queryKey: ["team", baseScopeKey(company?.id, user?.id)],
     queryFn: () => teamApi.list(token ?? ""),
     enabled: Boolean(token)
   });
@@ -126,7 +141,7 @@ export const useTeam = () => {
 export const useWorkspaceSettings = () => {
   const { token, company, user } = useAuth();
   return useQuery({
-    queryKey: ["workspace-settings", scopeKey(company?.id, user?.id)],
+    queryKey: ["workspace-settings", baseScopeKey(company?.id, user?.id)],
     queryFn: () => workspaceApi.getSettings(token ?? ""),
     enabled: Boolean(token)
   });
@@ -134,22 +149,26 @@ export const useWorkspaceSettings = () => {
 
 export const useSendMessageMutation = (conversationId: string) => {
   const { token, company, user } = useAuth();
+  const telegram = useTelegramAccount();
+  const channelAccountId = telegram.data?.channelAccountId ?? "";
   const qc = useQueryClient();
-  const scope = scopeKey(company?.id, user?.id);
+  const scope = `${baseScopeKey(company?.id, user?.id)}:${channelAccountId}`;
   return useMutation({
     mutationFn: (text: string) => conversationsApi.sendMessage(token ?? "", conversationId, text),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["messages", scope, conversationId] });
       void qc.invalidateQueries({ queryKey: ["conversations", scope] });
-      void qc.invalidateQueries({ queryKey: ["dashboard-overview", scope] });
+      void qc.invalidateQueries({ queryKey: ["dashboard-overview", baseScopeKey(company?.id, user?.id)] });
     }
   });
 };
 
 export const useSuggestReplyMutation = (conversationId: string) => {
   const { token, company, user } = useAuth();
+  const telegram = useTelegramAccount();
+  const channelAccountId = telegram.data?.channelAccountId ?? "";
   const qc = useQueryClient();
-  const scope = scopeKey(company?.id, user?.id);
+  const scope = `${baseScopeKey(company?.id, user?.id)}:${channelAccountId}`;
   return useMutation({
     mutationFn: (mode: "default" | "shorter" | "more_friendly" | "more_sales" | "handle_objection") =>
       aiApi.suggestReply(token ?? "", conversationId, mode),
@@ -162,7 +181,7 @@ export const useSuggestReplyMutation = (conversationId: string) => {
 export const useTaskActions = () => {
   const { token, company, user } = useAuth();
   const qc = useQueryClient();
-  const scope = scopeKey(company?.id, user?.id);
+  const scope = baseScopeKey(company?.id, user?.id);
 
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ["tasks", scope] });
@@ -201,7 +220,7 @@ export const useTaskActions = () => {
 export const useTelegramActions = () => {
   const { token, company, user } = useAuth();
   const qc = useQueryClient();
-  const scope = scopeKey(company?.id, user?.id);
+  const scope = baseScopeKey(company?.id, user?.id);
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["telegram-account", scope] });
@@ -248,9 +267,9 @@ export const useTelegramActions = () => {
       onSuccess: () => {
         // Telegram disconnect should immediately hide chats and stop showing stale cached conversations/messages.
         refresh();
-        qc.removeQueries({ queryKey: ["conversations", scope] });
-        qc.removeQueries({ queryKey: ["messages", scope] });
-        qc.removeQueries({ queryKey: ["ai-suggestions", scope] });
+        qc.removeQueries({ queryKey: ["conversations"] });
+        qc.removeQueries({ queryKey: ["messages"] });
+        qc.removeQueries({ queryKey: ["ai-suggestions"] });
       }
     })
   };
@@ -280,7 +299,7 @@ export const useBillingActions = () => {
       }
     }),
     refresh: () => {
-      const scope = scopeKey(company?.id, user?.id);
+      const scope = baseScopeKey(company?.id, user?.id);
       void qc.invalidateQueries({ queryKey: ["billing-subscription", scope] });
       void qc.invalidateQueries({ queryKey: ["billing-usage", scope] });
     }
@@ -290,7 +309,7 @@ export const useBillingActions = () => {
 export const useTeamActions = () => {
   const { token, company, user } = useAuth();
   const qc = useQueryClient();
-  const scope = scopeKey(company?.id, user?.id);
+  const scope = baseScopeKey(company?.id, user?.id);
 
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ["team", scope] });
@@ -312,7 +331,7 @@ export const useTeamActions = () => {
 export const useSettingsActions = () => {
   const { token, company, user } = useAuth();
   const qc = useQueryClient();
-  const scope = scopeKey(company?.id, user?.id);
+  const scope = baseScopeKey(company?.id, user?.id);
 
   return {
     createKnowledge: useMutation({

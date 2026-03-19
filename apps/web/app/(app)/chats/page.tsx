@@ -26,12 +26,16 @@ const CONVERSATIONS_POLL_INTERVAL_MS = 8_000;
 const MESSAGES_POLL_INTERVAL_MS = 3_000;
 
 const UNREAD_STORAGE_VERSION = "v1";
-const getUnreadStorageKey = (companyId?: string | null, userId?: string | null) =>
-  companyId && userId ? `chats-unread:${UNREAD_STORAGE_VERSION}:${companyId}:${userId}` : null;
+const getUnreadStorageKey = (companyId?: string | null, userId?: string | null, channelAccountId?: string | null) =>
+  companyId && userId && channelAccountId
+    ? `chats-unread:${UNREAD_STORAGE_VERSION}:${companyId}:${userId}:${channelAccountId}`
+    : null;
 
 const SELECTED_STORAGE_VERSION = "v1";
-const getSelectedStorageKey = (companyId?: string | null, userId?: string | null) =>
-  companyId && userId ? `chats-selected:${SELECTED_STORAGE_VERSION}:${companyId}:${userId}` : null;
+const getSelectedStorageKey = (companyId?: string | null, userId?: string | null, channelAccountId?: string | null) =>
+  companyId && userId && channelAccountId
+    ? `chats-selected:${SELECTED_STORAGE_VERSION}:${companyId}:${userId}:${channelAccountId}`
+    : null;
 
 const readSelectedFromStorage = (key: string | null): string | null => {
   if (!key || typeof window === "undefined") return null;
@@ -81,11 +85,12 @@ export default function ChatsPage() {
 
   const { token, company, user } = useAuth();
   const queryClient = useQueryClient();
-  const unreadStorageKey = getUnreadStorageKey(company?.id, user?.id);
-  const selectedStorageKey = getSelectedStorageKey(company?.id, user?.id);
   const telegramAccount = useTelegramAccount();
   const telegramStatus = telegramAccount.data?.loginStatus ?? telegramAccount.data?.status ?? "login_required";
   const isTelegramConnected = telegramStatus === "connected";
+  const channelAccountId = telegramAccount.data?.channelAccountId ?? null;
+  const unreadStorageKey = getUnreadStorageKey(company?.id, user?.id, channelAccountId);
+  const selectedStorageKey = getSelectedStorageKey(company?.id, user?.id, channelAccountId);
 
   const [filters, setFilters] = useState({
     search: "",
