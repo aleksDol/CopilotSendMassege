@@ -109,9 +109,9 @@ export default function ChatsPage() {
   useEffect(() => {
     if (isTelegramConnected) return;
     // Remove chat-related cached data so old conversations cannot be shown after reconnect/switch.
-    queryClient.removeQueries({ queryKey: ["conversations"] });
-    queryClient.removeQueries({ queryKey: ["messages"] });
-    queryClient.removeQueries({ queryKey: ["ai-suggestions"] });
+    queryClient.removeQueries({ queryKey: ["conversations"], exact: false });
+    queryClient.removeQueries({ queryKey: ["messages"], exact: false });
+    queryClient.removeQueries({ queryKey: ["ai-suggestions"], exact: false });
     setSelectedConversationIdState(null);
     if (typeof window !== "undefined") {
       try {
@@ -134,9 +134,9 @@ export default function ChatsPage() {
 
     // Channel switched inside the same user: ensure we don't render stale conversations/messages
     // from previous Telegram until the new queries load.
-    queryClient.removeQueries({ queryKey: ["conversations"] });
-    queryClient.removeQueries({ queryKey: ["messages"] });
-    queryClient.removeQueries({ queryKey: ["ai-suggestions"] });
+    queryClient.removeQueries({ queryKey: ["conversations"], exact: false });
+    queryClient.removeQueries({ queryKey: ["messages"], exact: false });
+    queryClient.removeQueries({ queryKey: ["ai-suggestions"], exact: false });
 
     setSelectedConversationIdState(null);
 
