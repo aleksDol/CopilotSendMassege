@@ -206,6 +206,8 @@ export const useTelegramActions = () => {
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["telegram-account", scope] });
     void qc.invalidateQueries({ queryKey: ["dashboard-overview", scope] });
+    void qc.invalidateQueries({ queryKey: ["conversations", scope] });
+    void qc.invalidateQueries({ queryKey: ["tasks", scope] });
   };
 
   return {
@@ -243,7 +245,13 @@ export const useTelegramActions = () => {
     }),
     logout: useMutation({
       mutationFn: () => telegramApi.logout(token ?? ""),
-      onSuccess: refresh
+      onSuccess: () => {
+        // Telegram disconnect should immediately hide chats and stop showing stale cached conversations/messages.
+        refresh();
+        qc.removeQueries({ queryKey: ["conversations", scope] });
+        qc.removeQueries({ queryKey: ["messages", scope] });
+        qc.removeQueries({ queryKey: ["ai-suggestions", scope] });
+      }
     })
   };
 };

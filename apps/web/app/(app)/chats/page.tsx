@@ -15,7 +15,8 @@ import {
   useConversationMessages,
   useConversations,
   useSendMessageMutation,
-  useSuggestReplyMutation
+  useSuggestReplyMutation,
+  useTelegramAccount
 } from "@/lib/hooks/use-app-data";
 import { useChatsRealtime, type NewMessagePayload } from "@/lib/hooks/use-chats-realtime";
 import { aiApi } from "@/lib/api/ai";
@@ -82,6 +83,9 @@ export default function ChatsPage() {
   const queryClient = useQueryClient();
   const unreadStorageKey = getUnreadStorageKey(company?.id, user?.id);
   const selectedStorageKey = getSelectedStorageKey(company?.id, user?.id);
+  const telegramAccount = useTelegramAccount();
+  const telegramStatus = telegramAccount.data?.loginStatus ?? telegramAccount.data?.status ?? "login_required";
+  const isTelegramConnected = telegramStatus === "connected";
 
   const [filters, setFilters] = useState({
     search: "",
@@ -93,6 +97,21 @@ export default function ChatsPage() {
   const [unreadByConversationId, setUnreadByConversationId] = useState<
     Record<string, { lastMessagePreview?: string | null; conversationTitle?: string | null; sentAt?: string | null }>
   >(() => readUnreadFromStorage(unreadStorageKey));
+
+  // If Telegram is disconnected for the current session, hide chats immediately and clear persisted chat UI state.
+  useEffect(() => {
+    if (isTelegramConnected) return;
+    setSelectedConversationIdState(null);
+    if (typeof window !== "undefined") {
+      try {
+        if (selectedStorageKey) window.localStorage.removeItem(selectedStorageKey);
+        if (unreadStorageKey) window.localStorage.removeItem(unreadStorageKey);
+      } catch {
+        // ignore storage failures
+      }
+    }
+    setUnreadByConversationId({});
+  }, [isTelegramConnected, selectedStorageKey, unreadStorageKey]);
 
   const setSelectedConversationId = useCallback((id: string | null) => {
     setSelectedConversationIdState(id);
@@ -231,6 +250,15 @@ export default function ChatsPage() {
       setSendError(message);
     }
   };
+
+  if (!isTelegramConnected) {
+    return (
+      <EmptyState
+        title="Telegram не подключён"
+        description="Подключите Telegram в настройках, чтобы увидеть чаты."
+      />
+    );
+  }
 
   if (conversations.isLoading) {
     return <LoadingState label="Loading conversations..." />;
