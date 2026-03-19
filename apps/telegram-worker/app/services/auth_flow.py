@@ -141,52 +141,136 @@ async def _qr_login_wait_task(
         encrypted_session = crypto.encrypt(client.session.save())
         display_name = " ".join(part for part in [me.first_name, me.last_name] if part).strip() or (me.username or str(me.id))
         phone = me.phone or ""
-        # For QR login, ChannelAccount.externalAccountId starts as a temporary constant (e.g. "telegram-qr").
-        # After connect we must bind the channel account to the actual Telegram identity so different Telegram
-        # logins never share the same ChannelAccount (prevents mixed chats across Telegram accounts).
+        # For QR login we connect using a placeholder ChannelAccount (externalAccountId="telegram-qr").
+        # To keep Telegram identities isolated, we must NOT mutate the placeholder ChannelAccount in-place.
+        # Instead, create a dedicated ChannelAccount per real Telegram identity (or reuse an existing one)
+        # and route this Telegram session there.
         external_account_id = str(me.id)
         api_dc_id = getattr(client.session, "dc_id", None)
 
         async with get_connection() as conn:
             async with conn.cursor() as cur:
+                now = _now()
+                # Resolve placeholder creator (needed because backend scopes by createdByUserId).
+                await cur.execute(
+                    'SELECT "createdByUserId" FROM "ChannelAccount" WHERE "id" = %s LIMIT 1',
+                    (account["channelAccountId"],),
+                )
+                created_by_user_id_row = await cur.fetchone()
+                created_by_user_id = str(created_by_user_id_row["createdByUserId"]) if created_by_user_id_row else None
+
+                await cur.execute(
+                    '''
+                    SELECT "id"
+                    FROM "ChannelAccount"
+                    WHERE "companyId" = %s
+                      AND "channelType" = 'TELEGRAM'
+                      AND "externalAccountId" = %s
+                    LIMIT 1
+                    ''',
+                    (company_id, external_account_id),
+                )
+                existing_channel_row = await cur.fetchone()
+                existing_channel_id = str(existing_channel_row["id"]) if existing_channel_row else None
+
+                target_channel_id = existing_channel_id
+                if not target_channel_id:
+                    await cur.execute(
+                        '''
+                        INSERT INTO "ChannelAccount" (
+                          "companyId",
+                          "channelType",
+                          "externalAccountId",
+                          "displayName",
+                          "status",
+                          "isPrimary",
+                          "createdByUserId",
+                          "updatedAt"
+                        ) VALUES (
+                          %s,
+                          'TELEGRAM',
+                          %s,
+                          %s,
+                          'ACTIVE',
+                          FALSE,
+                          %s,
+                          %s
+                        )
+                        RETURNING "id"
+                        ''',
+                        (company_id, external_account_id, display_name, created_by_user_id, now),
+                    )
+                    row = await cur.fetchone()
+                    target_channel_id = str(row["id"])
+
+                # Upsert session into the target channel account (dedicated per identity).
+                await cur.execute(
+                    '''
+                    INSERT INTO "TelegramAccount" (
+                      "channelAccountId",
+                      "phone",
+                      "sessionDataEncrypted",
+                      "telegramUserId",
+                      "username",
+                      "apiDcId",
+                      "authPhoneCodeHash",
+                      "loginStatus",
+                      "errorMessage",
+                      "lastEventAt",
+                      "updatedAt"
+                    ) VALUES (
+                      %s, %s, %s, %s, %s, %s, NULL, 'CONNECTED', NULL, %s, %s
+                    )
+                    ON CONFLICT ("channelAccountId") DO UPDATE SET
+                      "phone" = EXCLUDED."phone",
+                      "sessionDataEncrypted" = EXCLUDED."sessionDataEncrypted",
+                      "telegramUserId" = EXCLUDED."telegramUserId",
+                      "username" = EXCLUDED."username",
+                      "apiDcId" = EXCLUDED."apiDcId",
+                      "authPhoneCodeHash" = NULL,
+                      "loginStatus" = EXCLUDED."loginStatus",
+                      "errorMessage" = NULL,
+                      "lastEventAt" = EXCLUDED."lastEventAt",
+                      "updatedAt" = EXCLUDED."updatedAt"
+                    ''',
+                    (
+                        target_channel_id,
+                        phone,
+                        encrypted_session,
+                        external_account_id,
+                        me.username,
+                        api_dc_id,
+                        now,
+                        now,
+                    ),
+                )
+
+                # Clear placeholder session & mark placeholder disconnected
+                # so listeners/active-channel selection never use the placeholder.
                 await cur.execute(
                     '''
                     UPDATE "TelegramAccount"
                     SET
-                      "phone" = %s,
-                      "sessionDataEncrypted" = %s,
-                      "telegramUserId" = %s,
-                      "username" = %s,
-                      "apiDcId" = %s,
+                      "sessionDataEncrypted" = NULL,
+                      "telegramUserId" = NULL,
+                      "username" = NULL,
+                      "apiDcId" = NULL,
                       "authPhoneCodeHash" = NULL,
-                      "loginStatus" = 'CONNECTED',
+                      "loginStatus" = 'LOGIN_REQUIRED',
                       "errorMessage" = NULL,
                       "lastEventAt" = %s,
                       "updatedAt" = %s
                     WHERE "id" = %s
                     ''',
-                    (
-                        phone,
-                        encrypted_session,
-                        str(me.id),
-                        me.username,
-                        api_dc_id,
-                        _now(),
-                        _now(),
-                        account["telegramAccountId"],
-                    ),
+                    (now, now, account["telegramAccountId"]),
                 )
                 await cur.execute(
                     '''
                     UPDATE "ChannelAccount"
-                    SET
-                      "displayName" = %s,
-                      "externalAccountId" = %s,
-                      "status" = 'ACTIVE',
-                      "updatedAt" = %s
+                    SET "status" = 'DISCONNECTED', "updatedAt" = %s
                     WHERE "id" = %s
                     ''',
-                    (display_name, external_account_id, _now(), account["channelAccountId"]),
+                    (now, account["channelAccountId"]),
                 )
         state["status"] = "connected"
     except Exception as exc:
@@ -296,44 +380,132 @@ async def verify_password_qr(qr_session_id: str, password: str, crypto: SessionC
         encrypted_session = crypto.encrypt(client.session.save())
         display_name = " ".join(part for part in [me.first_name, me.last_name] if part).strip() or (me.username or str(me.id))
         phone = me.phone or ""
+        # Create dedicated ChannelAccount per real Telegram identity so chats stay isolated.
+        external_account_id = str(me.id)
         api_dc_id = getattr(client.session, "dc_id", None)
 
         async with get_connection() as conn:
             async with conn.cursor() as cur:
+                company_id = str(state.get("company_id"))
+                now = _now()
+
+                await cur.execute(
+                    'SELECT "createdByUserId" FROM "ChannelAccount" WHERE "id" = %s LIMIT 1',
+                    (account["channelAccountId"],),
+                )
+                created_by_user_id_row = await cur.fetchone()
+                created_by_user_id = str(created_by_user_id_row["createdByUserId"]) if created_by_user_id_row else None
+
+                await cur.execute(
+                    '''
+                    SELECT "id"
+                    FROM "ChannelAccount"
+                    WHERE "companyId" = %s
+                      AND "channelType" = 'TELEGRAM'
+                      AND "externalAccountId" = %s
+                    LIMIT 1
+                    ''',
+                    (company_id, external_account_id),
+                )
+                existing_channel_row = await cur.fetchone()
+                existing_channel_id = str(existing_channel_row["id"]) if existing_channel_row else None
+
+                target_channel_id = existing_channel_id
+                if not target_channel_id:
+                    await cur.execute(
+                        '''
+                        INSERT INTO "ChannelAccount" (
+                          "companyId",
+                          "channelType",
+                          "externalAccountId",
+                          "displayName",
+                          "status",
+                          "isPrimary",
+                          "createdByUserId",
+                          "updatedAt"
+                        ) VALUES (
+                          %s,
+                          'TELEGRAM',
+                          %s,
+                          %s,
+                          'ACTIVE',
+                          FALSE,
+                          %s,
+                          %s
+                        )
+                        RETURNING "id"
+                        ''',
+                        (company_id, external_account_id, display_name, created_by_user_id, now),
+                    )
+                    row = await cur.fetchone()
+                    target_channel_id = str(row["id"])
+
+                await cur.execute(
+                    '''
+                    INSERT INTO "TelegramAccount" (
+                      "channelAccountId",
+                      "phone",
+                      "sessionDataEncrypted",
+                      "telegramUserId",
+                      "username",
+                      "apiDcId",
+                      "authPhoneCodeHash",
+                      "loginStatus",
+                      "errorMessage",
+                      "lastEventAt",
+                      "updatedAt"
+                    ) VALUES (
+                      %s, %s, %s, %s, %s, %s, NULL, 'CONNECTED', NULL, %s, %s
+                    )
+                    ON CONFLICT ("channelAccountId") DO UPDATE SET
+                      "phone" = EXCLUDED."phone",
+                      "sessionDataEncrypted" = EXCLUDED."sessionDataEncrypted",
+                      "telegramUserId" = EXCLUDED."telegramUserId",
+                      "username" = EXCLUDED."username",
+                      "apiDcId" = EXCLUDED."apiDcId",
+                      "authPhoneCodeHash" = NULL,
+                      "loginStatus" = EXCLUDED."loginStatus",
+                      "errorMessage" = NULL,
+                      "lastEventAt" = EXCLUDED."lastEventAt",
+                      "updatedAt" = EXCLUDED."updatedAt"
+                    ''',
+                    (
+                        target_channel_id,
+                        phone,
+                        encrypted_session,
+                        external_account_id,
+                        me.username,
+                        api_dc_id,
+                        now,
+                        now,
+                    ),
+                )
+
+                # Clear placeholder session and disconnect placeholder.
                 await cur.execute(
                     '''
                     UPDATE "TelegramAccount"
                     SET
-                      "phone" = %s,
-                      "sessionDataEncrypted" = %s,
-                      "telegramUserId" = %s,
-                      "username" = %s,
-                      "apiDcId" = %s,
+                      "sessionDataEncrypted" = NULL,
+                      "telegramUserId" = NULL,
+                      "username" = NULL,
+                      "apiDcId" = NULL,
                       "authPhoneCodeHash" = NULL,
-                      "loginStatus" = 'CONNECTED',
+                      "loginStatus" = 'LOGIN_REQUIRED',
                       "errorMessage" = NULL,
                       "lastEventAt" = %s,
                       "updatedAt" = %s
                     WHERE "id" = %s
                     ''',
-                    (
-                        phone,
-                        encrypted_session,
-                        str(me.id),
-                        me.username,
-                        api_dc_id,
-                        _now(),
-                        _now(),
-                        account["telegramAccountId"],
-                    ),
+                    (now, now, account["telegramAccountId"]),
                 )
                 await cur.execute(
                     '''
                     UPDATE "ChannelAccount"
-                    SET "displayName" = %s, "status" = 'ACTIVE', "updatedAt" = %s
+                    SET "status" = 'DISCONNECTED', "updatedAt" = %s
                     WHERE "id" = %s
                     ''',
-                    (display_name, _now(), account["channelAccountId"]),
+                    (now, account["channelAccountId"]),
                 )
         state["status"] = "connected"
     finally:

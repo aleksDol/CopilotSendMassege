@@ -89,44 +89,15 @@ const QR_EXTERNAL_ID = "telegram-qr";
 
 const ensureChannelAndAccountForQr = async (app: FastifyInstance, scope: Scope) => {
   const result = await app.prisma.$transaction(async (tx) => {
-    // Prefer an existing real Telegram channel for this user. This avoids reusing
-    // a stale "telegram-qr" row and later hitting unique constraint on externalAccountId.
+    // QR placeholder channel: worker will route to the real telegram identity.
     let channel = await tx.channelAccount.findFirst({
       where: {
         companyId: scope.companyId,
         channelType: ChannelType.TELEGRAM,
-        createdByUserId: scope.userId,
-        externalAccountId: { not: QR_EXTERNAL_ID }
+        externalAccountId: QR_EXTERNAL_ID
       },
-      orderBy: { updatedAt: "desc" },
       include: { telegram: true }
     });
-
-    if (!channel) {
-      channel = await tx.channelAccount.findFirst({
-        where: {
-          companyId: scope.companyId,
-          channelType: ChannelType.TELEGRAM,
-          externalAccountId: QR_EXTERNAL_ID
-        },
-        include: { telegram: true }
-      });
-    }
-
-    if (!channel) {
-      // Reuse user's existing Telegram channel account on reconnect.
-      // Without this fallback, reconnect can create an extra "telegram-qr" row and later
-      // fail on unique (companyId, channelType, externalAccountId) when worker binds actual Telegram id.
-      channel = await tx.channelAccount.findFirst({
-        where: {
-          companyId: scope.companyId,
-          channelType: ChannelType.TELEGRAM,
-          createdByUserId: scope.userId
-        },
-        orderBy: { updatedAt: "desc" },
-        include: { telegram: true }
-      });
-    }
 
     if (!channel) {
       channel = await tx.channelAccount.create({
