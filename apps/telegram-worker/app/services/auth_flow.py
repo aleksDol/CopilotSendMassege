@@ -141,6 +141,10 @@ async def _qr_login_wait_task(
         encrypted_session = crypto.encrypt(client.session.save())
         display_name = " ".join(part for part in [me.first_name, me.last_name] if part).strip() or (me.username or str(me.id))
         phone = me.phone or ""
+        # For QR login, ChannelAccount.externalAccountId starts as a temporary constant (e.g. "telegram-qr").
+        # After connect we must bind the channel account to the actual Telegram identity so different Telegram
+        # logins never share the same ChannelAccount (prevents mixed chats across Telegram accounts).
+        external_account_id = str(me.id)
         api_dc_id = getattr(client.session, "dc_id", None)
 
         async with get_connection() as conn:
@@ -175,10 +179,14 @@ async def _qr_login_wait_task(
                 await cur.execute(
                     '''
                     UPDATE "ChannelAccount"
-                    SET "displayName" = %s, "status" = 'ACTIVE', "updatedAt" = %s
+                    SET
+                      "displayName" = %s,
+                      "externalAccountId" = %s,
+                      "status" = 'ACTIVE',
+                      "updatedAt" = %s
                     WHERE "id" = %s
                     ''',
-                    (display_name, _now(), account["channelAccountId"]),
+                    (display_name, external_account_id, _now(), account["channelAccountId"]),
                 )
         state["status"] = "connected"
     except Exception as exc:
