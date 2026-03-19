@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
+  CircleHelp,
   MessageCircle,
   CheckSquare,
   BookOpen,
@@ -20,6 +21,7 @@ import { cn } from "@/lib/utils/cn";
 const SIDEBAR_STORAGE_KEY = "app-sidebar-collapsed";
 
 const navItems = [
+  { href: "/getting-started", label: "Начало работы", icon: CircleHelp },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/chats", label: "Chats", icon: MessageCircle },
   { href: "/tasks", label: "Tasks", icon: CheckSquare }
