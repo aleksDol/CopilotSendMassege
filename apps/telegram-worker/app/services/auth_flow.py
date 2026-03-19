@@ -175,9 +175,11 @@ async def _qr_login_wait_task(
 
                 target_channel_id = existing_channel_id
                 if not target_channel_id:
+                    new_channel_account_id = str(uuid.uuid4())
                     await cur.execute(
                         '''
                         INSERT INTO "ChannelAccount" (
+                          "id",
                           "companyId",
                           "channelType",
                           "externalAccountId",
@@ -198,7 +200,7 @@ async def _qr_login_wait_task(
                         )
                         RETURNING "id"
                         ''',
-                        (company_id, external_account_id, display_name, created_by_user_id, now),
+                        (new_channel_account_id, company_id, external_account_id, display_name, created_by_user_id, now),
                     )
                     row = await cur.fetchone()
                     target_channel_id = str(row["id"])
@@ -415,9 +417,11 @@ async def verify_password_qr(qr_session_id: str, password: str, crypto: SessionC
 
                 target_channel_id = existing_channel_id
                 if not target_channel_id:
+                    new_channel_account_id = str(uuid.uuid4())
                     await cur.execute(
                         '''
                         INSERT INTO "ChannelAccount" (
+                          "id",
                           "companyId",
                           "channelType",
                           "externalAccountId",
@@ -438,7 +442,7 @@ async def verify_password_qr(qr_session_id: str, password: str, crypto: SessionC
                         )
                         RETURNING "id"
                         ''',
-                        (company_id, external_account_id, display_name, created_by_user_id, now),
+                        (new_channel_account_id, company_id, external_account_id, display_name, created_by_user_id, now),
                     )
                     row = await cur.fetchone()
                     target_channel_id = str(row["id"])
