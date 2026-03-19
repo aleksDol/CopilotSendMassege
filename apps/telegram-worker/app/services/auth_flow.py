@@ -204,9 +204,11 @@ async def _qr_login_wait_task(
                     target_channel_id = str(row["id"])
 
                 # Upsert session into the target channel account (dedicated per identity).
+                new_telegram_account_id = str(uuid.uuid4())
                 await cur.execute(
                     '''
                     INSERT INTO "TelegramAccount" (
+                      "id",
                       "channelAccountId",
                       "phone",
                       "sessionDataEncrypted",
@@ -234,6 +236,7 @@ async def _qr_login_wait_task(
                       "updatedAt" = EXCLUDED."updatedAt"
                     ''',
                     (
+                        new_telegram_account_id,
                         target_channel_id,
                         phone,
                         encrypted_session,
@@ -443,6 +446,7 @@ async def verify_password_qr(qr_session_id: str, password: str, crypto: SessionC
                 await cur.execute(
                     '''
                     INSERT INTO "TelegramAccount" (
+                      "id",
                       "channelAccountId",
                       "phone",
                       "sessionDataEncrypted",
@@ -470,6 +474,7 @@ async def verify_password_qr(qr_session_id: str, password: str, crypto: SessionC
                       "updatedAt" = EXCLUDED."updatedAt"
                     ''',
                     (
+                        str(uuid.uuid4()),
                         target_channel_id,
                         phone,
                         encrypted_session,
