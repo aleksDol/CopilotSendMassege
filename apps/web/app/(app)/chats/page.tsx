@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -92,6 +92,8 @@ export default function ChatsPage() {
   const unreadStorageKey = getUnreadStorageKey(company?.id, user?.id, channelAccountId);
   const selectedStorageKey = getSelectedStorageKey(company?.id, user?.id, channelAccountId);
 
+  const prevChannelAccountIdRef = useRef<string | null>(null);
+
   const [filters, setFilters] = useState({
     search: "",
     waitingForReply: initialWaiting === "true" || initialWaiting === "false" ? initialWaiting : "all",
@@ -117,6 +119,23 @@ export default function ChatsPage() {
     }
     setUnreadByConversationId({});
   }, [isTelegramConnected, selectedStorageKey, unreadStorageKey]);
+
+  // If the connected Telegram account changed (channelAccountId switch), we must not keep
+  // selected conversation from previous Telegram in URL/local state; it causes “chat mix” UI.
+  useEffect(() => {
+    if (!isTelegramConnected) return;
+    const prev = prevChannelAccountIdRef.current;
+    prevChannelAccountIdRef.current = channelAccountId;
+    if (!prev || prev === channelAccountId) return;
+
+    setSelectedConversationIdState(null);
+
+    // Remove conversationId from URL so selection logic won't restore a conversation
+    // from a different Telegram channelAccountId.
+    const next = new URLSearchParams(params.toString());
+    next.delete("conversationId");
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+  }, [channelAccountId, isTelegramConnected, params, pathname, router]);
 
   const setSelectedConversationId = useCallback((id: string | null) => {
     setSelectedConversationIdState(id);
