@@ -108,6 +108,10 @@ export default function ChatsPage() {
   // If Telegram is disconnected for the current session, hide chats immediately and clear persisted chat UI state.
   useEffect(() => {
     if (isTelegramConnected) return;
+    // Remove chat-related cached data so old conversations cannot be shown after reconnect/switch.
+    queryClient.removeQueries({ queryKey: ["conversations"] });
+    queryClient.removeQueries({ queryKey: ["messages"] });
+    queryClient.removeQueries({ queryKey: ["ai-suggestions"] });
     setSelectedConversationIdState(null);
     if (typeof window !== "undefined") {
       try {
@@ -127,6 +131,12 @@ export default function ChatsPage() {
     const prev = prevChannelAccountIdRef.current;
     prevChannelAccountIdRef.current = channelAccountId;
     if (!prev || prev === channelAccountId) return;
+
+    // Channel switched inside the same user: ensure we don't render stale conversations/messages
+    // from previous Telegram until the new queries load.
+    queryClient.removeQueries({ queryKey: ["conversations"] });
+    queryClient.removeQueries({ queryKey: ["messages"] });
+    queryClient.removeQueries({ queryKey: ["ai-suggestions"] });
 
     setSelectedConversationIdState(null);
 
