@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,41 +49,34 @@ export const metadata: Metadata = {
   }
 };
 
-function ScreenshotPlaceholder({
+function ScreenshotCard({
+  src,
   filename,
   title,
   details
 }: {
+  src: string;
   filename: string;
   title: string;
   details: string;
 }) {
   return (
-    <div
-      role="img"
-      aria-label={`${title}. Заглушка изображения: ${filename}`}
-      className="flex h-full flex-col justify-between rounded-xl border border-border bg-card p-5"
-    >
-      <div className="space-y-2">
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <h3 className="text-sm font-semibold">{title}</h3>
-            <p className="text-xs text-muted-foreground">
-              Заглушка: нужен файл <span className="font-mono text-foreground/80">{filename}</span>
-            </p>
-          </div>
-          <div className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-background">
-            <Sparkles className="h-4 w-4 text-primary" />
-          </div>
+    <div className="flex h-full flex-col justify-between rounded-xl border border-border bg-card p-5">
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold">{title}</h3>
+          <p className="text-xs text-muted-foreground">
+            Файл: <span className="font-mono text-foreground/80">{filename}</span>
+          </p>
         </div>
 
-        <div className="aspect-[16/10] w-full rounded-lg border border-border bg-background/50 p-3">
-          <p className="text-xs leading-relaxed text-muted-foreground">{details}</p>
+        <div className="relative aspect-[16/10] w-full overflow-hidden rounded-lg border border-border bg-background/30">
+          <Image src={src} alt={title} fill className="object-cover" sizes="(max-width: 768px) 100vw, 50vw" />
         </div>
       </div>
 
       <div className="mt-4 text-xs text-muted-foreground">
-        Подпись к изображению: <span className="font-medium text-foreground/80">{title}</span>
+        {details}
       </div>
     </div>
   );
@@ -383,22 +377,26 @@ export default function HomeLandingPage() {
           </div>
 
           <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <ScreenshotPlaceholder
+            <ScreenshotCard
+              src="/landing/screenshot-chats-overview.png"
               filename="screenshot-chats-overview.png"
               title="Список чатов и активный диалог"
-              details="Скриншот списка чатов и активного диалога в интерфейсе (заглушка вместо изображения)."
+              details="Скриншот списка чатов и активного диалога в интерфейсе."
             />
-            <ScreenshotPlaceholder
+            <ScreenshotCard
+              src="/landing/screenshot-ai-suggestion-panel.png"
               filename="screenshot-ai-suggestion-panel.png"
               title="AI-подсказка ответа в чате"
               details="Скриншот панели с AI-подсказкой: варианты ответа и действия (принять/редактировать)."
             />
-            <ScreenshotPlaceholder
+            <ScreenshotCard
+              src="/landing/screenshot-dashboard-metrics.png"
               filename="screenshot-dashboard-metrics.png"
               title="Дашборд с ключевыми метриками"
               details="Скриншот дашборда: активные диалоги, ожидают ответа, follow-up и другие метрики."
             />
-            <ScreenshotPlaceholder
+            <ScreenshotCard
+              src="/landing/screenshot-tasks-followup.png"
               filename="screenshot-tasks-followup.png"
               title="Задачи и follow-up"
               details="Скриншот задач: что требует ответа и какие follow-up нужно выполнить."
