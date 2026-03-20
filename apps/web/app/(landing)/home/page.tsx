@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   BookOpen,
@@ -18,6 +17,13 @@ import {
 
 const baseUrl = process.env.APP_BASE_URL ?? process.env.NEXT_PUBLIC_APP_BASE_URL ?? "http://localhost:3000";
 const canonicalUrl = `${baseUrl}/home`;
+
+const baseButton =
+  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
+const defaultMd = `${baseButton} h-10 px-4 py-2 bg-primary text-primary-foreground hover:brightness-110`;
+const outlineMd = `${baseButton} h-10 px-4 py-2 border border-border bg-background hover:bg-muted`;
+const defaultLg = `${baseButton} h-11 rounded-md px-8 bg-primary text-primary-foreground hover:brightness-110`;
+const outlineLg = `${baseButton} h-11 rounded-md px-8 border border-border bg-background hover:bg-muted`;
 
 export const metadata: Metadata = {
   title: "AI-помощник для продаж в Telegram",
@@ -102,10 +108,10 @@ export default function HomeLandingPage() {
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <Link href="/register" className={buttonVariants({ variant: "default", size: "default" })}>
+                <Link href="/register" className={defaultMd}>
                   Зарегистрироваться
                 </Link>
-                <Link href="/login" className={buttonVariants({ variant: "outline", size: "default" })}>
+                <Link href="/login" className={outlineMd}>
                   Войти
                 </Link>
               </div>
@@ -465,10 +471,10 @@ export default function HomeLandingPage() {
           </div>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Link href="/register" className={buttonVariants({ variant: "default", size: "lg" })}>
+            <Link href="/register" className={defaultLg}>
               Зарегистрироваться
             </Link>
-            <Link href="/login" className={buttonVariants({ variant: "outline", size: "lg" })}>
+            <Link href="/login" className={outlineLg}>
               Войти
             </Link>
           </div>
@@ -487,10 +493,10 @@ export default function HomeLandingPage() {
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center lg:justify-end">
-                <Link href="/register" className={buttonVariants({ variant: "default", size: "lg" })}>
+                <Link href="/register" className={defaultLg}>
                   Зарегистрироваться
                 </Link>
-                <Link href="/login" className={buttonVariants({ variant: "outline", size: "lg" })}>
+                <Link href="/login" className={outlineLg}>
                   Войти
                 </Link>
               </div>

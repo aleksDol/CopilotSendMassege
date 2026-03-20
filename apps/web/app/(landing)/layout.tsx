@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
-import { buttonVariants } from "@/components/ui/button";
+
+const baseButton =
+  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
+const smButton = "h-9 px-3";
+const outlineSm = `${baseButton} ${smButton} border border-border bg-background hover:bg-muted`;
+const defaultSm = `${baseButton} ${smButton} bg-primary text-primary-foreground hover:brightness-110`;
 
 export default function LandingLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -15,10 +20,10 @@ export default function LandingLayout({ children }: { children: React.ReactNode 
           </Link>
 
           <nav className="flex items-center gap-2">
-            <Link href="/login" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            <Link href="/login" className={outlineSm}>
               Войти
             </Link>
-            <Link href="/register" className={buttonVariants({ variant: "default", size: "sm" })}>
+            <Link href="/register" className={defaultSm}>
               Зарегистрироваться
             </Link>
           </nav>
