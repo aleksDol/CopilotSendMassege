@@ -51,12 +51,10 @@ export const metadata: Metadata = {
 
 function ScreenshotCard({
   src,
-  filename,
   title,
   details
 }: {
   src: string;
-  filename: string;
   title: string;
   details: string;
 }) {
@@ -65,13 +63,10 @@ function ScreenshotCard({
       <div className="space-y-3">
         <div className="space-y-1">
           <h3 className="text-sm font-semibold">{title}</h3>
-          <p className="text-xs text-muted-foreground">
-            Файл: <span className="font-mono text-foreground/80">{filename}</span>
-          </p>
         </div>
 
-        <div className="relative aspect-[16/10] w-full overflow-hidden rounded-lg border border-border bg-background/30">
-          <Image src={src} alt={title} fill className="object-cover" sizes="(max-width: 768px) 100vw, 50vw" />
+        <div className="relative aspect-[16/10] w-full overflow-hidden rounded-lg border border-border bg-background/30 p-2">
+          <Image src={src} alt={title} fill className="object-contain p-2" sizes="(max-width: 768px) 100vw, 50vw" />
         </div>
       </div>
 
@@ -379,25 +374,21 @@ export default function HomeLandingPage() {
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             <ScreenshotCard
               src="/landing/screenshot-chats-overview.png"
-              filename="screenshot-chats-overview.png"
               title="Список чатов и активный диалог"
               details="Скриншот списка чатов и активного диалога в интерфейсе."
             />
             <ScreenshotCard
               src="/landing/screenshot-ai-suggestion-panel.png"
-              filename="screenshot-ai-suggestion-panel.png"
               title="AI-подсказка ответа в чате"
               details="Скриншот панели с AI-подсказкой: варианты ответа и действия (принять/редактировать)."
             />
             <ScreenshotCard
               src="/landing/screenshot-dashboard-metrics.png"
-              filename="screenshot-dashboard-metrics.png"
               title="Дашборд с ключевыми метриками"
               details="Скриншот дашборда: активные диалоги, ожидают ответа, follow-up и другие метрики."
             />
             <ScreenshotCard
               src="/landing/screenshot-tasks-followup.png"
-              filename="screenshot-tasks-followup.png"
               title="Задачи и follow-up"
               details="Скриншот задач: что требует ответа и какие follow-up нужно выполнить."
             />
