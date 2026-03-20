@@ -45,7 +45,17 @@ function getStoredCollapsed(): boolean {
   }
 }
 
-export function AppSidebar({ onClose }: { onClose?: () => void }) {
+export function AppSidebar({
+  onClose,
+  forceCollapsed = false,
+  forceExpanded = false,
+  onExpandRequest
+}: {
+  onClose?: () => void;
+  forceCollapsed?: boolean;
+  forceExpanded?: boolean;
+  onExpandRequest?: () => void;
+}) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -54,6 +64,10 @@ export function AppSidebar({ onClose }: { onClose?: () => void }) {
   }, []);
 
   const toggle = () => {
+    if (forceCollapsed) {
+      onExpandRequest?.();
+      return;
+    }
     setCollapsed((prev) => {
       const next = !prev;
       try {
@@ -65,15 +79,17 @@ export function AppSidebar({ onClose }: { onClose?: () => void }) {
     });
   };
 
+  const effectiveCollapsed = forceCollapsed ? true : forceExpanded ? false : collapsed;
+
   return (
     <aside
       className={cn(
         "flex h-full shrink-0 flex-col border-r border-border bg-card/95 backdrop-blur transition-[width] duration-200 ease-out",
-        collapsed ? "w-16" : "w-72"
+        effectiveCollapsed ? "w-16" : "w-72"
       )}
     >
-      <div className={cn("flex items-center border-b border-border", collapsed ? "justify-center py-3" : "justify-between px-4 py-3")}>
-        {!collapsed && (
+      <div className={cn("flex items-center border-b border-border", effectiveCollapsed ? "justify-center py-3" : "justify-between px-4 py-3")}>
+        {!effectiveCollapsed && (
           <div className="min-w-0 px-2">
             <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">AI Sales Assistant</div>
             <div className="truncate text-lg font-semibold">Control panel</div>
@@ -84,12 +100,12 @@ export function AppSidebar({ onClose }: { onClose?: () => void }) {
           onClick={toggle}
           className={cn(
             "rounded-lg p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground",
-            collapsed && "mx-auto"
+            effectiveCollapsed && "mx-auto"
           )}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={effectiveCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-label={effectiveCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          {collapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+          {effectiveCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
         </button>
       </div>
 
@@ -102,21 +118,21 @@ export function AppSidebar({ onClose }: { onClose?: () => void }) {
               key={item.href}
               href={item.href}
               onClick={onClose}
-              title={collapsed ? item.label : undefined}
+              title={effectiveCollapsed ? item.label : undefined}
               className={cn(
                 "flex items-center rounded-lg py-2 text-sm transition",
-                collapsed ? "justify-center px-0" : "gap-3 px-3",
+                effectiveCollapsed ? "justify-center px-0" : "gap-3 px-3",
                 active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              {!collapsed && <span className="truncate">{item.label}</span>}
+              {!effectiveCollapsed && <span className="truncate">{item.label}</span>}
             </Link>
           );
         })}
       </nav>
 
-      {!collapsed && <div className="px-4 pt-4 text-xs uppercase tracking-[0.2em] text-muted-foreground">Settings</div>}
+      {!effectiveCollapsed && <div className="px-4 pt-4 text-xs uppercase tracking-[0.2em] text-muted-foreground">Settings</div>}
       <nav className="space-y-1 px-2 pt-2">
         {settingsItems.map((item) => {
           const Icon = item.icon;
@@ -126,21 +142,21 @@ export function AppSidebar({ onClose }: { onClose?: () => void }) {
               key={item.href}
               href={item.href}
               onClick={onClose}
-              title={collapsed ? item.label : undefined}
+              title={effectiveCollapsed ? item.label : undefined}
               className={cn(
                 "flex items-center rounded-lg py-2 text-sm transition",
-                collapsed ? "justify-center px-0" : "gap-3 px-3",
+                effectiveCollapsed ? "justify-center px-0" : "gap-3 px-3",
                 active ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              {!collapsed && <span className="truncate">{item.label}</span>}
+              {!effectiveCollapsed && <span className="truncate">{item.label}</span>}
             </Link>
           );
         })}
       </nav>
 
-      {!collapsed && <div className="mt-8 px-4 text-xs text-muted-foreground">MVP v1</div>}
+      {!effectiveCollapsed && <div className="mt-8 px-4 text-xs text-muted-foreground">MVP v1</div>}
     </aside>
   );
 }

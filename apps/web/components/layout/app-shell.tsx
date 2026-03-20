@@ -45,10 +45,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         />
       ) : null}
 
-      <div
-        className={`absolute inset-y-0 left-0 z-40 transition-transform duration-200 ease-out ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
-      >
-        <AppSidebar onClose={() => setSidebarOpen(false)} />
+      <div className="absolute inset-y-0 left-0 z-40">
+        <AppSidebar
+          onClose={() => setSidebarOpen(false)}
+          forceCollapsed={!isSidebarOpen}
+          forceExpanded={isSidebarOpen}
+          onExpandRequest={() => setSidebarOpen(true)}
+        />
       </div>
     </div>
   );
