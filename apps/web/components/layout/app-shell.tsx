@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { AppHeader } from "./app-header";
 import { AppSidebar } from "./app-sidebar";
 
 const SIDEBAR_OPEN_STORAGE_KEY = "app-sidebar-open";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const isChatsPage = pathname === "/chats" || pathname.startsWith("/chats/");
 
   useEffect(() => {
     try {
@@ -36,7 +39,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <AppHeader onSidebarToggle={() => setSidebarOpen(!isSidebarOpen)} isSidebarOpen={isSidebarOpen} />
         <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {children}
+          <div className={isChatsPage ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "flex min-h-0 flex-1 flex-col overflow-auto px-4 py-4 md:px-6 md:py-5"}>
+            {children}
+          </div>
         </main>
       </div>
 
