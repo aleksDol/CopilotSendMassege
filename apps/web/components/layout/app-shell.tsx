@@ -29,7 +29,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="relative flex h-screen min-h-screen overflow-hidden bg-background">
-      <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
+      <div className="relative z-20 shrink-0">
+        <AppSidebar forceCollapsed onExpandRequest={() => setSidebarOpen(true)} />
+      </div>
+
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <AppHeader onSidebarToggle={() => setSidebarOpen(!isSidebarOpen)} isSidebarOpen={isSidebarOpen} />
         <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {children}
@@ -39,20 +43,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {isSidebarOpen ? (
         <button
           type="button"
-          className="absolute inset-0 z-30 bg-background/45 transition-opacity"
+          className="absolute inset-y-0 left-16 right-0 z-30 bg-background/45 transition-opacity"
           aria-label="Close sidebar overlay"
           onClick={() => setSidebarOpen(false)}
         />
       ) : null}
 
-      <div className="absolute inset-y-0 left-0 z-40">
-        <AppSidebar
-          onClose={() => setSidebarOpen(false)}
-          forceCollapsed={!isSidebarOpen}
-          forceExpanded={isSidebarOpen}
-          onExpandRequest={() => setSidebarOpen(true)}
-        />
-      </div>
+      {isSidebarOpen ? (
+        <div className="absolute inset-y-0 left-0 z-40">
+          <AppSidebar onClose={() => setSidebarOpen(false)} forceExpanded />
+        </div>
+      ) : null}
     </div>
   );
 }
