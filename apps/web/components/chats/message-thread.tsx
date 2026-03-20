@@ -15,7 +15,7 @@ export function MessageThread({ items }: { items: MessageItem[] }) {
   }, [ordered.length]);
 
   return (
-    <div ref={containerRef} className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto p-4">
+    <div ref={containerRef} className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto px-4 py-3">
       {ordered.map((message) => (
         <div
           key={message.id}

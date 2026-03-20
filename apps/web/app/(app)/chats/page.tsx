@@ -203,6 +203,10 @@ export default function ChatsPage() {
   });
 
   const selectedId = selectedConversationId;
+  const selectedConversation = useMemo(
+    () => conversations.data?.items.find((item) => item.conversationId === selectedId) ?? null,
+    [conversations.data?.items, selectedId]
+  );
 
   useChatsRealtime(selectedId, handleNewMessageInOtherChat);
 
@@ -286,6 +290,22 @@ export default function ChatsPage() {
   });
 
   const latestSuggestion = useMemo(() => suggestions.data?.items[0] ?? null, [suggestions.data]);
+  const threadPeer = useMemo(
+    () => (messages.data?.items ?? []).find((message) => message.direction === "inbound" && message.participant),
+    [messages.data?.items]
+  );
+
+  const activeChatSubtitle = useMemo(() => {
+    const username = threadPeer?.participant?.username?.trim();
+    if (username) return `@${username}`;
+
+    const fullName = threadPeer?.participant?.fullName?.trim();
+    if (fullName) return fullName;
+
+    if (selectedConversation?.isWaitingForReply) return "Ожидает ответа";
+    if (selectedConversation?.leadStage) return `Этап: ${selectedConversation.leadStage}`;
+    return null;
+  }, [selectedConversation?.isWaitingForReply, selectedConversation?.leadStage, threadPeer?.participant?.fullName, threadPeer?.participant?.username]);
 
   const handleSend = async (text: string) => {
     if (!selectedId?.trim()) return;
@@ -317,12 +337,12 @@ export default function ChatsPage() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 gap-4 overflow-hidden p-4 md:p-6">
-      <aside className="flex h-[320px] min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-lg border border-border bg-card lg:h-full lg:w-[300px]">
+    <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[300px_minmax(0,1fr)_360px]">
+      <aside className="flex min-h-0 w-full shrink-0 flex-col overflow-hidden border-r border-border bg-card/50">
         <div className="shrink-0 border-b border-border px-4 py-3">
           <h2 className="font-semibold">Chats</h2>
         </div>
-        <div className="min-h-0 flex-1 overflow-hidden p-3">
+        <div className="min-h-0 flex-1 overflow-hidden p-2">
           <ConversationList
             items={conversations.data.items}
             selectedId={selectedId}
@@ -334,8 +354,14 @@ export default function ChatsPage() {
         </div>
       </aside>
 
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
-        <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-r border-border bg-card">
+        <header className="shrink-0 border-b border-border px-4 py-3">
+          <div className="truncate text-sm font-semibold">{selectedConversation?.title ?? "Select a chat"}</div>
+          {activeChatSubtitle ? (
+            <div className="truncate pt-0.5 text-xs text-muted-foreground">{activeChatSubtitle}</div>
+          ) : null}
+        </header>
+        <div className="min-h-0 flex-1 overflow-hidden">
           <MessageThread items={messages.data?.items ?? []} />
         </div>
         <MessageComposer
@@ -351,8 +377,8 @@ export default function ChatsPage() {
         />
       </section>
 
-      <aside className="hidden h-full min-h-0 w-[360px] shrink-0 flex-col overflow-hidden lg:flex">
-        <div className="min-h-0 flex-1 overflow-y-auto">
+      <aside className="hidden h-full min-h-0 w-[360px] shrink-0 flex-col overflow-hidden bg-card/40 lg:flex">
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
           <AiSuggestionPanel
             suggestion={latestSuggestion}
             context={lastSuggestionContext}

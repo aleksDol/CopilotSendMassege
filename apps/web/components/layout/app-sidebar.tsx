@@ -45,7 +45,7 @@ function getStoredCollapsed(): boolean {
   }
 }
 
-export function AppSidebar() {
+export function AppSidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -68,7 +68,7 @@ export function AppSidebar() {
   return (
     <aside
       className={cn(
-        "hidden shrink-0 border-r border-border bg-card/80 backdrop-blur transition-[width] duration-200 ease-out md:block",
+        "flex h-full shrink-0 border-r border-border bg-card/95 backdrop-blur transition-[width] duration-200 ease-out",
         collapsed ? "w-16" : "w-72"
       )}
     >
@@ -101,6 +101,7 @@ export function AppSidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={onClose}
               title={collapsed ? item.label : undefined}
               className={cn(
                 "flex items-center rounded-lg py-2 text-sm transition",
@@ -124,6 +125,7 @@ export function AppSidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={onClose}
               title={collapsed ? item.label : undefined}
               className={cn(
                 "flex items-center rounded-lg py-2 text-sm transition",

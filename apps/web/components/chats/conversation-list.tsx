@@ -37,7 +37,7 @@ export function ConversationList({
   });
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-2">
       <Input
         placeholder="Search chats"
         value={filters.search}
@@ -66,7 +66,7 @@ export function ConversationList({
           onChange={(event) => onFiltersChange({ ...filters, leadStage: event.target.value })}
         />
       </div>
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
         {filtered.map((item) => {
           // `unreadByConversationId` is a UI marker stored in localStorage.
           // The red highlight + unread preview should only be shown when the backend

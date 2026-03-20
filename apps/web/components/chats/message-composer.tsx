@@ -41,14 +41,20 @@ export function MessageComposer({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-2 rounded-lg border border-border bg-card p-3">
-      <Textarea value={value} onChange={(event) => onChange(event.target.value)} placeholder="Type your reply..." rows={3} />
-      {displayError ? <p className="text-xs text-destructive">{displayError}</p> : null}
-      <div className="flex justify-end">
-        <Button type="submit" disabled={isSending || sendDisabled}>
+    <form onSubmit={handleSubmit} className="shrink-0 border-t border-border bg-card px-4 py-3">
+      <div className="flex items-end gap-2">
+        <Textarea
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="Type your reply..."
+          rows={2}
+          className="min-h-[44px] resize-none"
+        />
+        <Button type="submit" disabled={isSending || sendDisabled} className="h-10 shrink-0 px-4">
           {isSending ? "Sending..." : "Send"}
         </Button>
       </div>
+      {displayError ? <p className="text-xs text-destructive">{displayError}</p> : null}
     </form>
   );
 }
