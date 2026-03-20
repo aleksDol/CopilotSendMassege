@@ -11,6 +11,7 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
 
     return getDashboardOverview(app, {
       companyId: scope.companyId,
+      userId: scope.userId,
       windowDays: query.windowDays
     });
   });
