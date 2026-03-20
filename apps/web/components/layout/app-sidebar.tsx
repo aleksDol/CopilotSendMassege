@@ -68,7 +68,7 @@ export function AppSidebar({ onClose }: { onClose?: () => void }) {
   return (
     <aside
       className={cn(
-        "flex h-full shrink-0 border-r border-border bg-card/95 backdrop-blur transition-[width] duration-200 ease-out",
+        "flex h-full shrink-0 flex-col border-r border-border bg-card/95 backdrop-blur transition-[width] duration-200 ease-out",
         collapsed ? "w-16" : "w-72"
       )}
     >
