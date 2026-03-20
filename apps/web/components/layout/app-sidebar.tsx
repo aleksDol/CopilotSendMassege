@@ -68,6 +68,10 @@ export function AppSidebar({
       onExpandRequest?.();
       return;
     }
+    if (forceExpanded) {
+      onClose?.();
+      return;
+    }
     setCollapsed((prev) => {
       const next = !prev;
       try {
