@@ -8,6 +8,18 @@ dotenv.config({ path: path.resolve(__dirname, "../../../../.env") });
 
 import { z } from "zod";
 
+const booleanFromEnv = z.preprocess((value) => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1") return true;
+    if (normalized === "false" || normalized === "0") return false;
+  }
+  return value;
+}, z.boolean());
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
@@ -35,7 +47,7 @@ const envSchema = z.object({
   SMTP_PORT: z.coerce.number().int().positive().optional(),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
-  SMTP_SECURE: z.coerce.boolean().default(false),
+  SMTP_SECURE: booleanFromEnv.default(false),
   EMAIL_CODE_SECRET: z.string().min(16).default("replace_me_email_code_secret"),
   EMAIL_CODE_TTL_MINUTES: z.coerce.number().int().min(1).max(60).default(10),
   EMAIL_CODE_RESEND_COOLDOWN_SECONDS: z.coerce.number().int().min(10).max(600).default(60),
