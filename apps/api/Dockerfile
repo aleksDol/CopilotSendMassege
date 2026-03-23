@@ -13,7 +13,7 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @repo/db prisma:generate \
   && pnpm --filter @repo/ai-core build \
   && pnpm --filter @repo/api build
-RUN pnpm prune --prod
+#RUN pnpm prune --prod
 
 FROM node:20-alpine AS runner
 
