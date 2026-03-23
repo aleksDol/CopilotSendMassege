@@ -37,6 +37,11 @@ enum UserRole {
   MEMBER
 }
 
+enum EmailAuthCodePurpose {
+  LOGIN_2FA
+  REGISTER
+}
+
 enum ChannelType {
   TELEGRAM
   WHATSAPP
@@ -267,6 +272,29 @@ model User {
 
   @@index([companyId])
   @@index([companyId, role])
+}
+
+model EmailAuthCode {
+  id             String               @id @default(uuid()) @db.Uuid
+  email          String
+  codeHash       String
+  challengeId    String               @unique
+  purpose        EmailAuthCodePurpose
+  expiresAt      DateTime
+  usedAt         DateTime?
+  attemptCount   Int                  @default(0)
+  maxAttempts    Int
+  codeSentCount  Int                  @default(1)
+  lastSentAt     DateTime
+  ipAddress      String?
+  userAgent      String?
+  payload        Json?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@index([email, purpose, createdAt(sort: Desc)])
+  @@index([challengeId, purpose, usedAt])
+  @@index([expiresAt])
 }
 
 model Subscription {
