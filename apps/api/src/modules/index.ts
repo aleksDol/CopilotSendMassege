@@ -17,6 +17,7 @@ import teamRoutes from "./team/routes.js";
 import userRoutes from "./users/routes.js";
 import workspaceRoutes from "./workspace/routes.js";
 import settingsRoutes from "./settings/routes.js";
+import adminRoutes from "./admin/routes.js";
 
 const apiModules: FastifyPluginAsync = async (app) => {
   await app.register(healthRoutes);
@@ -37,6 +38,7 @@ const apiModules: FastifyPluginAsync = async (app) => {
   await app.register(settingsRoutes);
   await app.register(companyRoutes);
   await app.register(userRoutes);
+  await app.register(adminRoutes);
 };
 
 export default apiModules;

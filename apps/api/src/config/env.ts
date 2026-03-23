@@ -56,7 +56,9 @@ const envSchema = z.object({
   AI_MAX_CONTEXT_MESSAGES: z.coerce.number().int().min(1).max(100).default(20),
   REDIS_CACHE_TTL: z.coerce.number().int().min(5).max(600).default(45),
   AI_WORKER_CONCURRENCY: z.coerce.number().int().positive().default(2),
-  TELEGRAM_WORKER_CONCURRENCY: z.coerce.number().int().positive().default(2)
+  TELEGRAM_WORKER_CONCURRENCY: z.coerce.number().int().positive().default(2),
+  /** Comma-separated emails allowed to use /admin API (empty = no platform admins). */
+  ADMIN_EMAILS: z.string().optional().default("")
 });
 
 const parsedEnv = envSchema.safeParse({
@@ -95,7 +97,8 @@ const parsedEnv = envSchema.safeParse({
   AI_MAX_CONTEXT_MESSAGES: process.env.AI_MAX_CONTEXT_MESSAGES,
   REDIS_CACHE_TTL: process.env.REDIS_CACHE_TTL,
   AI_WORKER_CONCURRENCY: process.env.AI_WORKER_CONCURRENCY,
-  TELEGRAM_WORKER_CONCURRENCY: process.env.TELEGRAM_WORKER_CONCURRENCY
+  TELEGRAM_WORKER_CONCURRENCY: process.env.TELEGRAM_WORKER_CONCURRENCY,
+  ADMIN_EMAILS: process.env.ADMIN_EMAILS
 });
 
 if (!parsedEnv.success) {
