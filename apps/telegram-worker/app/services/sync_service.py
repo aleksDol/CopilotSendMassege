@@ -193,6 +193,12 @@ async def run_initial_sync(
                             "senderId": sender_id,
                             "dialogType": conversation_type,
                             "peerIsHuman": True,
+                            "peerExternalId": str(getattr(entity, "id", "")),
+                            "peerFullName": " ".join(
+                                part for part in [getattr(entity, "first_name", None), getattr(entity, "last_name", None)] if part
+                            ).strip()
+                            or None,
+                            "peerUsername": getattr(entity, "username", None),
                             "peerIsBot": bool(getattr(entity, "bot", False)),
                             "isServiceDialog": bool(getattr(entity, "support", False) or getattr(entity, "is_self", False)),
                             "hasMedia": bool(getattr(message, "media", None)),
@@ -292,8 +298,35 @@ async def send_message(
                         "id": sent.id,
                         "out": True,
                         "senderId": me.id,
+                        "dialogType": _resolve_conversation_type(resolved_entity),
+                        "peerIsHuman": True,
+                        "peerExternalId": str(getattr(resolved_entity, "id", "")),
+                        "peerFullName": " ".join(
+                            part
+                            for part in [
+                                getattr(resolved_entity, "first_name", None),
+                                getattr(resolved_entity, "last_name", None),
+                            ]
+                            if part
+                        ).strip()
+                        or None,
+                        "peerUsername": getattr(resolved_entity, "username", None),
+                        "peerIsBot": bool(getattr(resolved_entity, "bot", False)),
+                        "isServiceDialog": bool(
+                            getattr(resolved_entity, "support", False) or getattr(resolved_entity, "is_self", False)
+                        ),
                         "hasMedia": bool(getattr(sent, "media", None)),
                     },
+                    "conversationTitle": " ".join(
+                        part
+                        for part in [
+                            getattr(resolved_entity, "first_name", None),
+                            getattr(resolved_entity, "last_name", None),
+                        ]
+                        if part
+                    ).strip()
+                    or getattr(resolved_entity, "username", None)
+                    or str(getattr(resolved_entity, "id", external_conversation_id)),
                     "hasAttachment": bool(getattr(sent, "media", None)),
                 }
             )

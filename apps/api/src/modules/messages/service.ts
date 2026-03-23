@@ -197,6 +197,7 @@ export const sendConversationMessage = async (
 
   return {
     status: response.status,
-    externalMessageId: (response.details as { externalMessageId?: string } | undefined)?.externalMessageId ?? null
+    externalMessageId: (response.details as { externalMessageId?: string } | undefined)?.externalMessageId ?? null,
+    queue: (response as { queue?: { queued?: boolean; queueWaitMs?: number; attempts?: number } }).queue ?? null
   };
 };

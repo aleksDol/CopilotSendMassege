@@ -10,7 +10,8 @@ export function MessageComposer({
   onSend,
   isSending,
   sendDisabled = false,
-  sendError = null
+  sendError = null,
+  sendInfo = null
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -18,6 +19,7 @@ export function MessageComposer({
   isSending: boolean;
   sendDisabled?: boolean;
   sendError?: string | null;
+  sendInfo?: string | null;
 }) {
   const [localError, setLocalError] = useState<string | null>(null);
   const submittingRef = useRef(false);
@@ -54,6 +56,7 @@ export function MessageComposer({
           {isSending ? "Sending..." : "Send"}
         </Button>
       </div>
+      {sendInfo ? <p className="text-xs text-muted-foreground">{sendInfo}</p> : null}
       {displayError ? <p className="text-xs text-destructive">{displayError}</p> : null}
     </form>
   );

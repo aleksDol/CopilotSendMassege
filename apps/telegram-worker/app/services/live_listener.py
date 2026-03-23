@@ -216,6 +216,12 @@ async def _run_account_listener(account: ConnectedAccount, crypto: SessionCrypto
                             "senderId": sender_id,
                             "dialogType": conversation_type,
                             "peerIsHuman": True,
+                            "peerExternalId": str(getattr(chat, "id", "")),
+                            "peerFullName": " ".join(
+                                part for part in [getattr(chat, "first_name", None), getattr(chat, "last_name", None)] if part
+                            ).strip()
+                            or None,
+                            "peerUsername": getattr(chat, "username", None),
                             "peerIsBot": bool(getattr(chat, "bot", False)),
                             "isServiceDialog": bool(getattr(chat, "support", False) or getattr(chat, "is_self", False)),
                             "hasMedia": has_attachment,
@@ -238,8 +244,8 @@ async def _run_account_listener(account: ConnectedAccount, crypto: SessionCrypto
                 except Exception as exc:
                     logger.warning("listener handler error telegramAccountId=%s err=%s", account.telegram_account_id, exc)
 
-            # Incoming-only reduces noise and avoids looping on our own outbound messages.
-            client.add_event_handler(on_new_message, events.NewMessage(incoming=True))
+            # Track both directions so outbound-first chats appear immediately without waiting for inbound reply.
+            client.add_event_handler(on_new_message, events.NewMessage(incoming=True, outgoing=True))
 
             logger.info(
                 "listener connected company=%s channelAccount=%s telegramAccountId=%s",

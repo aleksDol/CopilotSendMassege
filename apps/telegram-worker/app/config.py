@@ -29,6 +29,15 @@ class Settings(BaseSettings):
     telegram_live_listener_enabled: bool = Field(default=True, alias="TELEGRAM_LIVE_LISTENER_ENABLED")
     telegram_live_listener_refresh_seconds: int = Field(default=20, alias="TELEGRAM_LIVE_LISTENER_REFRESH_SECONDS")
     telegram_live_listener_log_events: bool = Field(default=False, alias="TELEGRAM_LIVE_LISTENER_LOG_EVENTS")
+    telegram_min_send_interval_ms: int = Field(default=2000, alias="TELEGRAM_MIN_SEND_INTERVAL_MS")
+    telegram_max_sends_per_minute: int = Field(default=20, alias="TELEGRAM_MAX_SENDS_PER_MINUTE")
+    telegram_max_sends_per_5_minutes: int = Field(default=60, alias="TELEGRAM_MAX_SENDS_PER_5_MINUTES")
+    telegram_max_new_conversations_per_hour: int = Field(default=10, alias="TELEGRAM_MAX_NEW_CONVERSATIONS_PER_HOUR")
+    telegram_send_retry_max_attempts: int = Field(default=2, alias="TELEGRAM_SEND_RETRY_MAX_ATTEMPTS")
+    telegram_safety_mode_error_threshold: int = Field(default=5, alias="TELEGRAM_SAFETY_MODE_ERROR_THRESHOLD")
+    telegram_safety_mode_cooldown_minutes: int = Field(default=30, alias="TELEGRAM_SAFETY_MODE_COOLDOWN_MINUTES")
+    telegram_sync_min_interval_seconds: int = Field(default=30, alias="TELEGRAM_SYNC_MIN_INTERVAL_SECONDS")
+    telegram_max_concurrent_syncs_per_account: int = Field(default=1, alias="TELEGRAM_MAX_CONCURRENT_SYNCS_PER_ACCOUNT")
 
 
 settings = Settings()

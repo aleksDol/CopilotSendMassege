@@ -59,6 +59,16 @@ export type MessagesResponse = {
   items: MessageItem[];
 };
 
+export type SendMessageResponse = {
+  status: string;
+  externalMessageId?: string | null;
+  queue?: {
+    queued?: boolean;
+    queueWaitMs?: number;
+    attempts?: number;
+  } | null;
+};
+
 export type TaskItem = {
   id: string;
   taskType: string;

@@ -34,6 +34,7 @@ from app.services.auth_flow import (
 )
 from app.services.sync_service import list_connected_accounts, run_initial_sync, send_message
 from app.services.live_listener import LiveListenerManager
+from app.services.safety import safety_service
 
 logger = logging.getLogger("telegram-worker")
 logging.basicConfig(
@@ -247,12 +248,16 @@ async def internal_sync(payload: SyncRequest) -> dict:
     logger.info("sync requested for company=%s channelAccount=%s", payload.company_id, payload.channel_account_id)
     async with concurrency_limiter:
         try:
-            result = await run_initial_sync(
+            result = await safety_service.execute_sync(
                 company_id=payload.company_id,
                 channel_account_id=payload.channel_account_id,
-                dialogs_limit=payload.dialogs_limit,
-                messages_per_dialog=payload.messages_per_dialog,
-                crypto=crypto,
+                sync_coro_factory=lambda: run_initial_sync(
+                    company_id=payload.company_id,
+                    channel_account_id=payload.channel_account_id,
+                    dialogs_limit=payload.dialogs_limit,
+                    messages_per_dialog=payload.messages_per_dialog,
+                    crypto=crypto,
+                ),
             )
         except WorkerError:
             raise
@@ -279,12 +284,17 @@ async def internal_send_message(payload: SendMessageRequest) -> dict:
     )
     async with concurrency_limiter:
         try:
-            return await send_message(
+            return await safety_service.execute_send(
                 company_id=payload.company_id,
                 channel_account_id=payload.channel_account_id,
                 external_conversation_id=payload.external_conversation_id,
-                text=payload.text,
-                crypto=crypto,
+                send_coro_factory=lambda: send_message(
+                    company_id=payload.company_id,
+                    channel_account_id=payload.channel_account_id,
+                    external_conversation_id=payload.external_conversation_id,
+                    text=payload.text,
+                    crypto=crypto,
+                ),
             )
         except WorkerError:
             raise

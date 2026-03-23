@@ -29,7 +29,7 @@ export function AiSuggestionPanel({
   const [mode, setMode] = useState<Mode>("default");
 
   return (
-    <Card className="h-full">
+    <Card className="h-full border-border/80 bg-card/95 shadow-sm">
       <CardHeader>
         <CardTitle>ИИ-копилот</CardTitle>
         <CardDescription>Сгенерировать один практичный вариант ответа.</CardDescription>
@@ -54,36 +54,64 @@ export function AiSuggestionPanel({
         </div>
 
         <div className="space-y-2">
-          <div className="text-xs uppercase text-muted-foreground">Подсказка</div>
-          {suggestion ? (
-            <div className="space-y-3 rounded-lg border border-border bg-muted/40 p-3">
-              <p className="text-sm leading-relaxed">{suggestion.text}</p>
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="outline">режим: {suggestion.mode}</Badge>
-                <Badge variant="outline">статус: {suggestion.status}</Badge>
-                {suggestion.confidence !== null ? <Badge variant="outline">уверенность: {suggestion.confidence}</Badge> : null}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="secondary" onClick={() => onInsert(suggestion.text)}>
-                  Вставить в поле
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => onAccept(suggestion.id)}>
-                  Принять
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => onReject(suggestion.id)}>
-                  Отклонить
-                </Button>
-              </div>
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">Подсказка</div>
+          <div className="space-y-4 rounded-xl border border-border/80 bg-gradient-to-b from-muted/40 to-card p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Предложенный ответ</div>
+              <Badge variant="outline" className="h-5 rounded-full px-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                AI Copilot
+              </Badge>
             </div>
-          ) : (
-            <p className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
-              Подсказки пока нет. Выберите режим и нажмите «Предложить ответ».
-            </p>
-          )}
+
+            {isLoading && !suggestion ? (
+              <div className="space-y-3">
+                <div className="h-3 w-4/5 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-full animate-pulse rounded bg-muted" />
+                <div className="h-3 w-3/4 animate-pulse rounded bg-muted" />
+                <div className="h-8 w-full animate-pulse rounded-md bg-muted/80" />
+              </div>
+            ) : suggestion ? (
+              <>
+                <div className="max-h-64 overflow-y-auto rounded-lg border border-border/70 bg-card/90 px-4 py-3">
+                  <p className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground/95">{suggestion.text}</p>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  <Badge variant="outline" className="rounded-full border-border/70 bg-muted/20 px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
+                    режим: {suggestion.mode}
+                  </Badge>
+                  <Badge variant="outline" className="rounded-full border-border/70 bg-muted/20 px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
+                    статус: {suggestion.status}
+                  </Badge>
+                  {suggestion.confidence !== null ? (
+                    <Badge variant="outline" className="rounded-full border-border/70 bg-muted/20 px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
+                      уверенность: {suggestion.confidence}
+                    </Badge>
+                  ) : null}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 border-t border-border/70 pt-3">
+                  <Button size="sm" onClick={() => onInsert(suggestion.text)}>
+                    Вставить в поле
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => onAccept(suggestion.id)}>
+                    Принять
+                  </Button>
+                  <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => onReject(suggestion.id)}>
+                    Отклонить
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div className="rounded-lg border border-dashed border-border/80 bg-card/70 px-4 py-5 text-sm leading-relaxed text-muted-foreground">
+                Подсказки пока нет. Выберите режим выше и нажмите «Предложить ответ», чтобы получить аккуратный вариант ответа для клиента.
+              </div>
+            )}
+          </div>
         </div>
 
         {context ? (
-          <div className="space-y-1 rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
+          <div className="space-y-1 rounded-lg border border-border/70 bg-card/80 p-3 text-xs text-muted-foreground">
             <div>этап лида: {context.leadStage ?? "-"}</div>
             <div>температура: {context.leadTemperature ?? "-"}</div>
             <div>последний интент: {context.lastClientIntent ?? "-"}</div>

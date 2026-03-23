@@ -25,6 +25,12 @@ type MessageEventPayload = {
   hasAttachment?: boolean;
 };
 
+const getRawString = (raw: unknown): string | null => {
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  return value.length ? value : null;
+};
+
 const toConversationType = (payload: MessageEventPayload): "DIRECT" | "GROUP" | "CHANNEL" => {
   const kind = payload.rawPayload?.dialogType;
   if (kind === "group") {
@@ -101,6 +107,28 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
     }
   });
 
+  let peerParticipantId: string | null = null;
+  if (payload.isOutgoing) {
+    const peerExternalId = getRawString(payload.rawPayload?.peerExternalId);
+    if (peerExternalId) {
+      const peerParticipant = await upsertParticipant({
+        prisma: app.prisma,
+        companyId,
+        channelAccountId,
+        externalParticipantId: peerExternalId,
+        fullName: getRawString(payload.rawPayload?.peerFullName) ?? null,
+        username: getRawString(payload.rawPayload?.peerUsername) ?? null,
+        isSelf: false,
+        metadata: {
+          senderType: "user",
+          isBot: Boolean(payload.rawPayload?.peerIsBot),
+          isServiceDialog: Boolean(payload.rawPayload?.isServiceDialog)
+        }
+      });
+      peerParticipantId = peerParticipant.id;
+    }
+  }
+
   const conversation = await app.prisma.conversation.upsert({
     where: {
       channelAccountId_externalConversationId: {
@@ -133,6 +161,22 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
       participantId: participant.id
     }
   });
+
+  if (peerParticipantId) {
+    await app.prisma.conversationParticipant.upsert({
+      where: {
+        conversationId_participantId: {
+          conversationId: conversation.id,
+          participantId: peerParticipantId
+        }
+      },
+      update: {},
+      create: {
+        conversationId: conversation.id,
+        participantId: peerParticipantId
+      }
+    });
+  }
 
   // Idempotency guard: worker sync and live-listener can deliver the same message.
   // If we already have this message, do NOT update conversation_state counters again.

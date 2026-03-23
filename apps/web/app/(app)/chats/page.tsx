@@ -21,6 +21,7 @@ import {
 import { useChatsRealtime, type NewMessagePayload } from "@/lib/hooks/use-chats-realtime";
 import { aiApi } from "@/lib/api/ai";
 import { useAuth } from "@/lib/auth/context";
+import { ApiError } from "@/lib/api/errors";
 
 const CONVERSATIONS_POLL_INTERVAL_MS = 8_000;
 const MESSAGES_POLL_INTERVAL_MS = 3_000;
@@ -194,6 +195,7 @@ export default function ChatsPage() {
   } | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [sendInfo, setSendInfo] = useState<string | null>(null);
 
   const conversations = useConversations({
     waitingForReply: filters.waitingForReply === "all" ? undefined : filters.waitingForReply === "true",
@@ -310,11 +312,37 @@ export default function ChatsPage() {
   const handleSend = async (text: string) => {
     if (!selectedId?.trim()) return;
     setSendError(null);
+    setSendInfo("Sending...");
     try {
-      await sendMessage.mutateAsync(text);
+      const response = await sendMessage.mutateAsync(text);
+      const queued = response?.queue?.queued;
+      const queueWaitMs = response?.queue?.queueWaitMs ?? 0;
+      const attempts = response?.queue?.attempts ?? 1;
+      if (queued || queueWaitMs > 0) {
+        setSendInfo(`Queued and sent (${Math.max(1, Math.round(queueWaitMs / 100) / 10)}s wait, attempts: ${attempts}).`);
+      } else if (attempts > 1) {
+        setSendInfo(`Sent after retry (attempts: ${attempts}).`);
+      } else {
+        setSendInfo("Sent.");
+      }
       setComposerText("");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to send message";
+      if (err instanceof ApiError) {
+        if (err.code === "SEND_RATE_LIMIT_PER_MINUTE" || err.code === "SEND_RATE_LIMIT_PER_5_MINUTES") {
+          setSendInfo("Safety rate limit is active for this account.");
+        } else if (err.code === "NEW_CONVERSATION_RATE_LIMIT") {
+          setSendInfo("New-conversation safety limit reached. Try later.");
+        } else if (err.code === "SAFETY_MODE_ACTIVE") {
+          setSendInfo("Safety mode is temporarily enabled for this account.");
+        } else if (err.code === "TELEGRAM_THROTTLED") {
+          setSendInfo("Telegram temporary restriction detected. Please wait.");
+        } else {
+          setSendInfo(null);
+        }
+      } else {
+        setSendInfo(null);
+      }
       setSendError(message);
     }
   };
@@ -369,11 +397,13 @@ export default function ChatsPage() {
           onChange={(v) => {
             setComposerText(v);
             if (sendError) setSendError(null);
+            if (sendInfo) setSendInfo(null);
           }}
           isSending={sendMessage.isPending}
           sendDisabled={!selectedId?.trim()}
           onSend={handleSend}
           sendError={sendError}
+          sendInfo={sendInfo}
         />
       </section>
 
@@ -403,11 +433,11 @@ export default function ChatsPage() {
           />
 
           {aiError?.includes("ai_limit_reached") ? (
-            <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <div className="mt-3 rounded-xl border border-amber-300/80 bg-amber-50/90 p-3 text-sm text-amber-900 shadow-sm">
               AI limit reached for current plan. <Link href="/settings/billing" className="underline">Upgrade plan</Link>.
             </div>
           ) : aiError ? (
-            <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+            <div className="mt-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive shadow-sm">
               {aiError}
             </div>
           ) : null}

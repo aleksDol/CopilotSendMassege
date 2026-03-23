@@ -55,7 +55,11 @@ function handleMessageIngested(
     return;
   }
 
-  if (isOutbound) return;
+  if (isOutbound) {
+    // Outbound in another/new chat should also refresh the list so outbound-first dialogs appear immediately.
+    void queryClient.invalidateQueries({ queryKey: ["conversations", scope] });
+    return;
+  }
 
   let conversationFound = false;
   queryClient.setQueriesData<ConversationListResponse>({ queryKey: ["conversations", scope] }, (current) => {

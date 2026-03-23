@@ -1,5 +1,5 @@
 import { apiClient } from "./client";
-import type { ConversationListResponse, MessagesResponse } from "./types";
+import type { ConversationListResponse, MessagesResponse, SendMessageResponse } from "./types";
 
 export const conversationsApi = {
   list: (
@@ -14,5 +14,5 @@ export const conversationsApi = {
   messages: (token: string, conversationId: string, query?: { before?: string; limit?: number }) =>
     apiClient.get<MessagesResponse>(`/conversations/${conversationId}/messages`, { token, query }),
   sendMessage: (token: string, conversationId: string, text: string) =>
-    apiClient.post<{ status: string }>(`/conversations/${conversationId}/messages`, { text }, { token })
+    apiClient.post<SendMessageResponse>(`/conversations/${conversationId}/messages`, { text }, { token })
 };
