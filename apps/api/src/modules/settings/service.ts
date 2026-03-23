@@ -1,5 +1,6 @@
 import { KnowledgeKind, Prisma } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
+import { invalidateCacheByPrefix } from "../../lib/cache.js";
 import { AppError } from "../../lib/errors.js";
 
 const toKnowledgeKind = (kind: string): KnowledgeKind => {
@@ -30,14 +31,25 @@ const fromKnowledgeKind = (kind: KnowledgeKind): string => {
     case KnowledgeKind.FAQ:
       return "faq";
     case KnowledgeKind.PRODUCT:
-      return "product_description";
+      return "product";
     case KnowledgeKind.POLICY:
-      return "pricing_rules";
+      return "policy";
     case KnowledgeKind.SCRIPT:
-      return "sales_script";
+      return "script";
     case KnowledgeKind.OTHER:
       return "case";
   }
+};
+
+const toNullableJsonValue = (value: unknown): Prisma.InputJsonValue | Prisma.NullTypes.JsonNull | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return Prisma.JsonNull;
+  }
+
+  return value as Prisma.InputJsonValue;
 };
 
 const mapKnowledgeItem = (item: {
@@ -89,6 +101,8 @@ export class SettingsService {
       }
     });
 
+    await invalidateCacheByPrefix(this.app, `cache:knowledge:${companyId}`);
+
     return {
       item: mapKnowledgeItem(item)
     };
@@ -122,6 +136,8 @@ export class SettingsService {
       }
     });
 
+    await invalidateCacheByPrefix(this.app, `cache:knowledge:${companyId}`);
+
     return {
       item: mapKnowledgeItem(item)
     };
@@ -148,36 +164,35 @@ export class SettingsService {
       humanHandoffRules?: unknown;
     }
   ) {
+    const toneRules = toNullableJsonValue(payload.toneRules);
+    const pricingRules = toNullableJsonValue(payload.pricingRules);
+    const discountRules = toNullableJsonValue(payload.discountRules);
+    const forbiddenPromises = toNullableJsonValue(payload.forbiddenPromises);
+    const forbiddenTopics = toNullableJsonValue(payload.forbiddenTopics);
+    const humanHandoffRules = toNullableJsonValue(payload.humanHandoffRules);
+
     const policy = await this.app.prisma.replyPolicy.upsert({
       where: { companyId },
       create: {
         companyId,
-        toneRules: payload.toneRules as Prisma.InputJsonValue,
-        pricingRules: payload.pricingRules as Prisma.InputJsonValue,
-        discountRules: payload.discountRules as Prisma.InputJsonValue,
-        forbiddenPromises: payload.forbiddenPromises as Prisma.InputJsonValue,
-        forbiddenTopics: payload.forbiddenTopics as Prisma.InputJsonValue,
-        humanHandoffRules: payload.humanHandoffRules as Prisma.InputJsonValue
+        ...(toneRules !== undefined ? { toneRules } : {}),
+        ...(pricingRules !== undefined ? { pricingRules } : {}),
+        ...(discountRules !== undefined ? { discountRules } : {}),
+        ...(forbiddenPromises !== undefined ? { forbiddenPromises } : {}),
+        ...(forbiddenTopics !== undefined ? { forbiddenTopics } : {}),
+        ...(humanHandoffRules !== undefined ? { humanHandoffRules } : {})
       },
       update: {
-        ...(payload.toneRules !== undefined ? { toneRules: payload.toneRules as Prisma.InputJsonValue } : {}),
-        ...(payload.pricingRules !== undefined
-          ? { pricingRules: payload.pricingRules as Prisma.InputJsonValue }
-          : {}),
-        ...(payload.discountRules !== undefined
-          ? { discountRules: payload.discountRules as Prisma.InputJsonValue }
-          : {}),
-        ...(payload.forbiddenPromises !== undefined
-          ? { forbiddenPromises: payload.forbiddenPromises as Prisma.InputJsonValue }
-          : {}),
-        ...(payload.forbiddenTopics !== undefined
-          ? { forbiddenTopics: payload.forbiddenTopics as Prisma.InputJsonValue }
-          : {}),
-        ...(payload.humanHandoffRules !== undefined
-          ? { humanHandoffRules: payload.humanHandoffRules as Prisma.InputJsonValue }
-          : {})
+        ...(toneRules !== undefined ? { toneRules } : {}),
+        ...(pricingRules !== undefined ? { pricingRules } : {}),
+        ...(discountRules !== undefined ? { discountRules } : {}),
+        ...(forbiddenPromises !== undefined ? { forbiddenPromises } : {}),
+        ...(forbiddenTopics !== undefined ? { forbiddenTopics } : {}),
+        ...(humanHandoffRules !== undefined ? { humanHandoffRules } : {})
       }
     });
+
+    await invalidateCacheByPrefix(this.app, `cache:reply-policy:${companyId}`);
 
     return {
       policy

@@ -9,7 +9,7 @@ import type { ReplyPolicy } from "@/lib/api/types";
 const stringify = (value: unknown) => (value == null ? "" : typeof value === "string" ? value : JSON.stringify(value, null, 2));
 const parse = (value: string) => {
   if (!value.trim()) {
-    return undefined;
+    return null;
   }
   try {
     return JSON.parse(value);

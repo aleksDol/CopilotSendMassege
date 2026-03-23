@@ -8,6 +8,28 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { KnowledgeItem } from "@/lib/api/types";
 
+const normalizeKind = (kind: string | undefined): string => {
+  switch (kind) {
+    case "product_description":
+      return "product";
+    case "pricing_rules":
+    case "tone_of_voice":
+      return "policy";
+    case "sales_script":
+    case "objection_handling":
+      return "script";
+    case "product":
+    case "policy":
+    case "script":
+    case "faq":
+    case "case":
+    case "other":
+      return kind;
+    default:
+      return "faq";
+  }
+};
+
 export function KnowledgeItemForm({
   initial,
   submitLabel,
@@ -28,7 +50,7 @@ export function KnowledgeItemForm({
   const [isActive, setIsActive] = useState(true);
 
   useEffect(() => {
-    setKind(initial?.kind ?? "faq");
+    setKind(normalizeKind(initial?.kind));
     setTitle(initial?.title ?? "");
     setContent(initial?.content ?? "");
     setPriority(String(initial?.priority ?? 50));
@@ -50,12 +72,10 @@ export function KnowledgeItemForm({
             value={kind}
             onChange={(event) => setKind(event.target.value)}
             options={[
-              { label: "Описание продукта", value: "product_description" },
+              { label: "Описание продукта", value: "product" },
               { label: "FAQ", value: "faq" },
-              { label: "Правила ценообразования", value: "pricing_rules" },
-              { label: "Скрипт продаж", value: "sales_script" },
-              { label: "Работа с возражениями", value: "objection_handling" },
-              { label: "Тон общения", value: "tone_of_voice" },
+              { label: "Политики и правила", value: "policy" },
+              { label: "Скрипты и возражения", value: "script" },
               { label: "Кейс", value: "case" }
             ]}
           />
