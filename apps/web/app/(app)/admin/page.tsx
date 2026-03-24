@@ -61,7 +61,11 @@ export default function AdminPage() {
     void load();
   }, [load]);
 
-  const runAction = async (userId: string, action: "activate" | "deactivate" | "extend") => {
+  const runAction = async (
+    userId: string,
+    action: "activate" | "deactivate" | "extend" | "shift_period",
+    payload?: { periodDeltaDays?: number }
+  ) => {
     if (!token) {
       return;
     }
@@ -70,7 +74,7 @@ export default function AdminPage() {
     setError(null);
 
     try {
-      await adminApi.updateSubscription(token, userId, { action });
+      await adminApi.updateSubscription(token, userId, { action, ...payload });
       await load();
     } catch (e) {
       if (e instanceof ApiError) {
@@ -210,6 +214,24 @@ export default function AdminPage() {
                             onClick={() => void runAction(row.id, "extend")}
                           >
                             Продлить
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => {
+                              const raw = window.prompt("Сдвиг конца периода в днях (можно отрицательное число, например -3):", "1");
+                              if (!raw) return;
+                              const delta = Number.parseInt(raw, 10);
+                              if (!Number.isFinite(delta) || delta === 0) {
+                                setError("Введите целое число дней, отличное от 0.");
+                                return;
+                              }
+                              void runAction(row.id, "shift_period", { periodDeltaDays: delta });
+                            }}
+                          >
+                            Сдвиг периода +/-дни
                           </Button>
                         </div>
                       </td>

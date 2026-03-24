@@ -238,5 +238,28 @@ export const updateSubscriptionForUser = async (
     return { ok: true as const };
   }
 
+  if (body.action === "shift_period") {
+    if (!sub) {
+      throw new AppError(400, "SUBSCRIPTION_NOT_FOUND", "Subscription not found for this user");
+    }
+
+    if (!body.periodDeltaDays) {
+      throw new AppError(400, "VALIDATION_ERROR", "periodDeltaDays is required for shift_period");
+    }
+
+    const deltaMs = body.periodDeltaDays * 24 * 60 * 60 * 1000;
+    const base = sub.currentPeriodEnd ?? now;
+    const nextEnd = new Date(base.getTime() + deltaMs);
+
+    await app.prisma.subscription.update({
+      where: { id: sub.id },
+      data: {
+        currentPeriodEnd: nextEnd
+      }
+    });
+
+    return { ok: true as const };
+  }
+
   throw new AppError(400, "VALIDATION_ERROR", "Unsupported action");
 };

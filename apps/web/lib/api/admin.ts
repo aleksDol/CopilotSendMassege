@@ -16,6 +16,6 @@ export const adminApi = {
   updateSubscription: (
     token: string,
     userId: string,
-    body: { action: "activate" | "deactivate" | "extend"; extendDays?: number }
+    body: { action: "activate" | "deactivate" | "extend" | "shift_period"; extendDays?: number; periodDeltaDays?: number }
   ) => apiClient.post<{ ok: true }>(`/admin/users/${userId}/update-subscription`, body, { token })
 };
