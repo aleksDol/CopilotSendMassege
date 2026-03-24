@@ -165,11 +165,18 @@ export const updateSubscriptionForUser = async (
       await app.prisma.subscription.create({
         data: {
           companyId: user.companyId,
-          plan: company?.plan ?? Plan.FREE,
+          plan: Plan.PRO,
           status: SubscriptionStatus.ACTIVE,
           currentPeriodStart: now,
-          currentPeriodEnd: end
+          currentPeriodEnd: end,
+          trialStartedAt: null,
+          trialEndsAt: null
         }
+      });
+
+      await app.prisma.company.update({
+        where: { id: user.companyId },
+        data: { plan: Plan.PRO }
       });
 
       return { ok: true as const };
@@ -181,12 +188,18 @@ export const updateSubscriptionForUser = async (
     await app.prisma.subscription.update({
       where: { id: sub.id },
       data: {
+        plan: Plan.PRO,
         status: SubscriptionStatus.ACTIVE,
         currentPeriodStart: sub.currentPeriodStart ?? now,
         currentPeriodEnd: nextEnd,
         trialStartedAt: null,
         trialEndsAt: null
       }
+    });
+
+    await app.prisma.company.update({
+      where: { id: user.companyId },
+      data: { plan: Plan.PRO }
     });
 
     return { ok: true as const };
