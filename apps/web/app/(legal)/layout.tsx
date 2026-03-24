@@ -1,5 +1,5 @@
 import { MarketingShell } from "@/components/layout/marketing-shell";
 
-export default function LandingLayout({ children }: { children: React.ReactNode }) {
+export default function LegalLayout({ children }: { children: React.ReactNode }) {
   return <MarketingShell>{children}</MarketingShell>;
 }

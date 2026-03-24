@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { LegalConsentLabel } from "@/components/legal/legal-consent-label";
 import { EmailCodeVerificationCard } from "@/components/auth/email-code-verification-card";
 import { authApi } from "@/lib/api/auth";
 import { teamApi } from "@/lib/api/team";
@@ -27,6 +29,8 @@ export default function RegisterPage() {
   const [code, setCode] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [resendIn, setResendIn] = useState(0);
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
+  const [termsError, setTermsError] = useState<string | null>(null);
   const resendIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const startResendTimer = () => {
@@ -62,9 +66,16 @@ export default function RegisterPage() {
     };
   }, []);
 
+  const requiresLegalAcceptance = Boolean(inviteToken) || step === "details";
+
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
+    if (requiresLegalAcceptance && !acceptedLegal) {
+      setTermsError("Подтвердите согласие с условиями оферты, политикой конфиденциальности и обработкой персональных данных.");
+      return;
+    }
+    setTermsError(null);
     setSubmitting(true);
 
     try {
@@ -141,6 +152,31 @@ export default function RegisterPage() {
               />
             </div>
           )}
+          {requiresLegalAcceptance ? (
+            <div className="space-y-2">
+              <div className="flex gap-3 items-start">
+                <Checkbox
+                  id="legal-consent"
+                  checked={acceptedLegal}
+                  onCheckedChange={(value) => {
+                    setAcceptedLegal(value);
+                    setTermsError(null);
+                  }}
+                  className="mt-1 shrink-0"
+                  aria-invalid={Boolean(termsError)}
+                  aria-describedby={termsError ? "legal-consent-error" : undefined}
+                />
+                <label htmlFor="legal-consent" className="cursor-pointer select-none pt-0.5">
+                  <LegalConsentLabel />
+                </label>
+              </div>
+              {termsError ? (
+                <p id="legal-consent-error" className="text-sm text-destructive pl-7">
+                  {termsError}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           {step !== "code" || inviteToken ? (
             <>
               {error ? <p className="text-sm text-destructive">{error}</p> : null}

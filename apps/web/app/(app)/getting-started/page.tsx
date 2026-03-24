@@ -117,6 +117,21 @@ export default function GettingStartedPage() {
               <div className="rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">Напоминания, кому нужно ответить.</div>
             </div>
             <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm font-medium">Это не просто чат — это инструмент для продаж.</div>
+            <p className="text-xs text-muted-foreground">
+              Документы:{" "}
+              <Link href="/offer" className="text-primary underline-offset-2 hover:underline">
+                оферта
+              </Link>
+              ,{" "}
+              <Link href="/privacy" className="text-primary underline-offset-2 hover:underline">
+                конфиденциальность
+              </Link>
+              ,{" "}
+              <Link href="/personal-data" className="text-primary underline-offset-2 hover:underline">
+                персональные данные
+              </Link>
+              .
+            </p>
           </CardContent>
         </Card>
 

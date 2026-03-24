@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -127,6 +128,21 @@ export default function BillingSettingsPage() {
             </Button>
           </div>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          <p className="border-t border-border pt-4 text-xs leading-relaxed text-muted-foreground">
+            Условия сервиса:{" "}
+            <Link href="/offer" className="text-primary underline-offset-2 hover:underline">
+              оферта
+            </Link>
+            ,{" "}
+            <Link href="/privacy" className="text-primary underline-offset-2 hover:underline">
+              политика конфиденциальности
+            </Link>
+            ,{" "}
+            <Link href="/personal-data" className="text-primary underline-offset-2 hover:underline">
+              обработка персональных данных
+            </Link>
+            .
+          </p>
         </CardContent>
       </Card>
 
