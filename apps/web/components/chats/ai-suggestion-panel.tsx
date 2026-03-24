@@ -53,18 +53,17 @@ export function AiSuggestionPanel({
           </Button>
         </div>
 
-        <div className="space-y-2">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground">Подсказка</div>
-          <div className="space-y-4 rounded-xl border border-border/80 bg-gradient-to-b from-muted/40 to-card p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Предложенный ответ</div>
-              <Badge variant="outline" className="h-5 rounded-full px-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                AI Copilot
-              </Badge>
-            </div>
+        <div className="rounded-xl border border-border/80 bg-gradient-to-b from-muted/30 via-card to-card p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3 border-b border-border/60 pb-3">
+            <div className="min-w-0 text-sm font-medium text-foreground">Предложенный ответ</div>
+            <Badge variant="outline" className="h-5 shrink-0 rounded-full border-border/70 bg-card px-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              AI Copilot
+            </Badge>
+          </div>
 
+          <div className="pt-3">
             {isLoading && !suggestion ? (
-              <div className="space-y-3">
+              <div className="space-y-3 py-1">
                 <div className="h-3 w-4/5 animate-pulse rounded bg-muted" />
                 <div className="h-3 w-full animate-pulse rounded bg-muted" />
                 <div className="h-3 w-3/4 animate-pulse rounded bg-muted" />
@@ -72,25 +71,25 @@ export function AiSuggestionPanel({
               </div>
             ) : suggestion ? (
               <>
-                <div className="max-h-64 overflow-y-auto rounded-lg border border-border/70 bg-card/90 px-4 py-3">
-                  <p className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground/95">{suggestion.text}</p>
+                <div className="max-h-64 overflow-y-auto pr-1">
+                  <p className="max-w-full whitespace-pre-wrap break-words text-[14px] leading-6 text-foreground/95">{suggestion.text}</p>
                 </div>
 
-                <div className="flex flex-wrap gap-1.5">
-                  <Badge variant="outline" className="rounded-full border-border/70 bg-muted/20 px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
+                <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border/60 pt-3">
+                  <Badge variant="outline" className="rounded-full border-border/70 bg-muted/10 px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
                     режим: {suggestion.mode}
                   </Badge>
-                  <Badge variant="outline" className="rounded-full border-border/70 bg-muted/20 px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
+                  <Badge variant="outline" className="rounded-full border-border/70 bg-muted/10 px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
                     статус: {suggestion.status}
                   </Badge>
                   {suggestion.confidence !== null ? (
-                    <Badge variant="outline" className="rounded-full border-border/70 bg-muted/20 px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
+                    <Badge variant="outline" className="rounded-full border-border/70 bg-muted/10 px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
                       уверенность: {suggestion.confidence}
                     </Badge>
                   ) : null}
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 border-t border-border/70 pt-3">
+                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
                   <Button size="sm" onClick={() => onInsert(suggestion.text)}>
                     Вставить в поле
                   </Button>
@@ -103,7 +102,7 @@ export function AiSuggestionPanel({
                 </div>
               </>
             ) : (
-              <div className="rounded-lg border border-dashed border-border/80 bg-card/70 px-4 py-5 text-sm leading-relaxed text-muted-foreground">
+              <div className="rounded-lg border border-dashed border-border/80 bg-card/60 px-4 py-5 text-sm leading-relaxed text-muted-foreground">
                 Подсказки пока нет. Выберите режим выше и нажмите «Предложить ответ», чтобы получить аккуратный вариант ответа для клиента.
               </div>
             )}
