@@ -71,7 +71,7 @@ export default function RegisterPage() {
       if (inviteToken) {
         await teamApi.acceptInvite({ token: inviteToken, fullName, password });
         const loginResponse = await authApi.login({ email, password });
-        setSession(loginResponse.token, loginResponse.user, loginResponse.company);
+        setSession(loginResponse.token, loginResponse.user, loginResponse.company, loginResponse.access);
         router.replace("/dashboard");
       } else {
         if (step === "details") {
@@ -86,7 +86,7 @@ export default function RegisterPage() {
           throw new Error("Сессия подтверждения не найдена. Начните регистрацию заново.");
         }
         const response = await authApi.registerVerifyCode({ email, challengeId, code });
-        setSession(response.token, response.user, response.company);
+        setSession(response.token, response.user, response.company, response.access);
         router.replace("/onboarding");
       }
     } catch (submitError) {

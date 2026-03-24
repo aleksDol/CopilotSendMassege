@@ -3,6 +3,7 @@ import { createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto
 import { EmailAuthCodePurpose, Prisma } from "@prisma/client";
 import { AppError } from "../../lib/errors.js";
 import { BillingService } from "../billing/service.js";
+import { ensureSubscription, resolveSubscriptionState } from "../../lib/billing/subscriptions.js";
 import { EmailService } from "../../lib/email.js";
 import { toPublicCompany, toPublicUser } from "../../lib/mappers.js";
 import { hashPassword, verifyPassword } from "../../lib/security.js";
@@ -237,15 +238,26 @@ export const registerUser = async (
     await billingService.createCustomerForCompany({
       companyId: company.id,
       email,
-      companyName: company.name
+      companyName: company.name,
+      initializeTrial: true
     });
   } catch (error) {
     app.log.error({ err: error, companyId: company.id }, "Failed to initialize billing customer");
   }
 
+  const subscription = await ensureSubscription(app, {
+    companyId: company.id,
+    plan: company.plan
+  });
+  const access = resolveSubscriptionState({
+    subscription,
+    companyPlan: company.plan
+  });
+
   return {
     user: toPublicUser(user),
     company: toPublicCompany(company),
+    access,
     token
   };
 };
@@ -282,9 +294,19 @@ export const loginUser = async (
 
   const token = await signAccessToken(app, user.id, user.companyId);
 
+  const subscription = await ensureSubscription(app, {
+    companyId: user.company.id,
+    plan: user.company.plan
+  });
+  const access = resolveSubscriptionState({
+    subscription,
+    companyPlan: user.company.plan
+  });
+
   return {
     user: toPublicUser(user),
     company: toPublicCompany(user.company),
+    access,
     token
   };
 };
@@ -301,9 +323,19 @@ export const getMe = async (app: FastifyInstance, userId: string) => {
     throw new AppError(401, "UNAUTHORIZED", "Authentication required");
   }
 
+  const subscription = await ensureSubscription(app, {
+    companyId: user.company.id,
+    plan: user.company.plan
+  });
+  const access = resolveSubscriptionState({
+    subscription,
+    companyPlan: user.company.plan
+  });
+
   return {
     user: toPublicUser(user),
-    company: toPublicCompany(user.company)
+    company: toPublicCompany(user.company),
+    access
   };
 };
 
@@ -549,15 +581,26 @@ export const registerVerifyCode = async (
     await billingService.createCustomerForCompany({
       companyId: company.id,
       email,
-      companyName: company.name
+      companyName: company.name,
+      initializeTrial: true
     });
   } catch (error) {
     app.log.error({ err: error, companyId: company.id }, "Failed to initialize billing customer");
   }
 
+  const subscription = await ensureSubscription(app, {
+    companyId: company.id,
+    plan: company.plan
+  });
+  const access = resolveSubscriptionState({
+    subscription,
+    companyPlan: company.plan
+  });
+
   return {
     user: toPublicUser(user),
     company: toPublicCompany(company),
+    access,
     token
   };
 };

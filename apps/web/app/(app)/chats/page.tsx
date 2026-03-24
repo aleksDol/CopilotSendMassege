@@ -84,7 +84,8 @@ export default function ChatsPage() {
   const initialWaiting = params.get("waitingForReply") ?? "all";
   const initialConversation = params.get("conversationId");
 
-  const { token, company, user } = useAuth();
+  const { token, company, user, access } = useAuth();
+  const isPostTrialLimited = access?.subscriptionStatus === "expired";
   const queryClient = useQueryClient();
   const telegramAccount = useTelegramAccount();
   const telegramStatus = telegramAccount.data?.loginStatus ?? telegramAccount.data?.status ?? "login_required";
@@ -196,6 +197,7 @@ export default function ChatsPage() {
   const [aiError, setAiError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendInfo, setSendInfo] = useState<string | null>(null);
+  const [inlinePaywallSource, setInlinePaywallSource] = useState<"send" | "ai" | null>(null);
 
   const conversations = useConversations({
     waitingForReply: filters.waitingForReply === "all" ? undefined : filters.waitingForReply === "true",
@@ -311,6 +313,11 @@ export default function ChatsPage() {
 
   const handleSend = async (text: string) => {
     if (!selectedId?.trim()) return;
+    if (isPostTrialLimited) {
+      setInlinePaywallSource("send");
+      setSendInfo("Эта функция доступна после подключения доступа.");
+      return;
+    }
     setSendError(null);
     setSendInfo("Sending...");
     try {
@@ -392,12 +399,26 @@ export default function ChatsPage() {
         <div className="min-h-0 flex-1 overflow-hidden">
           <MessageThread items={messages.data?.items ?? []} />
         </div>
+        {isPostTrialLimited ? (
+          <div className="border-t border-border bg-warning/10 px-4 py-3 text-sm text-foreground/90">
+            Пробный период закончился. Данные и чаты на месте - подключите доступ и продолжайте работу без пауз.
+          </div>
+        ) : null}
+        {isPostTrialLimited && inlinePaywallSource === "send" ? (
+          <div className="border-t border-border bg-background px-4 py-3 text-sm">
+            <p className="mb-1">Эта функция доступна после подключения доступа.</p>
+            <Link href={(process.env.NEXT_PUBLIC_SALES_TELEGRAM_URL ?? "").trim() || "https://t.me"} target="_blank" rel="noreferrer" className="underline">
+              Получить доступ
+            </Link>
+          </div>
+        ) : null}
         <MessageComposer
           value={composerText}
           onChange={(v) => {
             setComposerText(v);
             if (sendError) setSendError(null);
             if (sendInfo) setSendInfo(null);
+            if (inlinePaywallSource === "send") setInlinePaywallSource(null);
           }}
           isSending={sendMessage.isPending}
           sendDisabled={!selectedId?.trim()}
@@ -415,6 +436,11 @@ export default function ChatsPage() {
             isLoading={suggestMutation.isPending}
             onInsert={(text) => setComposerText((prev) => (prev ? `${prev}\n${text}` : text))}
             onSuggest={async (mode) => {
+              if (isPostTrialLimited) {
+                setInlinePaywallSource("ai");
+                setAiError("trial_ended");
+                return;
+              }
               setAiError(null);
               try {
                 const response = await suggestMutation.mutateAsync(mode);
@@ -436,9 +462,21 @@ export default function ChatsPage() {
             <div className="mt-3 rounded-xl border border-amber-300/80 bg-amber-50/90 p-3 text-sm text-amber-900 shadow-sm">
               AI limit reached for current plan. <Link href="/settings/billing" className="underline">Upgrade plan</Link>.
             </div>
+          ) : aiError?.includes("trial_ended") ? (
+            <div className="mt-3 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm">
+              <p className="mb-1">Эта функция доступна после подключения доступа.</p>
+              <Link href={(process.env.NEXT_PUBLIC_SALES_TELEGRAM_URL ?? "").trim() || "https://t.me"} target="_blank" rel="noreferrer" className="underline">
+                Получить доступ
+              </Link>
+            </div>
           ) : aiError ? (
             <div className="mt-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive shadow-sm">
               {aiError}
+            </div>
+          ) : null}
+          {isPostTrialLimited && inlinePaywallSource === "ai" ? (
+            <div className="mt-3 rounded-xl border border-border bg-background p-3 text-xs text-muted-foreground">
+              Данные и чаты сохранены. После подключения доступа продолжите с того же места.
             </div>
           ) : null}
         </div>

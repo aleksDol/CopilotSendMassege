@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { clearStoredToken, getStoredToken, setStoredToken } from "@/lib/auth/token";
 import { apiClient } from "@/lib/api/client";
+import type { AccessState } from "@/lib/api/types";
 
 type AuthUser = {
   id: string;
@@ -25,9 +26,10 @@ type AuthContextValue = {
   token: string | null;
   user: AuthUser | null;
   company: AuthCompany | null;
+  access: AccessState | null;
   isInitializing: boolean;
   isAuthenticated: boolean;
-  setSession: (token: string, user: AuthUser, company: AuthCompany) => void;
+  setSession: (token: string, user: AuthUser, company: AuthCompany, access: AccessState) => void;
   refreshMe: () => Promise<void>;
   logout: () => void;
 };
@@ -39,6 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [company, setCompany] = useState<AuthCompany | null>(null);
+  const [access, setAccess] = useState<AccessState | null>(null);
   const [isInitializing, setInitializing] = useState(true);
 
   const logout = useCallback(() => {
@@ -46,6 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(null);
     setUser(null);
     setCompany(null);
+    setAccess(null);
     // Clear all cached API data so the next account never sees the previous account's data (chats, messages, etc.)
     queryClient.clear();
   }, [queryClient]);
@@ -58,23 +62,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const me = await apiClient.get<{ user: AuthUser; company: AuthCompany }>("/auth/me", { token: stored });
+      const me = await apiClient.get<{ user: AuthUser; company: AuthCompany; access: AccessState }>("/auth/me", { token: stored });
       setToken(stored);
       setUser(me.user);
       setCompany(me.company);
+      setAccess(me.access);
     } catch {
       logout();
     }
   }, [logout]);
 
   const setSession = useCallback(
-    (nextToken: string, nextUser: AuthUser, nextCompany: AuthCompany) => {
+    (nextToken: string, nextUser: AuthUser, nextCompany: AuthCompany, nextAccess: AccessState) => {
       // Clear any cached data from a previous account so the new session never sees it
       queryClient.clear();
       setStoredToken(nextToken);
       setToken(nextToken);
       setUser(nextUser);
       setCompany(nextCompany);
+      setAccess(nextAccess);
     },
     [queryClient]
   );
@@ -93,13 +99,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       token,
       user,
       company,
+      access,
       isInitializing,
       isAuthenticated: Boolean(token && user),
       setSession,
       refreshMe,
       logout
     }),
-    [token, user, company, isInitializing, setSession, refreshMe, logout]
+    [token, user, company, access, isInitializing, setSession, refreshMe, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

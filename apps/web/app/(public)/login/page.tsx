@@ -74,7 +74,7 @@ function LoginForm() {
       }
 
       const response = await authApi.loginVerifyCode({ email, challengeId, code });
-      setSession(response.token, response.user, response.company);
+      setSession(response.token, response.user, response.company, response.access);
       router.replace(next);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Ошибка входа");

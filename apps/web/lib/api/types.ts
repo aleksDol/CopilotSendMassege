@@ -14,6 +14,17 @@ export type Company = {
   timezone: string;
 };
 
+export type AccessState = {
+  subscriptionStatus: "trial" | "active" | "free" | "expired";
+  isTrialActive: boolean;
+  isTrialExpired: boolean;
+  trialStartedAt: string | null;
+  trialEndsAt: string | null;
+  timeLeftMs: number | null;
+  effectivePlan: string;
+  limitsPlan: string;
+};
+
 export type DashboardOverview = {
   activeConversations: number;
   waitingForReply: number;
@@ -138,8 +149,14 @@ export type BillingSubscription = {
   id: string;
   plan: string;
   status: string;
+  subscriptionStatus: "trial" | "active" | "free" | "expired";
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
+  trialStartedAt: string | null;
+  trialEndsAt: string | null;
+  isTrialActive: boolean;
+  isTrialExpired: boolean;
+  trialTimeLeftMs: number | null;
   cancelAtPeriodEnd: boolean;
   limits: {
     aiSuggestionsPerMonth: number;
@@ -149,6 +166,9 @@ export type BillingSubscription = {
 
 export type BillingUsage = {
   plan: string;
+  subscriptionStatus: "trial" | "active" | "free" | "expired";
+  trialEndsAt: string | null;
+  trialTimeLeftMs: number | null;
   aiUsage: number;
   aiLimit: number;
   periodStart?: string;

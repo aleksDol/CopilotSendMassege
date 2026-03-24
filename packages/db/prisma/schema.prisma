@@ -302,6 +302,8 @@ model Subscription {
   companyId            String             @db.Uuid
   plan                 Plan
   status               SubscriptionStatus @default(TRIALING)
+  trialStartedAt       DateTime?
+  trialEndsAt          DateTime?
   stripeCustomerId     String?
   stripeSubscriptionId String?
   currentPeriodStart   DateTime?

@@ -2,7 +2,7 @@ import { Plan, SubscriptionStatus, UsageMetricType } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { AppError } from "../../lib/errors.js";
 import { resolvePlanConfig } from "../../lib/billing/plans.js";
-import { currentUsagePeriod, ensureSubscription, getLatestSubscription } from "../../lib/billing/subscriptions.js";
+import { currentUsagePeriod, ensureSubscription, getLatestSubscription, resolveSubscriptionState } from "../../lib/billing/subscriptions.js";
 import { StripeService } from "../../lib/billing/stripe.js";
 
 const toLower = (value: string) => value.toLowerCase();
@@ -39,9 +39,18 @@ export class BillingService {
     return new StripeService(secret);
   }
 
-  async createCustomerForCompany(params: { companyId: string; email: string; companyName: string }) {
+  async createCustomerForCompany(params: {
+    companyId: string;
+    email: string;
+    companyName: string;
+    initializeTrial?: boolean;
+  }) {
     if (!this.app.config.env.STRIPE_SECRET_KEY) {
-      await ensureSubscription(this.app, { companyId: params.companyId, plan: Plan.FREE });
+      await ensureSubscription(this.app, {
+        companyId: params.companyId,
+        plan: Plan.FREE,
+        initializeTrial: params.initializeTrial
+      });
       return null;
     }
 
@@ -57,7 +66,8 @@ export class BillingService {
     const sub = await ensureSubscription(this.app, {
       companyId: params.companyId,
       plan: Plan.FREE,
-      stripeCustomerId: customer.id
+      stripeCustomerId: customer.id,
+      initializeTrial: params.initializeTrial
     });
 
     if (!sub.stripeCustomerId) {
@@ -77,14 +87,24 @@ export class BillingService {
     }
 
     const subscription = await ensureSubscription(this.app, { companyId, plan: company.plan });
-    const planConfig = resolvePlanConfig(subscription.plan);
+    const access = resolveSubscriptionState({
+      subscription,
+      companyPlan: company.plan
+    });
+    const planConfig = resolvePlanConfig(access.limitsPlan);
 
     return {
       id: subscription.id,
-      plan: toLower(subscription.plan),
-      status: toLower(subscription.status),
+      plan: toLower(access.limitsPlan),
+      status: access.subscriptionStatus,
+      subscriptionStatus: access.subscriptionStatus,
       currentPeriodStart: subscription.currentPeriodStart,
       currentPeriodEnd: subscription.currentPeriodEnd,
+      trialStartedAt: access.trialStartedAt,
+      trialEndsAt: access.trialEndsAt,
+      isTrialActive: access.isTrialActive,
+      isTrialExpired: access.isTrialExpired,
+      trialTimeLeftMs: access.timeLeftMs,
       cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
       limits: {
         aiSuggestionsPerMonth: planConfig.aiSuggestionsPerMonth,
@@ -100,8 +120,12 @@ export class BillingService {
     }
 
     const subscription = await ensureSubscription(this.app, { companyId, plan: company.plan });
+    const access = resolveSubscriptionState({
+      subscription,
+      companyPlan: company.plan
+    });
     const { start, end } = currentUsagePeriod(subscription);
-    const planConfig = resolvePlanConfig(subscription.plan);
+    const planConfig = resolvePlanConfig(access.limitsPlan);
 
     const usage = await this.app.prisma.usageRecord.aggregate({
       where: {
@@ -118,7 +142,10 @@ export class BillingService {
     const aiUsage = usage._sum.quantity ?? 0;
 
     return {
-      plan: toLower(subscription.plan),
+      plan: toLower(access.limitsPlan),
+      subscriptionStatus: access.subscriptionStatus,
+      trialEndsAt: access.trialEndsAt,
+      trialTimeLeftMs: access.timeLeftMs,
       aiUsage,
       aiLimit: planConfig.aiSuggestionsPerMonth,
       periodStart: start,
@@ -192,6 +219,9 @@ export class BillingService {
 
   async enforceAiLimit(companyId: string) {
     const usage = await this.getUsage(companyId);
+    if (usage.subscriptionStatus === "trial") {
+      return usage;
+    }
     if (usage.aiUsage >= usage.aiLimit) {
       throw new AppError(402, "AI_LIMIT_REACHED", "ai_limit_reached");
     }

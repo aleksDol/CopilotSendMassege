@@ -15,6 +15,38 @@ const PASSWORD = "secret123";
 
 function makeApp(overrides: Partial<any> = {}) {
   const redisStore = new Map<string, number>();
+  const basePrisma = {
+    user: {
+      findUnique: async () => null,
+      update: async () => ({})
+    },
+    company: {
+      create: async () => ({ id: "company-1", name: "Acme", slug: "acme", plan: "FREE", timezone: "UTC" }),
+      findUnique: async () => null
+    },
+    subscription: {
+      findFirst: async () => null,
+      create: async () => ({
+        id: "sub-1",
+        companyId: "company-1",
+        plan: "FREE",
+        status: "TRIALING",
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+        trialStartedAt: new Date(),
+        trialEndsAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+        cancelAtPeriodEnd: false
+      })
+    },
+    emailAuthCode: {
+      create: async () => ({}),
+      findFirst: async () => null,
+      update: async () => ({}),
+      updateMany: async () => ({ count: 0 })
+    },
+    $transaction: async (fn: any) => fn(overrides.tx ?? {})
+  };
+
   return {
     config: {
       env: {
@@ -46,21 +78,8 @@ function makeApp(overrides: Partial<any> = {}) {
       sign: async () => "token-1"
     },
     prisma: {
-      user: {
-        findUnique: async () => null,
-        update: async () => ({})
-      },
-      company: {
-        create: async () => ({ id: "company-1", name: "Acme", slug: "acme", plan: "FREE", timezone: "UTC" }),
-        findUnique: async () => null
-      },
-      emailAuthCode: {
-        create: async () => ({}),
-        findFirst: async () => null,
-        update: async () => ({}),
-        updateMany: async () => ({ count: 0 })
-      },
-      $transaction: async (fn: any) => fn(overrides.tx ?? {})
+      ...basePrisma,
+      ...(overrides as any).prisma
     },
     ...overrides
   };

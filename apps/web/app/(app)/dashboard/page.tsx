@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { EmptyState } from "@/components/common/empty-state";
 import { LoadingState } from "@/components/common/loading-state";
+import { TrialPaywallCard } from "@/components/billing/trial-paywall-card";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuth } from "@/lib/auth/context";
 import { useDashboardOverview } from "@/lib/hooks/use-app-data";
 
 export default function DashboardPage() {
+  const { access } = useAuth();
   const overview = useDashboardOverview();
 
   if (overview.isLoading) {
@@ -22,6 +25,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {access?.subscriptionStatus === "expired" ? <TrialPaywallCard /> : null}
       <div>
         <h1 className="text-2xl font-semibold">Дашборд</h1>
         <p className="text-sm text-muted-foreground">Обзор по вашему рабочему пространству продаж.</p>
