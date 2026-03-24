@@ -29,7 +29,7 @@ export function AiSuggestionPanel({
   const [mode, setMode] = useState<Mode>("default");
 
   return (
-    <Card className="h-full border-border/80 bg-card/95 shadow-sm">
+    <Card className="h-full border-0 bg-transparent shadow-none">
       <CardHeader>
         <CardTitle>ИИ-копилот</CardTitle>
         <CardDescription>Сгенерировать один практичный вариант ответа.</CardDescription>
