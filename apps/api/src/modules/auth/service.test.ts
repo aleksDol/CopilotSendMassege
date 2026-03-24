@@ -39,8 +39,9 @@ function makeApp(overrides: Partial<any> = {}) {
       })
     },
     emailAuthCode: {
-      create: async () => ({}),
+      create: async () => ({ id: "code-created" }),
       findFirst: async () => null,
+      findMany: async () => [],
       update: async () => ({}),
       updateMany: async () => ({ count: 0 })
     },
@@ -101,8 +102,9 @@ test("login request-code success with valid credentials", async () => {
         updateMany: async () => ({ count: 0 }),
         create: async (args: any) => {
           created.push(args.data);
-          return {};
-        }
+          return { id: "code-created" };
+        },
+        update: async () => ({})
       }
     }
   });
@@ -149,6 +151,7 @@ test("login verify-code fails with invalid code and increments attempts", async 
           attemptCount: 0,
           maxAttempts: 5
         }),
+        findMany: async () => [],
         update: async (args: any) => {
           if (args.data?.attemptCount?.increment) attempts += 1;
           return { attemptCount: attempts };
@@ -200,9 +203,24 @@ test("register request-code success and register verify-code success", async () 
       },
       emailAuthCode: {
         updateMany: async () => ({ count: 0 }),
-        create: async () => ({}),
+        create: async () => ({ id: "code-created" }),
         findFirst: async () => challenge,
+        findMany: async () => [],
         update: async () => ({})
+      },
+      subscription: {
+        findFirst: async () => null,
+        create: async () => ({
+          id: "sub-1",
+          companyId: "company-1",
+          plan: "FREE",
+          status: "TRIALING",
+          currentPeriodStart: new Date(),
+          currentPeriodEnd: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+          trialStartedAt: new Date(),
+          trialEndsAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+          cancelAtPeriodEnd: false
+        })
       },
       $transaction: async (fn: any) =>
         fn({
@@ -253,6 +271,7 @@ test("used or expired codes are invalid and resend cooldown works", async () => 
           maxAttempts: 5,
           lastSentAt: new Date()
         }),
+        findMany: async () => [],
         update: async () => ({}),
         updateMany: async () => ({ count: 0 }),
         create: async () => ({})
@@ -279,7 +298,8 @@ test("used or expired codes are invalid and resend cooldown works", async () => 
           attemptCount: 0,
           maxAttempts: 5,
           lastSentAt: new Date()
-        })
+        }),
+        findMany: async () => []
       }
     }
   });

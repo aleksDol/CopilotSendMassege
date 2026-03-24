@@ -126,10 +126,7 @@ const createAuthCodeChallenge = async (
   const challengeId = createChallengeId();
   const expiresAt = new Date(now.getTime() + AUTH_CODE_TTL_MS(app));
   const codeHash = buildCodeHash(app, params.email, params.purpose, challengeId, code);
-
-  await invalidateActiveCodes(app, params.email, params.purpose);
-
-  await app.prisma.emailAuthCode.create({
+  const challenge = await app.prisma.emailAuthCode.create({
     data: {
       email: params.email,
       challengeId,
@@ -144,12 +141,55 @@ const createAuthCodeChallenge = async (
     }
   });
 
-  await sendCodeEmail(app, params.purpose, params.email, code);
+  try {
+    await sendCodeEmail(app, params.purpose, params.email, code);
+  } catch (error) {
+    // Do not leave orphaned active challenge if provider rejected sending.
+    await app.prisma.emailAuthCode.update({
+      where: { id: challenge.id },
+      data: { usedAt: new Date() }
+    });
+    throw error;
+  }
+
+  await invalidateActiveCodes(app, params.email, params.purpose);
+  await app.prisma.emailAuthCode.update({
+    where: { id: challenge.id },
+    data: { usedAt: null, lastSentAt: now }
+  });
 
   return {
     requiresCode: true,
     challengeId
   };
+};
+
+const findMatchingActiveChallenge = async (
+  app: FastifyInstance,
+  params: {
+    email: string;
+    purpose: EmailAuthCodePurpose;
+    code: string;
+  }
+) => {
+  const challenges = await app.prisma.emailAuthCode.findMany({
+    where: {
+      email: params.email,
+      purpose: params.purpose,
+      usedAt: null,
+      expiresAt: { gt: new Date() }
+    },
+    orderBy: {
+      createdAt: "desc"
+    },
+    take: 5
+  });
+
+  return (
+    challenges.find((candidate) =>
+      verifyCodeHash(app, params.email, params.purpose, candidate.challengeId, params.code, candidate.codeHash)
+    ) ?? null
+  );
 };
 
 const getValidChallengeOrThrow = async (app: FastifyInstance, email: string, challengeId: string, purpose: EmailAuthCodePurpose) => {
@@ -417,8 +457,25 @@ export const loginVerifyCode = async (
     challenge.codeHash
   );
   if (!isValidCode) {
-    await markAttemptFailed(app, challenge.id, challenge.maxAttempts);
-    throw new AppError(400, "INVALID_CODE", "Invalid verification code");
+    const fallbackChallenge = await findMatchingActiveChallenge(app, {
+      email,
+      purpose: EmailAuthCodePurpose.LOGIN_2FA,
+      code: payload.code
+    });
+
+    if (!fallbackChallenge) {
+      await markAttemptFailed(app, challenge.id, challenge.maxAttempts);
+      throw new AppError(400, "INVALID_CODE", "Invalid verification code");
+    }
+
+    // User can enter a valid code from a delayed email even if UI challengeId is newer.
+    if (fallbackChallenge.id !== challenge.id) {
+      await app.prisma.emailAuthCode.update({
+        where: { id: challenge.id },
+        data: { usedAt: new Date() }
+      });
+    }
+    challenge.id = fallbackChallenge.id;
   }
 
   const user = await app.prisma.user.findUnique({
@@ -541,8 +598,25 @@ export const registerVerifyCode = async (
     challenge.codeHash
   );
   if (!isValidCode) {
-    await markAttemptFailed(app, challenge.id, challenge.maxAttempts);
-    throw new AppError(400, "INVALID_CODE", "Invalid verification code");
+    const fallbackChallenge = await findMatchingActiveChallenge(app, {
+      email,
+      purpose: EmailAuthCodePurpose.REGISTER,
+      code: payload.code
+    });
+
+    if (!fallbackChallenge) {
+      await markAttemptFailed(app, challenge.id, challenge.maxAttempts);
+      throw new AppError(400, "INVALID_CODE", "Invalid verification code");
+    }
+
+    // User can enter a valid code from a delayed email even if UI challengeId is newer.
+    if (fallbackChallenge.id !== challenge.id) {
+      await app.prisma.emailAuthCode.update({
+        where: { id: challenge.id },
+        data: { usedAt: new Date() }
+      });
+    }
+    challenge.id = fallbackChallenge.id;
   }
 
   const challengePayload = challenge.payload as { fullName?: string; companyName?: string; passwordHash?: string } | null;
