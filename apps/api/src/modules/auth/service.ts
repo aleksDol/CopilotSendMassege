@@ -441,9 +441,19 @@ export const loginVerifyCode = async (
   ]);
 
   const token = await signAccessToken(app, user.id, user.companyId);
+  const subscription = await ensureSubscription(app, {
+    companyId: user.company.id,
+    plan: user.company.plan
+  });
+  const access = resolveSubscriptionState({
+    subscription,
+    companyPlan: user.company.plan
+  });
+
   return {
     user: toPublicUser(user),
     company: toPublicCompany(user.company),
+    access,
     token
   };
 };

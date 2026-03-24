@@ -26,6 +26,11 @@ export default function BillingSettingsPage() {
     return Math.min(100, Math.round((usage.data.aiUsage / usage.data.aiLimit) * 100));
   }, [usage.data]);
 
+  const trialDaysLeft = useMemo(() => {
+    if (!subscription.data?.trialTimeLeftMs) return null;
+    return Math.max(1, Math.ceil(subscription.data.trialTimeLeftMs / (24 * 60 * 60 * 1000)));
+  }, [subscription.data?.trialTimeLeftMs]);
+
   if (subscription.isLoading || usage.isLoading) {
     return <LoadingState label="Загрузка оплаты..." />;
   }
@@ -34,8 +39,22 @@ export default function BillingSettingsPage() {
     return <EmptyState title="Оплата недоступна" description="Проверьте настройку Stripe в переменных окружения бэкенда." />;
   }
 
-  const plan = subscription.data.plan.toUpperCase();
-  const statusLabel = subscription.data.status === "active" ? "активна" : subscription.data.status;
+  const status = subscription.data.subscriptionStatus;
+  const isTrialActive = status === "trial";
+  const isTrialExpiring = isTrialActive && (trialDaysLeft ?? 999) <= 1;
+  const isTrialExpired = status === "expired";
+  const isPaidActive = status === "active";
+  const isFree = status === "free";
+
+  const planLabel = isTrialActive
+    ? "Пробный период"
+    : isPaidActive
+      ? subscription.data.plan.toUpperCase()
+      : isTrialExpired
+        ? "Пробный период завершён"
+        : "FREE";
+  const statusLabel = isTrialActive ? "trial" : isPaidActive ? "активна" : isTrialExpired ? "expired" : "free";
+  const trialTimeLabel = trialDaysLeft ? `Осталось ${trialDaysLeft} ${trialDaysLeft === 1 ? "день" : "дня"}` : null;
 
   return (
     <div className="space-y-4">
@@ -47,21 +66,42 @@ export default function BillingSettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Текущий тариф</CardTitle>
-          <CardDescription>Статус подписки и период продления.</CardDescription>
+          <CardDescription>Статус доступа и текущий период.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">Тариф: {plan}</Badge>
-            <Badge variant={subscription.data.status === "active" ? "success" : "warning"}>
+            <Badge variant="outline">Тариф: {planLabel}</Badge>
+            <Badge variant={isPaidActive ? "success" : "warning"}>
               {statusLabel}
             </Badge>
             {subscription.data.cancelAtPeriodEnd ? <Badge variant="warning">отмена в конце периода</Badge> : null}
+            {isTrialActive && trialTimeLabel ? <Badge variant={isTrialExpiring ? "warning" : "outline"}>{trialTimeLabel}</Badge> : null}
           </div>
+
+          {isTrialActive ? (
+            <div className={`rounded-lg border p-3 text-sm ${isTrialExpiring ? "border-warning/50 bg-warning/10" : "border-primary/20 bg-primary/5"}`}>
+              <p className="font-medium">{isTrialExpiring ? "Пробный период скоро закончится" : "У вас пробный доступ"}</p>
+              <p className="text-muted-foreground">
+                {isTrialExpiring
+                  ? "Чтобы продолжить работать без ограничений, подключите доступ."
+                  : "Сейчас доступны все функции сервиса без ограничений."}
+              </p>
+            </div>
+          ) : null}
+
+          {isTrialExpired ? (
+            <div className="rounded-lg border border-warning/50 bg-warning/10 p-3 text-sm">
+              <p className="font-medium">Пробный период завершён</p>
+              <p className="text-muted-foreground">Данные и чаты сохранены. Чтобы продолжить полную работу, подключите доступ.</p>
+            </div>
+          ) : null}
 
           <div className="grid gap-2 text-sm text-muted-foreground md:grid-cols-2">
             <div>Начало периода: {formatDate(subscription.data.currentPeriodStart)}</div>
             <div>Конец периода: {formatDate(subscription.data.currentPeriodEnd)}</div>
-            <div>Подсказок ИИ в месяц: {subscription.data.limits.aiSuggestionsPerMonth}</div>
+            <div>
+              Подсказок ИИ в месяц: {isTrialActive ? "без ограничений в рамках trial" : subscription.data.limits.aiSuggestionsPerMonth}
+            </div>
             <div>Участников в команде: {subscription.data.limits.maxUsers}</div>
           </div>
 
@@ -116,19 +156,28 @@ export default function BillingSettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Использование ИИ</CardTitle>
-          <CardDescription>Использование за месяц в рамках лимита тарифа.</CardDescription>
+          <CardDescription>
+            {isTrialActive ? "Во время пробного периода доступны все ключевые AI-функции." : "Использование за месяц в рамках лимита тарифа."}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="text-sm">
-            {usage.data.aiUsage} / {usage.data.aiLimit} подсказок ({usagePct}%)
+            {isTrialActive ? `${usage.data.aiUsage} подсказок за период trial` : `${usage.data.aiUsage} / ${usage.data.aiLimit} подсказок (${usagePct}%)`}
           </div>
-          <div className="h-2 w-full rounded-full bg-muted">
-            <div className="h-2 rounded-full bg-primary" style={{ width: `${usagePct}%` }} />
-          </div>
+          {!isTrialActive ? (
+            <div className="h-2 w-full rounded-full bg-muted">
+              <div className="h-2 rounded-full bg-primary" style={{ width: `${usagePct}%` }} />
+            </div>
+          ) : null}
           <div className="text-xs text-muted-foreground">Период до: {formatDate(usage.data.periodEnd)}</div>
-          {usagePct >= 100 ? (
+          {!isTrialActive && usagePct >= 100 ? (
             <div className="rounded-lg border border-warning/50 bg-warning/10 p-3 text-sm text-warning-foreground">
               Лимит ИИ исчерпан. Смените тариф, чтобы продолжать генерировать подсказки.
+            </div>
+          ) : null}
+          {isFree ? (
+            <div className="rounded-lg border border-border p-3 text-xs text-muted-foreground">
+              На FREE-доступе лимиты ниже, чем в пробном периоде и платных тарифах.
             </div>
           ) : null}
         </CardContent>
