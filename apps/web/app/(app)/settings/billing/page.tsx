@@ -6,7 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingState } from "@/components/common/loading-state";
 import { EmptyState } from "@/components/common/empty-state";
-import { useBillingActions, useBillingSubscription, useBillingUsage } from "@/lib/hooks/use-app-data";
+import { useBillingSubscription, useBillingUsage } from "@/lib/hooks/use-app-data";
+
+const SALES_URL = (process.env.NEXT_PUBLIC_SALES_TELEGRAM_URL ?? "").trim() || "https://t.me";
 
 const formatDate = (value?: string | null) => {
   if (!value) return "-";
@@ -18,7 +20,6 @@ const formatDate = (value?: string | null) => {
 export default function BillingSettingsPage() {
   const subscription = useBillingSubscription();
   const usage = useBillingUsage();
-  const actions = useBillingActions();
   const [error, setError] = useState<string | null>(null);
 
   const usagePct = useMemo(() => {
@@ -44,16 +45,16 @@ export default function BillingSettingsPage() {
   const isTrialExpiring = isTrialActive && (trialDaysLeft ?? 999) <= 1;
   const isTrialExpired = status === "expired";
   const isPaidActive = status === "active";
-  const isFree = status === "free";
+  const isExpired = status === "expired" || status === "free";
 
   const planLabel = isTrialActive
     ? "Пробный период"
     : isPaidActive
       ? subscription.data.plan.toUpperCase()
-      : isTrialExpired
+      : isExpired
         ? "Пробный период завершён"
-        : "FREE";
-  const statusLabel = isTrialActive ? "trial" : isPaidActive ? "активна" : isTrialExpired ? "expired" : "free";
+        : "Пробный период";
+  const statusLabel = isTrialActive ? "trial" : isPaidActive ? "активна" : isExpired ? "expired" : "trial";
   const trialTimeLabel = trialDaysLeft ? `Осталось ${trialDaysLeft} ${trialDaysLeft === 1 ? "день" : "дня"}` : null;
 
   return (
@@ -89,7 +90,7 @@ export default function BillingSettingsPage() {
             </div>
           ) : null}
 
-          {isTrialExpired ? (
+          {isExpired ? (
             <div className="rounded-lg border border-warning/50 bg-warning/10 p-3 text-sm">
               <p className="font-medium">Пробный период завершён</p>
               <p className="text-muted-foreground">Данные и чаты сохранены. Чтобы продолжить полную работу, подключите доступ.</p>
@@ -108,43 +109,19 @@ export default function BillingSettingsPage() {
           <div className="flex flex-wrap gap-2 pt-2">
             <Button
               variant="secondary"
-              disabled={actions.checkout.isPending}
-              onClick={async () => {
-                setError(null);
-                try {
-                  await actions.checkout.mutateAsync("pro");
-                } catch (checkoutError) {
-                  setError(checkoutError instanceof Error ? checkoutError.message : "Ошибка оформления подписки");
-                }
-              }}
+              onClick={() => window.open(SALES_URL, "_blank", "noopener,noreferrer")}
             >
               Перейти на Pro
             </Button>
             <Button
               variant="secondary"
-              disabled={actions.checkout.isPending}
-              onClick={async () => {
-                setError(null);
-                try {
-                  await actions.checkout.mutateAsync("team");
-                } catch (checkoutError) {
-                  setError(checkoutError instanceof Error ? checkoutError.message : "Ошибка оформления подписки");
-                }
-              }}
+              onClick={() => window.open(SALES_URL, "_blank", "noopener,noreferrer")}
             >
               Перейти на Team
             </Button>
             <Button
               variant="outline"
-              disabled={actions.portal.isPending}
-              onClick={async () => {
-                setError(null);
-                try {
-                  await actions.portal.mutateAsync();
-                } catch (portalError) {
-                  setError(portalError instanceof Error ? portalError.message : "Ошибка портала оплаты");
-                }
-              }}
+              onClick={() => window.open(SALES_URL, "_blank", "noopener,noreferrer")}
             >
               Управление подпиской
             </Button>
@@ -175,9 +152,9 @@ export default function BillingSettingsPage() {
               Лимит ИИ исчерпан. Смените тариф, чтобы продолжать генерировать подсказки.
             </div>
           ) : null}
-          {isFree ? (
+          {isExpired ? (
             <div className="rounded-lg border border-border p-3 text-xs text-muted-foreground">
-              На FREE-доступе лимиты ниже, чем в пробном периоде и платных тарифах.
+              Полный доступ можно включить через менеджера в Telegram.
             </div>
           ) : null}
         </CardContent>
