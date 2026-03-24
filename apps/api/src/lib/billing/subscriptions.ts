@@ -1,4 +1,4 @@
-import { Plan, SubscriptionStatus } from "@prisma/client";
+import { Plan, Prisma, SubscriptionStatus } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { resolvePlanConfig } from "./plans.js";
 
@@ -18,10 +18,42 @@ export type ResolvedAccessState = {
 };
 
 export const getLatestSubscription = async (app: FastifyInstance, companyId: string) => {
-  return app.prisma.subscription.findFirst({
-    where: { companyId },
-    orderBy: [{ createdAt: "desc" }]
-  });
+  try {
+    return await app.prisma.subscription.findFirst({
+      where: { companyId },
+      orderBy: [{ createdAt: "desc" }]
+    });
+  } catch (error) {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2022") {
+      throw error;
+    }
+
+    // Backward-compatible fallback for environments where trial columns are not migrated yet.
+    const legacy = await app.prisma.subscription.findFirst({
+      where: { companyId },
+      orderBy: [{ createdAt: "desc" }],
+      select: {
+        id: true,
+        companyId: true,
+        plan: true,
+        status: true,
+        stripeCustomerId: true,
+        stripeSubscriptionId: true,
+        currentPeriodStart: true,
+        currentPeriodEnd: true,
+        cancelAtPeriodEnd: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+    if (!legacy) return null;
+
+    return {
+      ...legacy,
+      trialStartedAt: null,
+      trialEndsAt: null
+    };
+  }
 };
 
 export const ensureSubscription = async (
@@ -43,18 +75,41 @@ export const ensureSubscription = async (
   const trialEndsAt = new Date(now.getTime() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000);
   const isTrial = Boolean(params.initializeTrial);
 
-  return app.prisma.subscription.create({
-    data: {
-      companyId: params.companyId,
-      plan: params.plan ?? Plan.FREE,
-      status: isTrial ? SubscriptionStatus.TRIALING : SubscriptionStatus.ACTIVE,
-      stripeCustomerId: params.stripeCustomerId ?? null,
-      currentPeriodStart: isTrial ? now : monthEnd,
-      currentPeriodEnd: isTrial ? trialEndsAt : monthEnd,
-      trialStartedAt: isTrial ? now : null,
-      trialEndsAt: isTrial ? trialEndsAt : null
+  try {
+    return await app.prisma.subscription.create({
+      data: {
+        companyId: params.companyId,
+        plan: params.plan ?? Plan.FREE,
+        status: isTrial ? SubscriptionStatus.TRIALING : SubscriptionStatus.ACTIVE,
+        stripeCustomerId: params.stripeCustomerId ?? null,
+        currentPeriodStart: isTrial ? now : monthEnd,
+        currentPeriodEnd: isTrial ? trialEndsAt : monthEnd,
+        trialStartedAt: isTrial ? now : null,
+        trialEndsAt: isTrial ? trialEndsAt : null
+      }
+    });
+  } catch (error) {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2022") {
+      throw error;
     }
-  });
+
+    const legacy = await app.prisma.subscription.create({
+      data: {
+        companyId: params.companyId,
+        plan: params.plan ?? Plan.FREE,
+        status: isTrial ? SubscriptionStatus.TRIALING : SubscriptionStatus.ACTIVE,
+        stripeCustomerId: params.stripeCustomerId ?? null,
+        currentPeriodStart: isTrial ? now : monthEnd,
+        currentPeriodEnd: isTrial ? trialEndsAt : monthEnd
+      }
+    });
+
+    return {
+      ...legacy,
+      trialStartedAt: null,
+      trialEndsAt: null
+    };
+  }
 };
 
 export const resolveSubscriptionState = (params: {
@@ -70,7 +125,9 @@ export const resolveSubscriptionState = (params: {
 }): ResolvedAccessState => {
   const now = params.now ?? new Date();
   const trialStartedAt = params.subscription.trialStartedAt ?? null;
-  const trialEndsAt = params.subscription.trialEndsAt ?? null;
+  const trialEndsAt =
+    params.subscription.trialEndsAt ??
+    (params.subscription.status === SubscriptionStatus.TRIALING ? params.subscription.currentPeriodEnd : null);
   const hasTrial = Boolean(trialStartedAt && trialEndsAt);
   const isTrialActive = hasTrial && trialEndsAt!.getTime() > now.getTime();
   const isTrialExpired = hasTrial && trialEndsAt!.getTime() <= now.getTime();

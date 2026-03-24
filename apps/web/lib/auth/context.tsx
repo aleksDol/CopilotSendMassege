@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { clearStoredToken, getStoredToken, setStoredToken } from "@/lib/auth/token";
 import { apiClient } from "@/lib/api/client";
+import { ApiError } from "@/lib/api/errors";
 import type { AccessState } from "@/lib/api/types";
 
 type AuthUser = {
@@ -67,8 +68,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(me.user);
       setCompany(me.company);
       setAccess(me.access);
-    } catch {
-      logout();
+    } catch (error) {
+      // Drop session only for explicit auth failures; keep token for temporary server issues.
+      if (error instanceof ApiError && error.status === 401) {
+        logout();
+      }
     }
   }, [logout]);
 
