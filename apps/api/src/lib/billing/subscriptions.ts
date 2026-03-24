@@ -175,13 +175,14 @@ export const resolveSubscriptionState = (params: {
   }
 
   return {
-    subscriptionStatus: "free",
+    // Product behavior: any non-paid state outside trial is treated as expired access.
+    subscriptionStatus: "expired",
     isTrialActive: false,
-    isTrialExpired: false,
+    isTrialExpired,
     trialStartedAt,
     trialEndsAt,
-    timeLeftMs: null,
-    effectivePlan: params.companyPlan,
+    timeLeftMs: hasTrial ? 0 : null,
+    effectivePlan: Plan.FREE,
     limitsPlan: Plan.FREE
   };
 };
