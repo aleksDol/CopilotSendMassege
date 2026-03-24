@@ -15,8 +15,8 @@ function getCounterId(): string | null {
 }
 
 /**
- * Yandex.Metrica loaded with `lazyOnload` so it does not compete with LCP / main-thread work.
- * Disabled in development unless NEXT_PUBLIC_YANDEX_METRIKA_ENABLED=1.
+ * Counter snippet aligned with Yandex.Metrica docs (tag.js without id in URL; init via ym).
+ * Uses `afterInteractive` like the default HTML installation. Disable in dev unless NEXT_PUBLIC_YANDEX_METRIKA_ENABLED=1.
  */
 export function YandexMetrika() {
   const id = getCounterId();
@@ -31,15 +31,20 @@ export function YandexMetrika() {
 
   return (
     <>
-      <Script id="yandex-metrika" strategy="lazyOnload">
+      <Script id="yandex-metrika" strategy="afterInteractive">
         {`
-(function(m,e,t,r,i,k,a){
-  m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
-  m[i].l=1*new Date();
-  for (var j = 0; j < document.scripts.length; j++) { if (document.scripts[j].src === r) { return; } }
-  k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
-})(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js?id=${id}', 'ym');
-ym(${id}, 'init', { ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true });
+(function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+m[i].l=1*new Date();
+k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})
+(window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
+
+ym(${id}, "init", {
+  clickmap:true,
+  trackLinks:true,
+  accurateTrackBounce:true,
+  webvisor:true,
+  ecommerce:"dataLayer"
+});
         `.trim()}
       </Script>
       <noscript>

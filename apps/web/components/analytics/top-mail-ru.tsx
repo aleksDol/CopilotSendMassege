@@ -15,7 +15,7 @@ function getCounterId(): string | null {
 }
 
 /**
- * Top.Mail.Ru counter — same loading strategy as Yandex: `lazyOnload` after the main page work.
+ * Top.Mail.Ru counter — standard loader; `afterInteractive` matches typical counter installation.
  * Disabled in development unless NEXT_PUBLIC_TOP_MAIL_RU_ENABLED=1.
  */
 export function TopMailRu() {
@@ -31,7 +31,7 @@ export function TopMailRu() {
 
   return (
     <>
-      <Script id="top-mail-ru" strategy="lazyOnload">
+      <Script id="top-mail-ru" strategy="afterInteractive">
         {`
 var _tmr = window._tmr || (window._tmr = []);
 _tmr.push({id: "${id}", type: "pageView", start: (new Date()).getTime()});

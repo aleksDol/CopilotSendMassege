@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
-import Image from "next/image";
-import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
+import { TrackingLink } from "@/components/marketing/tracking-link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   BookOpen,
@@ -66,7 +64,14 @@ function ScreenshotCard({
         </div>
 
         <div className="relative aspect-[16/10] w-full overflow-hidden rounded-lg border border-border bg-background/30 p-2">
-          <Image src={src} alt={title} fill className="object-contain p-2" sizes="(max-width: 768px) 100vw, 50vw" />
+          <img
+            src={src}
+            alt={title}
+            loading="lazy"
+            decoding="async"
+            fetchPriority="low"
+            className="absolute inset-0 h-full w-full object-contain p-2"
+          />
         </div>
       </div>
 
@@ -85,9 +90,9 @@ export default function HomeLandingPage() {
           <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
             <div className="space-y-6">
               <div className="space-y-2">
-                <Badge variant="secondary" className="w-fit">
+                <span className="inline-flex w-fit items-center rounded-full border border-transparent bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground transition-colors">
                   AI Sales Assistant
-                </Badge>
+                </span>
                 <h1 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl lg:text-5xl">
                   AI-помощник для продаж в Telegram
                 </h1>
@@ -97,19 +102,19 @@ export default function HomeLandingPage() {
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <Link href="/register" className={defaultMd}>
+                <TrackingLink href="/register" className={defaultMd}>
                   Зарегистрироваться
-                </Link>
-                <Link href="/login" className={outlineMd}>
+                </TrackingLink>
+                <TrackingLink href="/login" className={outlineMd}>
                   Войти
-                </Link>
+                </TrackingLink>
               </div>
 
               <div className="text-sm text-muted-foreground">
                 Хотите посмотреть, как это работает?{" "}
-                <Link href="#how-it-works" className="text-primary underline underline-offset-4 hover:brightness-110">
+                <a href="#how-it-works" className="text-primary underline underline-offset-4 hover:brightness-110">
                   Перейдите к шагам
-                </Link>
+                </a>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
@@ -460,12 +465,12 @@ export default function HomeLandingPage() {
           </div>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Link href="/register" className={defaultLg}>
+            <TrackingLink href="/register" className={defaultLg}>
               Зарегистрироваться
-            </Link>
-            <Link href="/login" className={outlineLg}>
+            </TrackingLink>
+            <TrackingLink href="/login" className={outlineLg}>
               Войти
-            </Link>
+            </TrackingLink>
           </div>
         </div>
       </section>
@@ -482,12 +487,12 @@ export default function HomeLandingPage() {
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center lg:justify-end">
-                <Link href="/register" className={defaultLg}>
+                <TrackingLink href="/register" className={defaultLg}>
                   Зарегистрироваться
-                </Link>
-                <Link href="/login" className={outlineLg}>
+                </TrackingLink>
+                <TrackingLink href="/login" className={outlineLg}>
                   Войти
-                </Link>
+                </TrackingLink>
               </div>
             </div>
           </div>

@@ -1,19 +1,22 @@
 "use client";
 
 import { useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth/context";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isInitializing } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     if (!isInitializing && !isAuthenticated) {
-      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+      const query = searchParams.toString();
+      const returnTo = query ? `${pathname}?${query}` : pathname;
+      router.replace(`/login?next=${encodeURIComponent(returnTo)}`);
     }
-  }, [isInitializing, isAuthenticated, router, pathname]);
+  }, [isInitializing, isAuthenticated, router, pathname, searchParams]);
 
   if (isInitializing) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Загрузка...</div>;
