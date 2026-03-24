@@ -129,8 +129,9 @@ export const resolveSubscriptionState = (params: {
     params.subscription.trialEndsAt ??
     (params.subscription.status === SubscriptionStatus.TRIALING ? params.subscription.currentPeriodEnd : null);
   const hasTrial = Boolean(trialStartedAt && trialEndsAt);
-  const isTrialActive = hasTrial && trialEndsAt!.getTime() > now.getTime();
-  const isTrialExpired = hasTrial && trialEndsAt!.getTime() <= now.getTime();
+  const isTrialLifecycle = params.subscription.status === SubscriptionStatus.TRIALING;
+  const isTrialActive = isTrialLifecycle && hasTrial && trialEndsAt!.getTime() > now.getTime();
+  const isTrialExpired = isTrialLifecycle && hasTrial && trialEndsAt!.getTime() <= now.getTime();
   const paidStatuses = new Set<SubscriptionStatus>([SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE]);
   const isPaid = paidStatuses.has(params.subscription.status) && params.subscription.plan !== Plan.FREE;
 

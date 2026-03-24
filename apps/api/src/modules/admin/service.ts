@@ -183,7 +183,9 @@ export const updateSubscriptionForUser = async (
       data: {
         status: SubscriptionStatus.ACTIVE,
         currentPeriodStart: sub.currentPeriodStart ?? now,
-        currentPeriodEnd: nextEnd
+        currentPeriodEnd: nextEnd,
+        trialStartedAt: null,
+        trialEndsAt: null
       }
     });
 
