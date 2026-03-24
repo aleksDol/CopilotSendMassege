@@ -52,11 +52,6 @@ const matchesFilter = (ui: AdminSubscriptionUiStatus, filter: AdminUsersQuery["f
   return ui === "inactive";
 };
 
-const telegramConnectedForCompany = (company: {
-  channelAccounts: Array<{ telegram: { loginStatus: TelegramLoginStatus } | null }>;
-}) =>
-  company.channelAccounts.some((account) => account.telegram?.loginStatus === TelegramLoginStatus.CONNECTED);
-
 export const listAdminUsers = async (app: FastifyInstance, query: AdminUsersQuery): Promise<AdminUserListItem[]> => {
   const users = await app.prisma.user.findMany({
     where: query.search
@@ -67,27 +62,58 @@ export const listAdminUsers = async (app: FastifyInstance, query: AdminUsersQuer
           }
         }
       : {},
-    include: {
-      company: {
-        include: {
-          subscriptions: {
-            orderBy: { createdAt: "desc" },
-            take: 1
-          },
-          channelAccounts: {
-            where: { channelType: ChannelType.TELEGRAM },
-            include: { telegram: true }
-          }
-        }
-      }
+    select: {
+      id: true,
+      email: true,
+      createdAt: true,
+      companyId: true
     },
     orderBy: { createdAt: "desc" }
   });
 
+  const companyIds = Array.from(new Set(users.map((user) => user.companyId)));
+  const [subscriptions, telegramAccounts] = await Promise.all([
+    app.prisma.subscription.findMany({
+      where: { companyId: { in: companyIds } },
+      orderBy: [{ companyId: "asc" }, { createdAt: "desc" }]
+    }),
+    app.prisma.channelAccount.findMany({
+      where: {
+        companyId: { in: companyIds },
+        channelType: ChannelType.TELEGRAM
+      },
+      select: {
+        companyId: true,
+        telegram: {
+          select: {
+            loginStatus: true
+          }
+        }
+      }
+    })
+  ]);
+
+  const latestSubscriptionByCompany = new Map<string, (typeof subscriptions)[number]>();
+  for (const sub of subscriptions) {
+    if (!latestSubscriptionByCompany.has(sub.companyId)) {
+      latestSubscriptionByCompany.set(sub.companyId, sub);
+    }
+  }
+
+  const telegramConnectedByCompany = new Map<string, boolean>();
+  for (const account of telegramAccounts) {
+    if (!telegramConnectedByCompany.has(account.companyId)) {
+      telegramConnectedByCompany.set(account.companyId, false);
+    }
+    if (account.telegram?.loginStatus === TelegramLoginStatus.CONNECTED) {
+      telegramConnectedByCompany.set(account.companyId, true);
+    }
+  }
+
   const rows: AdminUserListItem[] = [];
 
   for (const user of users) {
-    const latest = user.company.subscriptions[0] ?? null;
+    const latest = latestSubscriptionByCompany.get(user.companyId) ?? null;
     const ui = toUiStatus(latest);
 
     if (!matchesFilter(ui, query.filter)) {
@@ -100,7 +126,7 @@ export const listAdminUsers = async (app: FastifyInstance, query: AdminUsersQuer
       createdAt: user.createdAt.toISOString(),
       subscriptionStatus: ui,
       subscriptionExpiresAt: latest?.currentPeriodEnd ? latest.currentPeriodEnd.toISOString() : null,
-      telegramConnected: telegramConnectedForCompany(user.company)
+      telegramConnected: telegramConnectedByCompany.get(user.companyId) ?? false
     });
   }
 
