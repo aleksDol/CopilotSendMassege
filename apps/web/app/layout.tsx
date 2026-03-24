@@ -2,6 +2,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 import { Space_Grotesk, IBM_Plex_Mono } from "next/font/google";
 import { AppProviders } from "@/components/providers/app-providers";
+import { YandexMetrika } from "@/components/analytics/yandex-metrika";
 
 const sansFont = Space_Grotesk({
   subsets: ["latin"],
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className={`${sansFont.variable} ${monoFont.variable}`}>
         <AppProviders>{children}</AppProviders>
+        <YandexMetrika />
       </body>
     </html>
   );
