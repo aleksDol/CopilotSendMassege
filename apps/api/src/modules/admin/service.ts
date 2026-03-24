@@ -250,12 +250,22 @@ export const updateSubscriptionForUser = async (
     const deltaMs = body.periodDeltaDays * 24 * 60 * 60 * 1000;
     const base = sub.currentPeriodEnd ?? now;
     const nextEnd = new Date(base.getTime() + deltaMs);
+    const trialEndBase = sub.trialEndsAt ?? sub.currentPeriodEnd ?? now;
+    const nextTrialEnd = new Date(trialEndBase.getTime() + deltaMs);
+
+    const updateData: {
+      currentPeriodEnd: Date;
+      trialEndsAt?: Date;
+    } = {
+      currentPeriodEnd: nextEnd
+    };
+    if (sub.status === SubscriptionStatus.TRIALING || sub.trialEndsAt) {
+      updateData.trialEndsAt = nextTrialEnd;
+    }
 
     await app.prisma.subscription.update({
       where: { id: sub.id },
-      data: {
-        currentPeriodEnd: nextEnd
-      }
+      data: updateData
     });
 
     return { ok: true as const };
