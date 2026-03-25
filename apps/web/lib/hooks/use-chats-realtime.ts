@@ -134,26 +134,85 @@ export function useChatsRealtime(
     }
 
     const base = getRealtimeBaseUrl().replace(/\/$/, "");
-    const url = new URL(base + "/realtime/events");
-    url.searchParams.set("token", token);
-    const source = new EventSource(url.toString());
+    const controller = new AbortController();
 
-    const handlerNamed = (event: MessageEvent) => {
-      try {
-        const parsed = JSON.parse(event.data) as ParsedEvent;
-        handleMessageIngested(parsed, selectedIdRef, onNewMessageRef.current, queryClient, scope);
-      } catch {
-        // ignore parse errors
+    // IMPORTANT: don't put JWT into URL query (leaks via logs/history/referrers).
+    // EventSource doesn't support headers, so use fetch() streaming SSE with Authorization header.
+    const run = async () => {
+      const resp = await fetch(base + "/realtime/events", {
+        method: "GET",
+        headers: {
+          accept: "text/event-stream",
+          authorization: `Bearer ${token}`
+        },
+        cache: "no-store",
+        signal: controller.signal
+      });
+
+      if (!resp.ok || !resp.body) {
+        return;
+      }
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+
+      let buffer = "";
+      let currentEvent: string | null = null;
+      let currentData: string[] = [];
+
+      const flush = () => {
+        if (!currentEvent || currentData.length === 0) {
+          currentEvent = null;
+          currentData = [];
+          return;
+        }
+
+        const dataStr = currentData.join("\n");
+
+        if (currentEvent === "message_ingested") {
+          try {
+            const parsed = JSON.parse(dataStr) as ParsedEvent;
+            handleMessageIngested(parsed, selectedIdRef, onNewMessageRef.current, queryClient, scope);
+          } catch {
+            // ignore parse errors
+          }
+        }
+
+        currentEvent = null;
+        currentData = [];
+      };
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        let idx: number;
+        while ((idx = buffer.indexOf("\n\n")) !== -1) {
+          const chunk = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+
+          const lines = chunk.split("\n");
+          for (const line of lines) {
+            if (line.startsWith("event:")) {
+              currentEvent = line.slice("event:".length).trim();
+            } else if (line.startsWith("data:")) {
+              currentData.push(line.slice("data:".length).trimStart());
+            }
+          }
+
+          flush();
+        }
       }
     };
 
-    source.addEventListener("message_ingested", handlerNamed);
-
-    source.onerror = () => {};
+    void run().catch(() => {
+      // ignore
+    });
 
     return () => {
-      source.removeEventListener("message_ingested", handlerNamed);
-      source.close();
+      controller.abort();
     };
   }, [isAuthenticated, queryClient, token, scope, telegram.data, channelAccountId]);
 }

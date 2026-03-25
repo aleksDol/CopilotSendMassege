@@ -5,6 +5,8 @@ import redisPlugin from "./plugins/redis.js";
 import rawBodyPlugin from "./plugins/raw-body.js";
 import corsPlugin from "./plugins/cors.js";
 import authPlugin from "./plugins/auth.js";
+import rateLimitPlugin from "./plugins/rate-limit.js";
+import helmetPlugin from "./plugins/helmet.js";
 import errorHandlerPlugin from "./plugins/error-handler.js";
 import apiModules from "./modules/index.js";
 
@@ -31,7 +33,9 @@ export const buildApp = async (config: AppConfig) => {
   await app.register(redisPlugin);
   await app.register(rawBodyPlugin);
   await app.register(corsPlugin);
+  await app.register(helmetPlugin);
   await app.register(authPlugin);
+  await app.register(rateLimitPlugin);
   await app.register(errorHandlerPlugin);
   await app.register(apiModules);
 

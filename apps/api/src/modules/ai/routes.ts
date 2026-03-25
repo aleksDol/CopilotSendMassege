@@ -13,7 +13,20 @@ import { ReplySuggestionService } from "./reply-suggestion-service.js";
 const aiRoutes: FastifyPluginAsync = async (app) => {
   const service = new ReplySuggestionService(app);
 
-  app.post("/conversations/:id/ai/suggest-reply", { preHandler: [app.authenticate] }, async (request) => {
+  app.post(
+    "/conversations/:id/ai/suggest-reply",
+    {
+      preHandler: [
+        app.authenticate,
+        app.rateLimit({
+          groupId: "ai:suggest-reply",
+          max: 30,
+          timeWindow: "1 minute",
+          keyGenerator: (request) => request.currentUser?.id ?? request.ip
+        })
+      ]
+    },
+    async (request) => {
     const scope = getCompanyScope(request);
     const params = parseWithSchema(suggestReplyParamsSchema, request.params);
     const body = parseWithSchema(suggestReplyBodySchema, request.body);
@@ -24,7 +37,8 @@ const aiRoutes: FastifyPluginAsync = async (app) => {
       conversationId: params.id,
       mode: body.mode
     });
-  });
+    }
+  );
 
   app.get("/conversations/:id/ai/suggestions", { preHandler: [app.authenticate] }, async (request) => {
     const scope = getCompanyScope(request);

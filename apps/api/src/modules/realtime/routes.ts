@@ -10,9 +10,12 @@ const HEARTBEAT_MS = 20_000;
 
 const realtimeRoutes: FastifyPluginAsync = async (app) => {
   app.get("/realtime/events", async (request, reply) => {
-    const token = typeof (request.query as { token?: string } | undefined)?.token === "string"
+    const headerAuth = typeof request.headers.authorization === "string" ? request.headers.authorization : undefined;
+    const headerToken = headerAuth?.toLowerCase().startsWith("bearer ") ? headerAuth.slice("bearer ".length).trim() : undefined;
+    const queryToken = typeof (request.query as { token?: string } | undefined)?.token === "string"
       ? (request.query as { token?: string }).token
       : undefined;
+    const token = headerToken || queryToken;
 
     if (!token) {
       throw new AppError(401, "UNAUTHORIZED", "Authentication required");

@@ -9,6 +9,7 @@ declare module "fastify" {
     prisma: PrismaClient;
     redis: Redis;
     authenticate: import("fastify").preHandlerHookHandler;
+    rateLimit: (opts?: unknown) => import("fastify").preHandlerHookHandler;
   }
 
   interface FastifyRequest {

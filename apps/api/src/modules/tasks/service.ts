@@ -92,10 +92,29 @@ const invalidateTaskRelatedCaches = async (app: FastifyInstance, companyId: stri
   await invalidateConversationCaches(app, companyId);
 };
 
-export const refreshFollowUpState = async (app: FastifyInstance, conversationId: string) => {
+export const refreshFollowUpState = async (
+  app: FastifyInstance,
+  params: {
+    companyId: string;
+    conversationId: string;
+  }
+) => {
+  const conversation = await app.prisma.conversation.findFirst({
+    where: {
+      id: params.conversationId,
+      companyId: params.companyId
+    },
+    select: { id: true }
+  });
+
+  if (!conversation) {
+    throw new AppError(404, "CONVERSATION_NOT_FOUND", "Conversation not found");
+  }
+
   const openFollowUps = await app.prisma.task.findMany({
     where: {
-      conversationId,
+      companyId: params.companyId,
+      conversationId: params.conversationId,
       taskType: TaskType.FOLLOW_UP,
       status: {
         in: [TaskStatus.OPEN, TaskStatus.IN_PROGRESS]
@@ -110,9 +129,9 @@ export const refreshFollowUpState = async (app: FastifyInstance, conversationId:
   const nextDueAt = openFollowUps.find((task) => task.dueAt)?.dueAt ?? null;
 
   await app.prisma.conversationState.upsert({
-    where: { conversationId },
+    where: { conversationId: params.conversationId },
     create: {
-      conversationId,
+      conversationId: params.conversationId,
       ...DEFAULT_STATE,
       followUpDueAt: nextDueAt,
       nextRecommendedAction: nextDueAt ? "follow_up" : null
@@ -308,7 +327,7 @@ export const createTask = async (
   });
 
   if (task.taskType === TaskType.FOLLOW_UP && task.conversationId) {
-    await refreshFollowUpState(app, task.conversationId);
+    await refreshFollowUpState(app, { companyId: params.companyId, conversationId: task.conversationId });
   }
 
   await invalidateTaskRelatedCaches(app, params.companyId);
@@ -387,7 +406,7 @@ export const patchTask = async (
   });
 
   if (updated.taskType === TaskType.FOLLOW_UP && updated.conversationId) {
-    await refreshFollowUpState(app, updated.conversationId);
+    await refreshFollowUpState(app, { companyId: params.companyId, conversationId: updated.conversationId });
   }
 
   await invalidateTaskRelatedCaches(app, params.companyId);

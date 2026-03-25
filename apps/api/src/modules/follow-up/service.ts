@@ -1,4 +1,4 @@
-import { LeadStatus, LeadTemperature, TaskPriority, TaskStatus, TaskType } from "@prisma/client";
+import { LeadStatus, LeadTemperature, TaskStatus, TaskType } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { createTask, refreshFollowUpState } from "../tasks/service.js";
 
@@ -126,7 +126,7 @@ export const scanAndCreateFollowUps = async (
       source: "system"
     });
 
-    await refreshFollowUpState(app, state.conversation.id);
+    await refreshFollowUpState(app, { companyId: state.conversation.companyId, conversationId: state.conversation.id });
     created += 1;
   }
 

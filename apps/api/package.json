@@ -14,7 +14,9 @@
   },
   "dependencies": {
     "@fastify/cors": "^10.1.0",
+    "@fastify/helmet": "^13.0.2",
     "@fastify/jwt": "^9.1.0",
+    "@fastify/rate-limit": "^10.3.0",
     "@prisma/client": "^6.19.2",
     "@repo/ai-core": "workspace:*",
     "bcryptjs": "^3.0.2",

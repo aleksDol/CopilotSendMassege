@@ -35,35 +35,113 @@ const authRoutes: FastifyPluginAsync = async (app) => {
     return loginUser(app, body);
   });
 
-  app.post("/auth/login/request-code", async (request) => {
+  app.post(
+    "/auth/login/request-code",
+    {
+      preHandler: [
+        app.rateLimit({
+          groupId: "auth:codes",
+          max: 10,
+          timeWindow: "10 minutes",
+          keyGenerator: (request) => request.ip
+        })
+      ]
+    },
+    async (request) => {
     const body = parseWithSchema(loginRequestCodeBodySchema, request.body);
     return loginRequestCode(app, body, { ipAddress: request.ip, userAgent: request.headers["user-agent"] });
-  });
+    }
+  );
 
-  app.post("/auth/login/verify-code", async (request) => {
+  app.post(
+    "/auth/login/verify-code",
+    {
+      preHandler: [
+        app.rateLimit({
+          groupId: "auth:codes",
+          max: 30,
+          timeWindow: "10 minutes",
+          keyGenerator: (request) => request.ip
+        })
+      ]
+    },
+    async (request) => {
     const body = parseWithSchema(loginVerifyCodeBodySchema, request.body);
     return loginVerifyCode(app, body, { ipAddress: request.ip });
-  });
+    }
+  );
 
-  app.post("/auth/login/resend-code", async (request) => {
+  app.post(
+    "/auth/login/resend-code",
+    {
+      preHandler: [
+        app.rateLimit({
+          groupId: "auth:codes",
+          max: 10,
+          timeWindow: "10 minutes",
+          keyGenerator: (request) => request.ip
+        })
+      ]
+    },
+    async (request) => {
     const body = parseWithSchema(resendCodeBodySchema, request.body);
     return resendLoginCode(app, body, { ipAddress: request.ip, userAgent: request.headers["user-agent"] });
-  });
+    }
+  );
 
-  app.post("/auth/register/request-code", async (request) => {
+  app.post(
+    "/auth/register/request-code",
+    {
+      preHandler: [
+        app.rateLimit({
+          groupId: "auth:codes",
+          max: 10,
+          timeWindow: "10 minutes",
+          keyGenerator: (request) => request.ip
+        })
+      ]
+    },
+    async (request) => {
     const body = parseWithSchema(registerRequestCodeBodySchema, request.body);
     return registerRequestCode(app, body, { ipAddress: request.ip, userAgent: request.headers["user-agent"] });
-  });
+    }
+  );
 
-  app.post("/auth/register/verify-code", async (request) => {
+  app.post(
+    "/auth/register/verify-code",
+    {
+      preHandler: [
+        app.rateLimit({
+          groupId: "auth:codes",
+          max: 30,
+          timeWindow: "10 minutes",
+          keyGenerator: (request) => request.ip
+        })
+      ]
+    },
+    async (request) => {
     const body = parseWithSchema(registerVerifyCodeBodySchema, request.body);
     return registerVerifyCode(app, body, { ipAddress: request.ip });
-  });
+    }
+  );
 
-  app.post("/auth/register/resend-code", async (request) => {
+  app.post(
+    "/auth/register/resend-code",
+    {
+      preHandler: [
+        app.rateLimit({
+          groupId: "auth:codes",
+          max: 10,
+          timeWindow: "10 minutes",
+          keyGenerator: (request) => request.ip
+        })
+      ]
+    },
+    async (request) => {
     const body = parseWithSchema(resendCodeBodySchema, request.body);
     return resendRegisterCode(app, body, { ipAddress: request.ip, userAgent: request.headers["user-agent"] });
-  });
+    }
+  );
 
   app.get("/auth/me", { preHandler: [app.authenticate] }, async (request) => {
     const currentUser = getCurrentUserOrThrow(request);

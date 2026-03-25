@@ -87,6 +87,68 @@ const ensureChannelAndAccount = async (app: FastifyInstance, scope: Scope, phone
 
 const QR_EXTERNAL_ID = "telegram-qr";
 
+const toQrSessionKey = (qrSessionId: string) => `tg:qr-session:${qrSessionId}`;
+
+const normalizeExpiresAtMs = (expiresAt: number): number => {
+  // Worker may return seconds or milliseconds since epoch; handle both safely.
+  return expiresAt < 1_000_000_000_000 ? expiresAt * 1000 : expiresAt;
+};
+
+const bindQrSessionToScope = async (
+  app: FastifyInstance,
+  params: {
+    qrSessionId: string;
+    scope: Scope;
+    channelAccountId: string;
+    expiresAt: number;
+  }
+) => {
+  const expiresAtMs = normalizeExpiresAtMs(params.expiresAt);
+  const ttlSeconds = Math.max(30, Math.floor((expiresAtMs - Date.now()) / 1000));
+
+  const payload = JSON.stringify({
+    companyId: params.scope.companyId,
+    userId: params.scope.userId,
+    channelAccountId: params.channelAccountId,
+    expiresAtMs
+  });
+
+  try {
+    await app.redis.set(toQrSessionKey(params.qrSessionId), payload, "EX", ttlSeconds);
+  } catch (error) {
+    app.log.warn({ err: error }, "Failed to bind Telegram QR session to scope");
+    throw new AppError(503, "TELEGRAM_QR_UNAVAILABLE", "Temporary error. Please retry.");
+  }
+};
+
+const requireQrSessionOwnership = async (app: FastifyInstance, scope: Scope, qrSessionId: string) => {
+  let raw: string | null = null;
+  try {
+    raw = await app.redis.get(toQrSessionKey(qrSessionId));
+  } catch (error) {
+    app.log.warn({ err: error }, "Failed to read Telegram QR session binding");
+    throw new AppError(503, "TELEGRAM_QR_UNAVAILABLE", "Temporary error. Please retry.");
+  }
+
+  if (!raw) {
+    throw new AppError(404, "TELEGRAM_QR_NOT_FOUND", "QR session not found or expired");
+  }
+
+  let parsed: { companyId: string; userId: string; channelAccountId?: string } | null = null;
+  try {
+    parsed = JSON.parse(raw) as { companyId: string; userId: string; channelAccountId?: string };
+  } catch {
+    throw new AppError(404, "TELEGRAM_QR_NOT_FOUND", "QR session not found or expired");
+  }
+
+  if (parsed.companyId !== scope.companyId || parsed.userId !== scope.userId) {
+    // Don't leak that a session exists for another tenant/user.
+    throw new AppError(404, "TELEGRAM_QR_NOT_FOUND", "QR session not found or expired");
+  }
+
+  return parsed;
+};
+
 const ensureChannelAndAccountForQr = async (app: FastifyInstance, scope: Scope) => {
   const result = await app.prisma.$transaction(async (tx) => {
     // QR placeholder channel: worker will route to the real telegram identity.
@@ -141,14 +203,23 @@ export const startConnectQr = async (app: FastifyInstance, scope: Scope) => {
     companyId: scope.companyId,
     channelAccountId: channel.id
   })) as unknown as { qrSessionId: string; qrUrl: string; expiresAt: number };
+
+  await bindQrSessionToScope(app, {
+    qrSessionId: response.qrSessionId,
+    scope,
+    channelAccountId: channel.id,
+    expiresAt: response.expiresAt
+  });
+
   return response;
 };
 
 export const pollLoginQr = async (
   app: FastifyInstance,
-  _scope: Scope,
+  scope: Scope,
   payload: { qrSessionId: string }
 ) => {
+  await requireQrSessionOwnership(app, scope, payload.qrSessionId);
   const worker = getWorkerClient(app);
   return (await worker.pollLoginQr({ qrSessionId: payload.qrSessionId })) as {
     status: string;
@@ -159,9 +230,10 @@ export const pollLoginQr = async (
 
 export const verifyPasswordQr = async (
   app: FastifyInstance,
-  _scope: Scope,
+  scope: Scope,
   payload: { qrSessionId: string; password: string }
 ) => {
+  await requireQrSessionOwnership(app, scope, payload.qrSessionId);
   const worker = getWorkerClient(app);
   return worker.verifyPasswordQr({ qrSessionId: payload.qrSessionId, password: payload.password });
 };

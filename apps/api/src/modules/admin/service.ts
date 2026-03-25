@@ -151,17 +151,12 @@ export const updateSubscriptionForUser = async (
   const extendDays = body.extendDays ?? 30;
   const extendMs = extendDays * 24 * 60 * 60 * 1000;
 
-  let sub = await getLatestSubscription(app, user.companyId);
+  const sub = await getLatestSubscription(app, user.companyId);
 
   if (body.action === "activate") {
     const end = new Date(now.getTime() + extendMs);
 
     if (!sub) {
-      const company = await app.prisma.company.findUnique({
-        where: { id: user.companyId },
-        select: { plan: true }
-      });
-
       await app.prisma.subscription.create({
         data: {
           companyId: user.companyId,
