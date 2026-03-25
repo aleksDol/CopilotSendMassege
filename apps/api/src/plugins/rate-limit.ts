@@ -11,19 +11,6 @@ const rateLimitPlugin: FastifyPluginAsync = async (app) => {
     // If Redis is down, we prefer to fail closed (protect APIs from abuse).
     skipOnError: false
   });
-
-  // Rate limit unknown URLs to slow down endpoint probing.
-  app.setNotFoundHandler(
-    {
-      preHandler: app.rateLimit({
-        max: 30,
-        timeWindow: "1 minute"
-      })
-    },
-    async (_request, reply) => {
-      reply.code(404).send({ error: "NOT_FOUND" });
-    }
-  );
 };
 
 export default fp(rateLimitPlugin, { name: "rate-limit", dependencies: ["redis"] });
