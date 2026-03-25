@@ -5,8 +5,7 @@
   "packageManager": "pnpm@10.2.0",
   "pnpm": {
     "overrides": {
-      "jiti": "2.6.1",
-      "ajv": "6.12.6"
+      "jiti": "2.6.1"
     }
   },
   "scripts": {

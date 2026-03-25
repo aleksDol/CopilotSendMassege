@@ -6,7 +6,6 @@ settings:
 
 overrides:
   jiti: 2.6.1
-  ajv: 6.12.6
 
 importers:
 
