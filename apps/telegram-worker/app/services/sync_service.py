@@ -5,6 +5,7 @@ from typing import Any
 import psycopg
 from urllib.parse import urlparse
 from telethon.tl.types import Channel, Chat, User
+from telethon.utils import get_peer_id
 
 from app.config import settings
 from app.crypto import SessionCrypto
@@ -449,9 +450,12 @@ async def resolve_public_group_by_link(
             title = getattr(entity, "title", None)
             resolved_username = getattr(entity, "username", None)
 
+            # Must match live_listener (event.chat_id) and dialog sync (dialog.id): full peer id, not raw entity.id.
+            peer_id = str(get_peer_id(entity))
+
             return {
                 "status": "resolved",
-                "telegramChatId": str(getattr(entity, "id", username)),
+                "telegramChatId": peer_id,
                 "chatTitle": title,
                 "chatType": "group",
                 "username": resolved_username,
