@@ -21,6 +21,45 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+async def _resolve_sender_display(client: Any, event: events.NewMessage.Event, me: User) -> tuple[str | None, str | None]:
+    """
+    Full name + @username for the message author.
+    In groups, get_sender() may be None or a partial User without username — fall back to get_entity(sender_id).
+    """
+    msg = event.message
+    if msg is None:
+        return None, None
+    if bool(getattr(msg, "out", False)):
+        fn = " ".join(part for part in [me.first_name, me.last_name] if part).strip() or None
+        return fn, me.username
+
+    sender = await event.get_sender()
+    sender_id = getattr(msg, "sender_id", None)
+    u: User | None = sender if isinstance(sender, User) else None
+    if u is None and sender_id is not None:
+        try:
+            ent = await client.get_entity(sender_id)
+            if isinstance(ent, User):
+                u = ent
+        except Exception:
+            pass
+    if not isinstance(u, User):
+        return None, None
+
+    full_name = " ".join(part for part in [u.first_name, u.last_name] if part).strip() or None
+    username = u.username
+    if not username and sender_id is not None:
+        try:
+            ent = await client.get_entity(sender_id)
+            if isinstance(ent, User) and ent.username:
+                username = ent.username
+                if not full_name:
+                    full_name = " ".join(part for part in [ent.first_name, ent.last_name] if part).strip() or None
+        except Exception:
+            pass
+    return full_name, username
+
+
 def _resolve_conversation_type(entity: Any) -> str:
     if isinstance(entity, Channel):
         return "group" if getattr(entity, "megagroup", False) else "channel"
@@ -182,19 +221,12 @@ async def _run_account_listener(account: ConnectedAccount, crypto: SessionCrypto
                     conversation_type = _resolve_conversation_type(chat)
                     is_outgoing = bool(getattr(msg, "out", False))
 
-                    sender = await event.get_sender()
                     sender_id = getattr(msg, "sender_id", None)
 
                     sender_external_id = str(sender_id if sender_id is not None else me.id)
                     sender_type = "self" if is_outgoing else "user"
 
-                    sender_full_name = None
-                    sender_username = None
-                    if isinstance(sender, User):
-                        sender_full_name = (
-                            " ".join(part for part in [sender.first_name, sender.last_name] if part).strip() or None
-                        )
-                        sender_username = sender.username
+                    sender_full_name, sender_username = await _resolve_sender_display(client, event, me)
 
                     text = msg.message if getattr(msg, "message", None) else None
                     has_attachment = bool(getattr(msg, "media", None))

@@ -25,6 +25,54 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+async def _resolve_sync_message_sender(
+    client: Any, message: Any, me: User, entity: Any
+) -> tuple[str | None, str | None]:
+    """
+    Author display fields for synced messages.
+    For groups/supergroups the dialog entity is Channel/Chat — must resolve the message sender, not the dialog peer.
+    """
+    sender_id = message.sender_id
+    is_outgoing = bool(getattr(message, "out", False))
+    if is_outgoing or (sender_id is not None and str(sender_id) == str(me.id)):
+        fn = " ".join(part for part in [me.first_name, me.last_name] if part).strip() or None
+        return fn, me.username
+
+    if isinstance(entity, User) and sender_id is not None and str(sender_id) == str(entity.id):
+        fn = " ".join(part for part in [entity.first_name, entity.last_name] if part).strip() or None
+        return fn, entity.username
+
+    u: User | None = None
+    try:
+        sender = await message.get_sender()
+        if isinstance(sender, User):
+            u = sender
+    except Exception:
+        pass
+    if u is None and sender_id is not None:
+        try:
+            ent = await client.get_entity(sender_id)
+            if isinstance(ent, User):
+                u = ent
+        except Exception:
+            pass
+    if not isinstance(u, User):
+        return None, None
+
+    full_name = " ".join(part for part in [u.first_name, u.last_name] if part).strip() or None
+    username = u.username
+    if not username and sender_id is not None:
+        try:
+            ent = await client.get_entity(sender_id)
+            if isinstance(ent, User) and ent.username:
+                username = ent.username
+                if not full_name:
+                    full_name = " ".join(part for part in [ent.first_name, ent.last_name] if part).strip() or None
+        except Exception:
+            pass
+    return full_name, username
+
+
 def _resolve_conversation_type(entity: Any) -> str:
     if isinstance(entity, Channel):
         return "group" if getattr(entity, "megagroup", False) else "channel"
@@ -181,15 +229,9 @@ async def run_initial_sync(
 
                     sender_external_id = str(sender_id if sender_id is not None else me.id)
                     sender_type = "self" if is_outgoing else "user"
-                    sender_full_name = None
-                    sender_username = None
-
-                    if sender_id is not None and str(sender_id) == str(me.id):
-                        sender_full_name = " ".join(part for part in [me.first_name, me.last_name] if part).strip() or None
-                        sender_username = me.username
-                    elif isinstance(entity, User):
-                        sender_full_name = " ".join(part for part in [entity.first_name, entity.last_name] if part).strip() or None
-                        sender_username = entity.username
+                    sender_full_name, sender_username = await _resolve_sync_message_sender(
+                        client, message, me, entity
+                    )
 
                     text = message.message if getattr(message, "message", None) else None
 
