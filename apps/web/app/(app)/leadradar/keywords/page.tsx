@@ -7,10 +7,12 @@ import { EmptyState } from "@/components/common/empty-state";
 import { LoadingState } from "@/components/common/loading-state";
 import { LeadRadarNav } from "@/components/leadradar/leadradar-nav";
 import { useLeadRadarConfigActions, useLeadRadarKeywords } from "@/lib/hooks/use-app-data";
-import type { LeadRadarCategory, LeadRadarKeywordItem, LeadRadarMatchType } from "@/lib/api/types";
+import type { LeadRadarKeywordItem, LeadRadarMatchType } from "@/lib/api/types";
 
 const MATCH_TYPES: LeadRadarMatchType[] = ["contains", "exact", "regex"];
-const CATEGORIES: LeadRadarCategory[] = ["general", "mvp", "automation", "ai", "website", "bot"];
+
+/** Stored for API/DB compatibility; does not affect matching or scoring — only keyword text + match type matter. */
+const DEFAULT_KEYWORD_CATEGORY = "general" as const;
 
 function formatDate(iso: string): string {
   try {
@@ -23,16 +25,13 @@ function formatDate(iso: string): string {
 export default function LeadRadarKeywordsPage() {
   const actions = useLeadRadarConfigActions();
   const [onlyActive, setOnlyActive] = useState(false);
-  const [categoryFilter, setCategoryFilter] = useState<LeadRadarCategory | "all">("all");
 
   const keywordsQuery = useLeadRadarKeywords({
-    is_active: onlyActive ? true : undefined,
-    category: categoryFilter === "all" ? undefined : categoryFilter
+    is_active: onlyActive ? true : undefined
   });
 
   const [keyword, setKeyword] = useState("");
   const [matchType, setMatchType] = useState<LeadRadarMatchType>("contains");
-  const [category, setCategory] = useState<LeadRadarCategory>("general");
   const [priority, setPriority] = useState(0);
 
   const items = useMemo(() => {
@@ -44,7 +43,9 @@ export default function LeadRadarKeywordsPage() {
     <div className="space-y-4">
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold">LeadRadar</h1>
-        <p className="text-sm text-muted-foreground">Keywords — ключевые фразы, по которым LeadRadar ищет лиды.</p>
+        <p className="text-sm text-muted-foreground">
+          Keywords — ключевые фразы, по которым LeadRadar ищет лиды. Учитываются только текст фразы и тип совпадения (contains / exact / regex).
+        </p>
         <LeadRadarNav />
       </div>
 
@@ -52,7 +53,7 @@ export default function LeadRadarKeywordsPage() {
         <CardHeader>
           <CardTitle>Добавить keyword</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-2 md:grid-cols-5">
+        <CardContent className="grid gap-2 md:grid-cols-4">
           <input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
@@ -67,17 +68,6 @@ export default function LeadRadarKeywordsPage() {
             {MATCH_TYPES.map((t) => (
               <option key={t} value={t}>
                 {t}
-              </option>
-            ))}
-          </select>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value as LeadRadarCategory)}
-            className="h-10 rounded-md border border-border bg-background px-3 text-sm"
-          >
-            {CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
               </option>
             ))}
           </select>
@@ -96,7 +86,7 @@ export default function LeadRadarKeywordsPage() {
                 await actions.addKeyword.mutateAsync({
                   keyword: keyword.trim(),
                   matchType,
-                  category,
+                  category: DEFAULT_KEYWORD_CATEGORY,
                   priority
                 });
                 setKeyword("");
@@ -119,18 +109,6 @@ export default function LeadRadarKeywordsPage() {
               <input type="checkbox" checked={onlyActive} onChange={(e) => setOnlyActive(e.target.checked)} />
               Только активные
             </label>
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value as any)}
-              className="h-10 rounded-md border border-border bg-background px-3 text-sm"
-            >
-              <option value="all">all categories</option>
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
           </div>
 
           {keywordsQuery.isLoading ? <LoadingState label="Загрузка keywords..." /> : null}
@@ -147,12 +125,11 @@ export default function LeadRadarKeywordsPage() {
 
           {items.length ? (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-sm">
+              <table className="w-full min-w-[720px] text-sm">
                 <thead>
                   <tr className="border-b border-border text-left text-muted-foreground">
                     <th className="py-2 pr-3">Keyword</th>
                     <th className="py-2 pr-3">Match</th>
-                    <th className="py-2 pr-3">Category</th>
                     <th className="py-2 pr-3">Priority</th>
                     <th className="py-2 pr-3">Active</th>
                     <th className="py-2 pr-3">Updated</th>
@@ -164,7 +141,6 @@ export default function LeadRadarKeywordsPage() {
                     <tr key={k.id} className="border-b border-border/60 align-top">
                       <td className="py-3 pr-3 font-medium">{k.keyword}</td>
                       <td className="py-3 pr-3">{k.match_type}</td>
-                      <td className="py-3 pr-3">{k.category}</td>
                       <td className="py-3 pr-3">{k.priority}</td>
                       <td className="py-3 pr-3">{k.is_active ? "yes" : "no"}</td>
                       <td className="py-3 pr-3 text-muted-foreground">{formatDate(k.updated_at)}</td>
