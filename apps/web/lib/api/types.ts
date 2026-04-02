@@ -208,3 +208,71 @@ export type WorkspaceSettings = {
     defaultReplyPolicy: Record<string, unknown> | null;
   };
 };
+
+// ===== LeadRadar =====
+export type LeadRadarLeadStatus =
+  | "new"
+  | "reviewed"
+  | "hot"
+  | "contacted"
+  | "replied"
+  | "qualified"
+  | "won"
+  | "lost"
+  | "ignored"
+  | "spam";
+
+export type LeadRadarLeadItem = {
+  id: string;
+  username: string | null;
+  displayName: string | null;
+  chatId: string;
+  chatTitle: string | null;
+  messageText: string | null;
+  score: number;
+  status: LeadRadarLeadStatus;
+  createdAt: string;
+};
+
+export type LeadRadarLeadListResponse = {
+  items: LeadRadarLeadItem[];
+  page: number;
+  limit: number;
+  total: number;
+};
+
+export type LeadRadarContextMessage = {
+  text: string | null;
+  sender: string | null;
+  date: string;
+};
+
+export type LeadRadarLeadEvent = {
+  id: string;
+  eventType: string;
+  oldStatus: string | null;
+  newStatus: string | null;
+  comment: string | null;
+  createdBy: string | null;
+  createdAt: string | null;
+};
+
+export type LeadRadarLeadDetailsResponse = {
+  lead: {
+    id: string;
+    username: string | null;
+    displayName: string | null;
+    chatId: string;
+    chatTitle: string | null;
+    messageText: string | null;
+    score: number;
+    status: LeadRadarLeadStatus;
+    createdAt: string;
+    notes: string | null;
+  };
+  context: {
+    beforeMessages: LeadRadarContextMessage[];
+    afterMessages: LeadRadarContextMessage[];
+  } | null;
+  events: LeadRadarLeadEvent[];
+};

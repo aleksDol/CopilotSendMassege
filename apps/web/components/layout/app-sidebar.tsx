@@ -8,6 +8,7 @@ import {
   CircleHelp,
   MessageCircle,
   CheckSquare,
+  Radar,
   BookOpen,
   ShieldCheck,
   Smartphone,
@@ -24,7 +25,8 @@ const navItems = [
   { href: "/getting-started", label: "Начало работы", icon: CircleHelp },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/chats", label: "Chats", icon: MessageCircle },
-  { href: "/tasks", label: "Tasks", icon: CheckSquare }
+  { href: "/tasks", label: "Tasks", icon: CheckSquare },
+  { href: "/leadradar", label: "LeadRadar", icon: Radar }
 ];
 
 const settingsItems = [

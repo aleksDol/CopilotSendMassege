@@ -220,6 +220,38 @@ enum KnowledgeKind {
 }
 
 /// =========================
+/// LeadRadar (isolated module)
+/// NOTE: These enums/models are separate from existing Lead/LeadEvent.
+/// =========================
+enum LeadRadarLeadStatus {
+  new
+  reviewed
+  hot
+  contacted
+  replied
+  qualified
+  won
+  lost
+  ignored
+  spam
+}
+
+enum LeadRadarMatchType {
+  contains
+  exact
+  regex
+}
+
+enum LeadRadarCategory {
+  bot
+  website
+  ai
+  mvp
+  automation
+  general
+}
+
+/// =========================
 /// Company / User layer
 /// =========================
 model Company {
@@ -269,6 +301,13 @@ model User {
   knowledgeItemsCreated  KnowledgeItem[] @relation("KnowledgeItemCreatedBy")
   aiSuggestionsForUser   AiSuggestion[]  @relation("AiSuggestionCreatedForUser")
   createdInvites         TeamInvite[]    @relation("InviteCreatedBy")
+
+  // LeadRadar (isolated module) relations
+  leadRadarSources          LeadRadarSource[]
+  leadRadarKeywords         LeadRadarKeyword[]
+  leadRadarNegativeKeywords LeadRadarNegativeKeyword[]
+  leadRadarLeads            LeadRadarLead[]
+  leadRadarSettings         LeadRadarSettings[]
 
   @@index([companyId])
   @@index([companyId, role])
@@ -394,6 +433,13 @@ model TelegramAccount {
   updatedAt            DateTime            @updatedAt
 
   channelAccount ChannelAccount @relation(fields: [channelAccountId], references: [id], onDelete: Cascade)
+
+  // LeadRadar (isolated module) relations
+  leadRadarSources          LeadRadarSource[]
+  leadRadarKeywords         LeadRadarKeyword[]
+  leadRadarNegativeKeywords LeadRadarNegativeKeyword[]
+  leadRadarLeads            LeadRadarLead[]
+  leadRadarSettings         LeadRadarSettings[]
 
   @@index([telegramUserId])
   @@index([loginStatus])
@@ -737,4 +783,150 @@ model ReplyPolicy {
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@unique([companyId])
+}
+
+/// =========================
+/// LeadRadar tables
+/// - account-scoped by (user_id, telegram_account_id)
+/// - stored independently from existing Lead tables
+/// =========================
+model LeadRadarSource {
+  id                String   @id @default(uuid()) @db.Uuid @map("id")
+  userId            String   @db.Uuid @map("user_id")
+  telegramAccountId String   @db.Uuid @map("telegram_account_id")
+  telegramChatId    String   @map("telegram_chat_id")
+  chatTitle         String?  @map("chat_title")
+  chatType          String?  @map("chat_type")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  telegramAccount TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Restrict)
+
+  @@unique([telegramAccountId, telegramChatId], map: "lead_sources_telegram_account_id_telegram_chat_id_key")
+  @@index([userId], map: "lead_sources_user_id_idx")
+  @@index([telegramAccountId], map: "lead_sources_telegram_account_id_idx")
+  @@map("lead_sources")
+}
+
+model LeadRadarKeyword {
+  id                String             @id @default(uuid()) @db.Uuid @map("id")
+  userId            String             @db.Uuid @map("user_id")
+  telegramAccountId String             @db.Uuid @map("telegram_account_id")
+  keyword           String             @map("keyword")
+  matchType         LeadRadarMatchType @map("match_type")
+  category          LeadRadarCategory  @map("category")
+  priority          Int                @default(0) @map("priority")
+  isActive          Boolean            @default(true) @map("is_active")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  telegramAccount TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Restrict)
+
+  @@index([telegramAccountId], map: "lead_keywords_telegram_account_id_idx")
+  @@index([isActive], map: "lead_keywords_is_active_idx")
+  @@map("lead_keywords")
+}
+
+model LeadRadarNegativeKeyword {
+  id                String   @id @default(uuid()) @db.Uuid @map("id")
+  userId            String   @db.Uuid @map("user_id")
+  telegramAccountId String   @db.Uuid @map("telegram_account_id")
+  phrase            String   @map("phrase")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  telegramAccount TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Restrict)
+
+  @@index([telegramAccountId], map: "lead_negative_keywords_telegram_account_id_idx")
+  @@index([isActive], map: "lead_negative_keywords_is_active_idx")
+  @@map("lead_negative_keywords")
+}
+
+model LeadRadarLead {
+  id                String              @id @default(uuid()) @db.Uuid @map("id")
+  userId            String              @db.Uuid @map("user_id")
+  telegramAccountId String              @db.Uuid @map("telegram_account_id")
+  telegramUserId    String?             @map("telegram_user_id")
+  username          String?             @map("username")
+  displayName       String?             @map("display_name")
+  chatId            String              @map("chat_id")
+  chatTitle         String?             @map("chat_title")
+  messageId         String              @map("message_id")
+  messageText       String?             @map("message_text")
+  messageDate       DateTime            @map("message_date")
+  matchedKeywords   Json                @map("matched_keywords_json")
+  score             Int                 @default(0) @map("score")
+  leadType          String?             @map("lead_type")
+  status            LeadRadarLeadStatus @default(new) @map("status")
+  notes             String?             @map("notes")
+  contactedAt       DateTime?           @map("contacted_at")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  telegramAccount TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Restrict)
+
+  messageContext LeadRadarMessageContext?
+  events         LeadRadarEvent[]
+
+  @@unique([telegramAccountId, chatId, messageId], map: "leads_telegram_account_id_chat_id_message_id_key")
+  @@index([telegramAccountId, status], map: "leads_telegram_account_id_status_idx")
+  @@index([telegramAccountId, createdAt(sort: Desc)], map: "leads_telegram_account_id_created_at_desc_idx")
+  @@index([telegramAccountId, chatId], map: "leads_telegram_account_id_chat_id_idx")
+  @@index([telegramAccountId, username], map: "leads_telegram_account_id_username_idx")
+  @@map("leads")
+}
+
+model LeadRadarMessageContext {
+  id             String   @id @default(uuid()) @db.Uuid @map("id")
+  leadId         String   @db.Uuid @unique @map("lead_id")
+  beforeMessages Json     @map("before_messages_json")
+  afterMessages  Json     @map("after_messages_json")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  lead LeadRadarLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@map("lead_message_context")
+}
+
+model LeadRadarEvent {
+  id        String   @id @default(uuid()) @db.Uuid @map("id")
+  leadId    String   @db.Uuid @map("lead_id")
+  eventType String   @map("event_type")
+  oldStatus String?  @map("old_status")
+  newStatus String?  @map("new_status")
+  comment   String?  @map("comment")
+  createdBy String?  @db.Uuid @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  lead LeadRadarLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId], map: "lead_events_lead_id_idx")
+  @@map("lead_events")
+}
+
+model LeadRadarSettings {
+  id                  String   @id @default(uuid()) @db.Uuid @map("id")
+  userId              String   @db.Uuid @map("user_id")
+  telegramAccountId   String   @db.Uuid @map("telegram_account_id")
+  isEnabled           Boolean  @default(true) @map("is_enabled")
+  minScoreThreshold   Int      @default(0) @map("min_score_threshold")
+  storeContextEnabled Boolean  @default(false) @map("store_context_enabled")
+  contextBeforeCount  Int      @default(0) @map("context_before_count")
+  contextAfterCount   Int      @default(0) @map("context_after_count")
+  dedupeWindowHours   Int      @default(24) @map("dedupe_window_hours")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  telegramAccount TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Restrict)
+
+  @@unique([telegramAccountId], map: "lead_settings_telegram_account_id_key")
+  @@index([userId], map: "lead_settings_user_id_idx")
+  @@map("lead_settings")
 }

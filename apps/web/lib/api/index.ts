@@ -8,4 +8,5 @@ export * from "./ai";
 export * from "./billing";
 export * from "./team";
 export * from "./workspace";
+export * from "./leadradar";
 export * from "./types";

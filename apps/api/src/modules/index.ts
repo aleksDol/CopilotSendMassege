@@ -39,6 +39,14 @@ const apiModules: FastifyPluginAsync = async (app) => {
   await app.register(companyRoutes);
   await app.register(userRoutes);
   await app.register(adminRoutes);
+
+  if (app.config.env.ENABLE_LEADRADAR) {
+    app.log.info("[LeadRadar] module enabled");
+    const { default: leadradarModule } = await import("./leadradar/index.js");
+    await app.register(leadradarModule);
+  } else {
+    app.log.info("[LeadRadar] module disabled");
+  }
 };
 
 export default apiModules;

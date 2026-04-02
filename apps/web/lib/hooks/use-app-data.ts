@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { aiApi, billingApi, conversationsApi, dashboardApi, settingsApi, tasksApi, teamApi, telegramApi, workspaceApi } from "@/lib/api";
+import { aiApi, billingApi, conversationsApi, dashboardApi, leadradarApi, settingsApi, tasksApi, teamApi, telegramApi, workspaceApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth/context";
 
 /** Scope key so cache is never shared between users/companies (accounts). */
@@ -145,6 +145,61 @@ export const useWorkspaceSettings = () => {
     queryFn: () => workspaceApi.getSettings(token ?? ""),
     enabled: Boolean(token)
   });
+};
+
+export const useLeadRadarLeads = (params: {
+  status?: import("@/lib/api/types").LeadRadarLeadStatus | "all";
+  search?: string;
+  page: number;
+  limit: number;
+  sortBy?: "created_at" | "message_date" | "score";
+  sortOrder?: "asc" | "desc";
+}) => {
+  const { token, company, user } = useAuth();
+  const scope = baseScopeKey(company?.id, user?.id);
+  return useQuery({
+    queryKey: ["leadradar-leads", scope, params],
+    queryFn: () => leadradarApi.listLeads(token ?? "", params),
+    enabled: Boolean(token)
+  });
+};
+
+export const useLeadRadarLead = (leadId: string | null) => {
+  const { token, company, user } = useAuth();
+  const scope = baseScopeKey(company?.id, user?.id);
+  return useQuery({
+    queryKey: ["leadradar-lead", scope, leadId],
+    queryFn: () => leadradarApi.getLead(token ?? "", leadId ?? ""),
+    enabled: Boolean(token && leadId)
+  });
+};
+
+export const useLeadRadarActions = () => {
+  const { token, company, user } = useAuth();
+  const qc = useQueryClient();
+  const scope = baseScopeKey(company?.id, user?.id);
+
+  const invalidateList = () => void qc.invalidateQueries({ queryKey: ["leadradar-leads", scope] });
+  const invalidateLead = (leadId: string) => void qc.invalidateQueries({ queryKey: ["leadradar-lead", scope, leadId] });
+
+  return {
+    updateLeadStatus: useMutation({
+      mutationFn: (input: { leadId: string; status: import("@/lib/api/types").LeadRadarLeadStatus }) =>
+        leadradarApi.updateLeadStatus(token ?? "", input.leadId, input.status),
+      onSuccess: (_data, vars) => {
+        invalidateList();
+        invalidateLead(vars.leadId);
+      }
+    }),
+    updateLeadNotes: useMutation({
+      mutationFn: (input: { leadId: string; notes: string | null }) =>
+        leadradarApi.updateLeadNotes(token ?? "", input.leadId, input.notes),
+      onSuccess: (_data, vars) => {
+        invalidateList();
+        invalidateLead(vars.leadId);
+      }
+    })
+  };
 };
 
 export const useSendMessageMutation = (conversationId: string) => {
