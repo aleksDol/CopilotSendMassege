@@ -139,7 +139,13 @@ export default function LeadRadarSourcesPage() {
                             variant="outline"
                             size="sm"
                             disabled={actions.removeSource.isPending}
-                            onClick={() => actions.removeSource.mutateAsync(s.id)}
+                            onClick={async () => {
+                              const ok = window.confirm(
+                                "Убрать этот чат из мониторинга LeadRadar? Запись в списке Sources будет удалена; лиды в Inbox останутся."
+                              );
+                              if (!ok) return;
+                              await actions.removeSource.mutateAsync(s.id);
+                            }}
                           >
                             Remove
                           </Button>

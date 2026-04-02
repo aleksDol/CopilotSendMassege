@@ -69,7 +69,16 @@ async function request<T>(
     throw new ApiError(message, response.status, code, details);
   }
 
-  return (await response.json()) as T;
+  // DELETE / some endpoints may return 204 or empty body — avoid JSON parse error so mutations still succeed.
+  const raw = await response.text();
+  if (!raw.trim()) {
+    return undefined as T;
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return undefined as T;
+  }
 }
 
 export const apiClient = {

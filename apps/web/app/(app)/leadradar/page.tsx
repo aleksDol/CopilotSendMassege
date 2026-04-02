@@ -168,7 +168,7 @@ export default function LeadRadarInboxPage() {
   }
 
   return (
-    <div className="space-y-4 pr-0 lg:pr-[540px]">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">LeadRadar</h1>
