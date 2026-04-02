@@ -86,12 +86,15 @@ export class LeadRadarIngestionService {
 
   async processMessage(input: LeadRadarMessageInput): Promise<void> {
     const log = (msg: string) => {
+      console.log(msg);
       try {
         this.deps.logger?.info(msg);
       } catch {
         // noop
       }
     };
+
+    log(`[LeadRadar-DEBUG] processMessage ENTER userId=${input.userId} telegramAccountId=${input.telegramAccountId} chatId=${input.chatId} text="${(input.text ?? "").slice(0, 80)}"`);
 
     // 1) Settings check
     const settings =
@@ -103,6 +106,8 @@ export class LeadRadarIngestionService {
         user_id: input.userId,
         telegram_account_id: input.telegramAccountId
       }));
+
+    log(`[LeadRadar-DEBUG] settings.is_enabled=${settings.is_enabled} min_score=${settings.min_score_threshold}`);
 
     if (!settings.is_enabled) {
       log("[LeadRadar] skipped: disabled");
@@ -116,6 +121,8 @@ export class LeadRadarIngestionService {
       telegram_chat_id: input.chatId
     });
 
+    log(`[LeadRadar-DEBUG] source lookup chatId=${input.chatId} found=${!!source} active=${source?.is_active ?? "N/A"}`);
+
     if (!source || !source.is_active) {
       log("[LeadRadar] skipped: not a source");
       return;
@@ -123,6 +130,7 @@ export class LeadRadarIngestionService {
 
     // 3) Keyword match (real)
     const match = await this.deps.matchService.match(input);
+    log(`[LeadRadar-DEBUG] match result: matched=${match.matched} keywords=${JSON.stringify(match.matchedKeywords)}`);
     if (!match.matched) {
       if (match.reason === "negative_keyword") {
         log("[LeadRadar] skipped: negative keyword");
@@ -139,7 +147,7 @@ export class LeadRadarIngestionService {
       matchedKeywords: match.matchedKeywords,
       categories: match.categories
     });
-    log(`[LeadRadar] score: ${score}`);
+    log(`[LeadRadar-DEBUG] score=${score} threshold=${settings.min_score_threshold}`);
 
     // 5) Threshold check
     if (score < settings.min_score_threshold) {

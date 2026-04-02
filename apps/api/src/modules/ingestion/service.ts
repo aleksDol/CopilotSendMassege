@@ -59,10 +59,20 @@ const toMessageType = (payload: MessageEventPayload): MessageType => {
 };
 
 const canTriggerLeadRadar = (payload: MessageEventPayload): boolean => {
-  if (payload.isOutgoing) return false;
-  if (payload.senderType !== "user") return false;
+  if (payload.isOutgoing) {
+    console.log("[LeadRadar-DEBUG] canTrigger: SKIP isOutgoing=true chatId=%s senderType=%s", payload.externalConversationId, payload.senderType);
+    return false;
+  }
+  if (payload.senderType !== "user") {
+    console.log("[LeadRadar-DEBUG] canTrigger: SKIP senderType=%s (not 'user') chatId=%s", payload.senderType, payload.externalConversationId);
+    return false;
+  }
   const text = typeof payload.text === "string" ? payload.text.trim() : "";
-  if (!text.length) return false;
+  if (!text.length) {
+    console.log("[LeadRadar-DEBUG] canTrigger: SKIP empty text chatId=%s", payload.externalConversationId);
+    return false;
+  }
+  console.log("[LeadRadar-DEBUG] canTrigger: OK chatId=%s text=%s", payload.externalConversationId, text.slice(0, 80));
   return true;
 };
 
@@ -101,16 +111,25 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
   const companyId = telegramAccount.channelAccount.companyId;
   const channelAccountId = telegramAccount.channelAccountId;
 
-  if (
-    !isSupportedTelegramMessagePayload({
-      senderType: payload.senderType,
-      senderExternalId: payload.senderExternalId,
-      senderUsername: payload.senderUsername,
-      isOutgoing: payload.isOutgoing,
-      rawPayload: payload.rawPayload,
-      allowGroupIngestion: app.config.env.ENABLE_TG_GROUP_INGESTION
-    })
-  ) {
+  const isSupported = isSupportedTelegramMessagePayload({
+    senderType: payload.senderType,
+    senderExternalId: payload.senderExternalId,
+    senderUsername: payload.senderUsername,
+    isOutgoing: payload.isOutgoing,
+    rawPayload: payload.rawPayload,
+    allowGroupIngestion: app.config.env.ENABLE_TG_GROUP_INGESTION
+  });
+
+  if (!isSupported) {
+    console.log(
+      "[LeadRadar-DEBUG] isSupportedTelegramMessagePayload=false → IGNORED chatId=%s dialogType=%s senderType=%s isOutgoing=%s allowGroup=%s senderUsername=%s",
+      payload.externalConversationId,
+      payload.rawPayload?.dialogType,
+      payload.senderType,
+      payload.isOutgoing,
+      app.config.env.ENABLE_TG_GROUP_INGESTION,
+      payload.senderUsername
+    );
     await app.prisma.telegramAccount.update({
       where: { id: telegramAccount.id },
       data: {
@@ -290,8 +309,10 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
 
     // LeadRadar integration (non-blocking, inbound-only, gated by ENABLE_LEADRADAR).
     // Handle duplicate deliveries too: LeadRadar is idempotent via dedupe/unique keys.
+    console.log("[LeadRadar-DEBUG] gate (dup-path): ENABLE_LEADRADAR=%s hasModule=%s", app.config.env.ENABLE_LEADRADAR, !!app.leadradar);
     if (app.config.env.ENABLE_LEADRADAR && app.leadradar && canTriggerLeadRadar(payload)) {
       const userId = telegramAccount.channelAccount.createdByUserId;
+      console.log("[LeadRadar-DEBUG] userId=%s chatId=%s", userId, payload.externalConversationId);
       if (typeof userId === "string" && userId.length) {
         const conversationTitle = conversation.title ?? payload.conversationTitle ?? null;
         const input = toLeadRadarInput({
@@ -300,6 +321,7 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
           payload,
           conversationTitle
         });
+        console.log("[LeadRadar-DEBUG] calling processMessage chatId=%s text=%s", input.chatId, (input.text ?? "").slice(0, 80));
 
         void app.leadradar.services.ingestion.processMessage(input).catch((err: unknown) => {
           app.log.warn({ err }, "[LeadRadar] realtime ingestion failed");
@@ -392,8 +414,10 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
   });
 
   // LeadRadar integration (non-blocking, inbound-only, gated by ENABLE_LEADRADAR).
+  console.log("[LeadRadar-DEBUG] gate (new-msg): ENABLE_LEADRADAR=%s hasModule=%s", app.config.env.ENABLE_LEADRADAR, !!app.leadradar);
   if (app.config.env.ENABLE_LEADRADAR && app.leadradar && canTriggerLeadRadar(payload)) {
     const userId = telegramAccount.channelAccount.createdByUserId;
+    console.log("[LeadRadar-DEBUG] userId=%s chatId=%s", userId, payload.externalConversationId);
     if (typeof userId === "string" && userId.length) {
       const input = toLeadRadarInput({
         userId,
@@ -401,6 +425,7 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
         payload,
         conversationTitle
       });
+      console.log("[LeadRadar-DEBUG] calling processMessage chatId=%s text=%s", input.chatId, (input.text ?? "").slice(0, 80));
 
       void app.leadradar.services.ingestion.processMessage(input).catch((err: unknown) => {
         app.log.warn({ err }, "[LeadRadar] realtime ingestion failed");
