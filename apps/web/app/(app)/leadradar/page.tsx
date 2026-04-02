@@ -10,6 +10,8 @@ import { Select } from "@/components/ui/select";
 import { useLeadRadarActions, useLeadRadarLeads } from "@/lib/hooks/use-app-data";
 import type { LeadRadarLeadItem, LeadRadarLeadStatus } from "@/lib/api/types";
 import { LeadDrawer } from "@/components/leadradar/lead-drawer";
+import { LeadRadarNav } from "@/components/leadradar/leadradar-nav";
+import Link from "next/link";
 
 const STATUSES: Array<{ label: string; value: LeadRadarLeadStatus | "all" }> = [
   { label: "Все статусы", value: "all" },
@@ -92,6 +94,9 @@ export default function LeadRadarInboxPage() {
         <div>
           <h1 className="text-2xl font-semibold">LeadRadar</h1>
           <p className="text-sm text-muted-foreground">Inbox лидов (первые результаты работы LeadRadar).</p>
+          <div className="pt-2">
+            <LeadRadarNav />
+          </div>
         </div>
         <Card>
           <CardHeader>
@@ -133,9 +138,31 @@ export default function LeadRadarInboxPage() {
         ) : (
           <EmptyState
             title="Лидов пока нет"
-            description="Добавьте Sources/Keywords и запустите тестовое ingestion, чтобы увидеть лиды в Inbox."
+            description={
+              "Добавьте Sources (чаты) и Keywords (фразы), включите LeadRadar в Settings — после этого лиды будут появляться автоматически."
+            }
           />
         )}
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/leadradar/sources"
+            className="rounded-md bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground transition hover:opacity-90"
+          >
+            Sources
+          </Link>
+          <Link
+            href="/leadradar/keywords"
+            className="rounded-md bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground transition hover:opacity-90"
+          >
+            Keywords
+          </Link>
+          <Link
+            href="/leadradar/settings"
+            className="rounded-md bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground transition hover:opacity-90"
+          >
+            Settings
+          </Link>
+        </div>
       </div>
     );
   }
@@ -146,6 +173,9 @@ export default function LeadRadarInboxPage() {
         <div>
           <h1 className="text-2xl font-semibold">LeadRadar</h1>
           <p className="text-sm text-muted-foreground">Inbox лидов (таблица).</p>
+          <div className="pt-2">
+            <LeadRadarNav />
+          </div>
         </div>
         <div className="text-sm text-muted-foreground">Всего: {data.total}</div>
       </div>

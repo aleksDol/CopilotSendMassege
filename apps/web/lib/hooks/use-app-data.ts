@@ -202,6 +202,106 @@ export const useLeadRadarActions = () => {
   };
 };
 
+export const useLeadRadarSources = () => {
+  const { token, company, user } = useAuth();
+  const scope = baseScopeKey(company?.id, user?.id);
+  return useQuery({
+    queryKey: ["leadradar-sources", scope],
+    queryFn: () => leadradarApi.listSources(token ?? ""),
+    enabled: Boolean(token)
+  });
+};
+
+export const useLeadRadarKeywords = (params?: { is_active?: boolean; category?: string }) => {
+  const { token, company, user } = useAuth();
+  const scope = baseScopeKey(company?.id, user?.id);
+  return useQuery({
+    queryKey: ["leadradar-keywords", scope, params ?? {}],
+    queryFn: () => leadradarApi.listKeywords(token ?? "", params),
+    enabled: Boolean(token)
+  });
+};
+
+export const useLeadRadarNegativeKeywords = () => {
+  const { token, company, user } = useAuth();
+  const scope = baseScopeKey(company?.id, user?.id);
+  return useQuery({
+    queryKey: ["leadradar-negative-keywords", scope],
+    queryFn: () => leadradarApi.listNegativeKeywords(token ?? ""),
+    enabled: Boolean(token)
+  });
+};
+
+export const useLeadRadarSettings = () => {
+  const { token, company, user } = useAuth();
+  const scope = baseScopeKey(company?.id, user?.id);
+  return useQuery({
+    queryKey: ["leadradar-settings", scope],
+    queryFn: () => leadradarApi.getSettings(token ?? ""),
+    enabled: Boolean(token)
+  });
+};
+
+export const useLeadRadarConfigActions = () => {
+  const { token, company, user } = useAuth();
+  const qc = useQueryClient();
+  const scope = baseScopeKey(company?.id, user?.id);
+  const invalidate = (key: string) => void qc.invalidateQueries({ queryKey: [key, scope] });
+
+  return {
+    addSource: useMutation({
+      mutationFn: (input: { telegramChatId: string; chatTitle?: string | null; chatType?: string | null }) =>
+        leadradarApi.addSource(token ?? "", input),
+      onSuccess: () => invalidate("leadradar-sources")
+    }),
+    updateSource: useMutation({
+      mutationFn: (input: { id: string; isActive: boolean }) => leadradarApi.updateSource(token ?? "", input.id, { isActive: input.isActive }),
+      onSuccess: () => invalidate("leadradar-sources")
+    }),
+    removeSource: useMutation({
+      mutationFn: (id: string) => leadradarApi.removeSource(token ?? "", id),
+      onSuccess: () => invalidate("leadradar-sources")
+    }),
+
+    addKeyword: useMutation({
+      mutationFn: (input: { keyword: string; matchType: string; category: string; priority?: number }) =>
+        leadradarApi.addKeyword(token ?? "", input),
+      onSuccess: () => invalidate("leadradar-keywords")
+    }),
+    updateKeyword: useMutation({
+      mutationFn: (input: {
+        id: string;
+        patch: Partial<{ keyword: string; matchType: string; category: string; priority: number; isActive: boolean }>;
+      }) => leadradarApi.updateKeyword(token ?? "", input.id, input.patch),
+      onSuccess: () => invalidate("leadradar-keywords")
+    }),
+    removeKeyword: useMutation({
+      mutationFn: (id: string) => leadradarApi.removeKeyword(token ?? "", id),
+      onSuccess: () => invalidate("leadradar-keywords")
+    }),
+
+    addNegativeKeyword: useMutation({
+      mutationFn: (input: { phrase: string }) => leadradarApi.addNegativeKeyword(token ?? "", input),
+      onSuccess: () => invalidate("leadradar-negative-keywords")
+    }),
+    updateNegativeKeyword: useMutation({
+      mutationFn: (input: { id: string; patch: Partial<{ phrase: string; isActive: boolean }> }) =>
+        leadradarApi.updateNegativeKeyword(token ?? "", input.id, input.patch),
+      onSuccess: () => invalidate("leadradar-negative-keywords")
+    }),
+    removeNegativeKeyword: useMutation({
+      mutationFn: (id: string) => leadradarApi.removeNegativeKeyword(token ?? "", id),
+      onSuccess: () => invalidate("leadradar-negative-keywords")
+    }),
+
+    updateSettings: useMutation({
+      mutationFn: (patch: Partial<import("@/lib/api/types").LeadRadarSettingsResponse>) =>
+        leadradarApi.updateSettings(token ?? "", patch),
+      onSuccess: () => invalidate("leadradar-settings")
+    })
+  };
+};
+
 export const useSendMessageMutation = (conversationId: string) => {
   const { token, company, user } = useAuth();
   const telegram = useTelegramAccount();

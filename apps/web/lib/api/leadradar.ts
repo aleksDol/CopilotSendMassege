@@ -1,5 +1,13 @@
 import { apiClient } from "./client";
-import type { LeadRadarLeadDetailsResponse, LeadRadarLeadListResponse, LeadRadarLeadStatus } from "./types";
+import type {
+  LeadRadarLeadDetailsResponse,
+  LeadRadarLeadListResponse,
+  LeadRadarLeadStatus,
+  LeadRadarListKeywordsResponse,
+  LeadRadarListNegativeKeywordsResponse,
+  LeadRadarListSourcesResponse,
+  LeadRadarSettingsResponse
+} from "./types";
 
 export const leadradarApi = {
   listLeads: (
@@ -32,5 +40,60 @@ export const leadradarApi = {
 
   updateLeadNotes: (token: string, leadId: string, notes: string | null) =>
     apiClient.patch(`/leadradar/leads/${leadId}/notes`, { notes }, { token })
+
+  ,
+
+  // ===== Sources =====
+  listSources: (token: string) => apiClient.get<LeadRadarListSourcesResponse>("/leadradar/sources", { token }),
+  addSource: (
+    token: string,
+    input: { telegramChatId: string; chatTitle?: string | null; chatType?: string | null }
+  ) => apiClient.post("/leadradar/sources", input, { token }),
+  updateSource: (token: string, id: string, input: { isActive: boolean }) =>
+    apiClient.patch(`/leadradar/sources/${id}`, input, { token }),
+  removeSource: (token: string, id: string) => apiClient.delete(`/leadradar/sources/${id}`, { token }),
+
+  // ===== Keywords =====
+  listKeywords: (token: string, params?: { is_active?: boolean; category?: string }) =>
+    apiClient.get<LeadRadarListKeywordsResponse>("/leadradar/keywords", {
+      token,
+      query: {
+        is_active: typeof params?.is_active === "boolean" ? params.is_active : undefined,
+        category: params?.category
+      }
+    }),
+  addKeyword: (
+    token: string,
+    input: { keyword: string; matchType: string; category: string; priority?: number }
+  ) => apiClient.post("/leadradar/keywords", input, { token }),
+  updateKeyword: (
+    token: string,
+    id: string,
+    patch: Partial<{ keyword: string; matchType: string; category: string; priority: number; isActive: boolean }>
+  ) => apiClient.patch(`/leadradar/keywords/${id}`, patch, { token }),
+  removeKeyword: (token: string, id: string) => apiClient.delete(`/leadradar/keywords/${id}`, { token }),
+
+  // ===== Negative keywords =====
+  listNegativeKeywords: (token: string) =>
+    apiClient.get<LeadRadarListNegativeKeywordsResponse>("/leadradar/negative-keywords", { token }),
+  addNegativeKeyword: (token: string, input: { phrase: string }) =>
+    apiClient.post("/leadradar/negative-keywords", input, { token }),
+  updateNegativeKeyword: (token: string, id: string, patch: Partial<{ phrase: string; isActive: boolean }>) =>
+    apiClient.patch(`/leadradar/negative-keywords/${id}`, patch, { token }),
+  removeNegativeKeyword: (token: string, id: string) => apiClient.delete(`/leadradar/negative-keywords/${id}`, { token }),
+
+  // ===== Settings =====
+  getSettings: (token: string) => apiClient.get<LeadRadarSettingsResponse>("/leadradar/settings", { token }),
+  updateSettings: (
+    token: string,
+    patch: Partial<{
+      isEnabled: boolean;
+      minScoreThreshold: number;
+      storeContextEnabled: boolean;
+      contextBeforeCount: number;
+      contextAfterCount: number;
+      dedupeWindowHours: number;
+    }>
+  ) => apiClient.patch<LeadRadarSettingsResponse>("/leadradar/settings", patch, { token })
 };
 

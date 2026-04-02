@@ -276,3 +276,59 @@ export type LeadRadarLeadDetailsResponse = {
   } | null;
   events: LeadRadarLeadEvent[];
 };
+
+export type LeadRadarSourceItem = {
+  id: string;
+  telegram_chat_id: string;
+  chat_title: string | null;
+  chat_type: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LeadRadarListSourcesResponse = {
+  items: LeadRadarSourceItem[];
+  total: number;
+};
+
+export type LeadRadarMatchType = "contains" | "exact" | "regex";
+export type LeadRadarCategory = "bot" | "website" | "ai" | "mvp" | "automation" | "general";
+
+export type LeadRadarKeywordItem = {
+  id: string;
+  keyword: string;
+  match_type: LeadRadarMatchType;
+  category: LeadRadarCategory;
+  priority: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LeadRadarListKeywordsResponse = {
+  items: LeadRadarKeywordItem[];
+  total: number;
+};
+
+export type LeadRadarNegativeKeywordItem = {
+  id: string;
+  phrase: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LeadRadarListNegativeKeywordsResponse = {
+  items: LeadRadarNegativeKeywordItem[];
+  total: number;
+};
+
+export type LeadRadarSettingsResponse = {
+  isEnabled: boolean;
+  minScoreThreshold: number;
+  storeContextEnabled: boolean;
+  contextBeforeCount: number;
+  contextAfterCount: number;
+  dedupeWindowHours: number;
+};
