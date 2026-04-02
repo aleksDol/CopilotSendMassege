@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
+import fp from "fastify-plugin";
 import leadradarController from "./api/leadradar.controller.js";
 import { PrismaLeadKeywordRepository, PrismaLeadRepository, PrismaLeadSettingsRepository, PrismaLeadSourceRepository } from "./infrastructure/repositories/prisma/index.js";
 import { LeadCRMService } from "./application/services/lead-crm-service.js";
@@ -9,13 +10,7 @@ import { LeadRadarIngestionService } from "./application/services/lead-radar-ing
 import { LeadScoringService } from "./application/services/lead-scoring-service.js";
 import { LeadSourceService } from "./application/services/lead-source-service.js";
 
-/**
- * LeadRadar module (skeleton).
- *
- * Registration is gated by ENABLE_LEADRADAR in modules/index.ts.
- * This module must remain isolated: no hooks into Telegram/message ingestion yet.
- */
-const leadradarModule: FastifyPluginAsync = async (app) => {
+const leadradarModuleImpl: FastifyPluginAsync = async (app) => {
   // Minimal DI container for LeadRadar (module-scoped).
   // No side-effects: this only creates instances and exposes them on app.
   const leadRepo = new PrismaLeadRepository(app.prisma);
@@ -68,5 +63,5 @@ const leadradarModule: FastifyPluginAsync = async (app) => {
   await app.register(leadradarController);
 };
 
-export default leadradarModule;
+export default fp(leadradarModuleImpl, { name: "leadradar-module" });
 
