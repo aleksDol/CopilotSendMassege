@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { EmptyState } from "@/components/common/empty-state";
 import { LoadingState } from "@/components/common/loading-state";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
@@ -27,6 +26,10 @@ const STATUSES: Array<{ label: string; value: LeadRadarLeadStatus | "all" }> = [
   { label: "Spam", value: "spam" }
 ];
 
+const ROW_STATUS_OPTIONS: Array<{ label: string; value: LeadRadarLeadStatus }> = STATUSES.filter(
+  (s): s is { label: string; value: LeadRadarLeadStatus } => s.value !== "all"
+);
+
 function formatDate(iso: string): string {
   try {
     return new Date(iso).toLocaleString();
@@ -45,13 +48,6 @@ function displayName(lead: LeadRadarLeadItem) {
   if (lead.displayName?.trim()) return lead.displayName.trim();
   if (lead.username?.trim()) return `@${lead.username.trim()}`;
   return "—";
-}
-
-function statusBadgeVariant(status: LeadRadarLeadStatus): "secondary" | "warning" | "success" | "outline" {
-  if (status === "hot") return "warning";
-  if (status === "won") return "success";
-  if (status === "lost" || status === "spam") return "outline";
-  return "secondary";
 }
 
 export default function LeadRadarInboxPage() {
@@ -217,9 +213,8 @@ export default function LeadRadarInboxPage() {
                 <th className="py-2 pr-3">Чат</th>
                 <th className="py-2 pr-3">Сообщение</th>
                 <th className="py-2 pr-3">Score</th>
-                <th className="py-2 pr-3">Status</th>
                 <th className="py-2 pr-3">Created</th>
-                <th className="py-2 pr-3">Действия</th>
+                <th className="py-2 pr-3 w-[200px]">Статус</th>
               </tr>
             </thead>
             <tbody>
@@ -243,40 +238,19 @@ export default function LeadRadarInboxPage() {
                     <div className="max-w-[420px] whitespace-pre-wrap text-foreground/90">{truncate(lead.messageText, 160) || "—"}</div>
                   </td>
                   <td className="py-3 pr-3">{lead.score}</td>
-                  <td className="py-3 pr-3">
-                    <Badge variant={statusBadgeVariant(lead.status)}>{lead.status}</Badge>
-                  </td>
                   <td className="py-3 pr-3 text-muted-foreground">{formatDate(lead.createdAt)}</td>
-                  <td className="py-3 pr-3">
-                    <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
-                        disabled={actions.updateLeadStatus.isPending}
-                        onClick={async () => {
-                          await actions.updateLeadStatus.mutateAsync({ leadId: lead.id, status: "hot" });
-                        }}
-                      >
-                        Mark hot
-                      </button>
-                      <button
-                        className="rounded-md bg-secondary px-3 py-1.5 text-xs font-medium disabled:opacity-50"
-                        disabled={actions.updateLeadStatus.isPending}
-                        onClick={async () => {
-                          await actions.updateLeadStatus.mutateAsync({ leadId: lead.id, status: "contacted" });
-                        }}
-                      >
-                        Contacted
-                      </button>
-                      <button
-                        className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium disabled:opacity-50"
-                        disabled={actions.updateLeadStatus.isPending}
-                        onClick={async () => {
-                          await actions.updateLeadStatus.mutateAsync({ leadId: lead.id, status: "ignored" });
-                        }}
-                      >
-                        Ignore
-                      </button>
-                    </div>
+                  <td className="py-3 pr-3" onClick={(e) => e.stopPropagation()}>
+                    <Select
+                      className="h-9 min-w-[11rem] max-w-[14rem] text-xs"
+                      value={lead.status}
+                      disabled={actions.updateLeadStatus.isPending}
+                      options={ROW_STATUS_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}
+                      onChange={async (e) => {
+                        const next = e.target.value as LeadRadarLeadStatus;
+                        if (next === lead.status) return;
+                        await actions.updateLeadStatus.mutateAsync({ leadId: lead.id, status: next });
+                      }}
+                    />
                   </td>
                 </tr>
               ))}
