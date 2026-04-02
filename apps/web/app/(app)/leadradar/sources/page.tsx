@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { ApiError } from "@/lib/api/errors";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/common/empty-state";
@@ -22,6 +23,7 @@ export default function LeadRadarSourcesPage() {
   const actions = useLeadRadarConfigActions();
 
   const [link, setLink] = useState("");
+  const [addFeedback, setAddFeedback] = useState<{ kind: "success" | "info" | "error"; text: string } | null>(null);
 
   const [search, setSearch] = useState("");
   const [onlyActive, setOnlyActive] = useState(false);
@@ -62,17 +64,57 @@ export default function LeadRadarSourcesPage() {
             Поддерживаются публичные группы/supergroups (t.me/username).
           </div>
 
-          <div className="md:col-span-4 flex flex-wrap items-center gap-2">
-            <Button
-              disabled={actions.addSourceByLink.isPending || !link.trim()}
-              onClick={async () => {
-                await actions.addSourceByLink.mutateAsync({ link: link.trim() });
-                setLink("");
-              }}
-            >
-              Добавить
-            </Button>
-            <div className="text-xs text-muted-foreground">Если чат не найден — проверь, что он публичный и доступен аккаунту Telegram.</div>
+          <div className="md:col-span-4 flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                disabled={actions.addSourceByLink.isPending || !link.trim()}
+                onClick={async () => {
+                  const trimmed = link.trim();
+                  setAddFeedback(null);
+                  const chatIdsBefore = new Set((sources.data?.items ?? []).map((r) => r.telegram_chat_id));
+                  try {
+                    const created = await actions.addSourceByLink.mutateAsync({ link: trimmed });
+                    const tid = created?.telegram_chat_id ?? "";
+                    if (tid && chatIdsBefore.has(tid)) {
+                      setAddFeedback({
+                        kind: "info",
+                        text: "Этот чат уже был в списке — данные обновлены. Новая строка не появится, пока добавляете тот же публичный чат."
+                      });
+                    } else {
+                      setAddFeedback({ kind: "success", text: "Чат добавлен в мониторинг." });
+                    }
+                    setLink("");
+                  } catch (err) {
+                    const msg =
+                      err instanceof ApiError
+                        ? err.message
+                        : err instanceof Error
+                          ? err.message
+                          : "Не удалось добавить чат";
+                    setAddFeedback({ kind: "error", text: msg });
+                  }
+                }}
+              >
+                {actions.addSourceByLink.isPending ? "Добавляем…" : "Добавить"}
+              </Button>
+              <div className="text-xs text-muted-foreground">
+                Публичные группы/supergroups (t.me/username). Лимита на число чатов в коде нет — если строка не прибавляется, часто это дубликат того же чата или ошибка сети/Telegram worker (см. сообщение ниже).
+              </div>
+            </div>
+            {addFeedback ? (
+              <p
+                role="status"
+                className={`text-sm ${
+                  addFeedback.kind === "error"
+                    ? "text-destructive"
+                    : addFeedback.kind === "info"
+                      ? "text-muted-foreground"
+                      : "text-green-700 dark:text-green-400"
+                }`}
+              >
+                {addFeedback.text}
+              </p>
+            ) : null}
           </div>
         </CardContent>
       </Card>
