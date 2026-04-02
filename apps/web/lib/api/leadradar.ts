@@ -6,7 +6,8 @@ import type {
   LeadRadarListKeywordsResponse,
   LeadRadarListNegativeKeywordsResponse,
   LeadRadarListSourcesResponse,
-  LeadRadarSettingsResponse
+  LeadRadarSettingsResponse,
+  LeadRadarSourceItem
 } from "./types";
 
 export const leadradarApi = {
@@ -48,10 +49,11 @@ export const leadradarApi = {
   addSource: (
     token: string,
     input: { telegramChatId: string; chatTitle?: string | null; chatType?: string | null }
-  ) => apiClient.post("/leadradar/sources", input, { token }),
-  addSourceByLink: (token: string, input: { link: string }) => apiClient.post("/leadradar/sources/by-link", input, { token }),
+  ) => apiClient.post<LeadRadarSourceItem>("/leadradar/sources", input, { token }),
+  addSourceByLink: (token: string, input: { link: string }) =>
+    apiClient.post<LeadRadarSourceItem>("/leadradar/sources/by-link", input, { token }),
   updateSource: (token: string, id: string, input: { isActive: boolean }) =>
-    apiClient.patch(`/leadradar/sources/${id}`, input, { token }),
+    apiClient.patch<LeadRadarSourceItem>(`/leadradar/sources/${id}`, input, { token }),
   removeSource: (token: string, id: string) => apiClient.delete(`/leadradar/sources/${id}`, { token }),
 
   // ===== Keywords =====
