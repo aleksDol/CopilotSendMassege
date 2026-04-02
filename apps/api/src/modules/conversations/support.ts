@@ -19,10 +19,17 @@ export const isSupportedTelegramMessagePayload = (payload: {
   senderUsername?: string | null;
   isOutgoing?: boolean;
   rawPayload?: Record<string, unknown>;
+  allowGroupIngestion?: boolean;
 }) => {
   const dialogType = normalizeDialogType(payload.rawPayload?.dialogType);
-  if (dialogType && dialogType !== "direct") {
-    return false;
+  if (dialogType) {
+    if (dialogType === "direct") {
+      // ok
+    } else if (payload.allowGroupIngestion && (dialogType === "group" || dialogType === "channel")) {
+      // allow non-direct only when explicitly enabled
+    } else {
+      return false;
+    }
   }
 
   if (payload.senderType === "system") {

@@ -21,9 +21,7 @@ export default function LeadRadarSourcesPage() {
   const sources = useLeadRadarSources();
   const actions = useLeadRadarConfigActions();
 
-  const [telegramChatId, setTelegramChatId] = useState("");
-  const [chatTitle, setChatTitle] = useState("");
-  const [chatType, setChatType] = useState<"direct" | "group" | "channel" | "unknown">("group");
+  const [link, setLink] = useState("");
 
   const [search, setSearch] = useState("");
   const [onlyActive, setOnlyActive] = useState(false);
@@ -51,50 +49,30 @@ export default function LeadRadarSourcesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Добавить чат</CardTitle>
+          <CardTitle>Добавить чат по ссылке</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-2 md:grid-cols-4">
           <input
-            value={telegramChatId}
-            onChange={(e) => setTelegramChatId(e.target.value)}
-            placeholder="telegramChatId (например 12345 или -100...)"
-            className="h-10 rounded-md border border-border bg-background px-3 text-sm md:col-span-2"
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+            placeholder="https://t.me/chatname или @chatname"
+            className="h-10 rounded-md border border-border bg-background px-3 text-sm md:col-span-3"
           />
-          <input
-            value={chatTitle}
-            onChange={(e) => setChatTitle(e.target.value)}
-            placeholder="Название (опционально)"
-            className="h-10 rounded-md border border-border bg-background px-3 text-sm"
-          />
-          <select
-            value={chatType}
-            onChange={(e) => setChatType(e.target.value as any)}
-            className="h-10 rounded-md border border-border bg-background px-3 text-sm"
-          >
-            <option value="direct">direct</option>
-            <option value="group">group</option>
-            <option value="channel">channel</option>
-            <option value="unknown">unknown</option>
-          </select>
+          <div className="text-xs text-muted-foreground flex items-center">
+            Поддерживаются публичные группы/supergroups (t.me/username).
+          </div>
 
           <div className="md:col-span-4 flex flex-wrap items-center gap-2">
             <Button
-              disabled={actions.addSource.isPending || !telegramChatId.trim()}
+              disabled={actions.addSourceByLink.isPending || !link.trim()}
               onClick={async () => {
-                await actions.addSource.mutateAsync({
-                  telegramChatId: telegramChatId.trim(),
-                  chatTitle: chatTitle.trim() ? chatTitle.trim() : null,
-                  chatType
-                });
-                setTelegramChatId("");
-                setChatTitle("");
+                await actions.addSourceByLink.mutateAsync({ link: link.trim() });
+                setLink("");
               }}
             >
               Добавить
             </Button>
-            <div className="text-xs text-muted-foreground">
-              Подсказка: chatId должен совпадать с тем, что приходит в ingestion (externalConversationId).
-            </div>
+            <div className="text-xs text-muted-foreground">Если чат не найден — проверь, что он публичный и доступен аккаунту Telegram.</div>
           </div>
         </CardContent>
       </Card>

@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     telegram_live_listener_enabled: bool = Field(default=True, alias="TELEGRAM_LIVE_LISTENER_ENABLED")
     telegram_live_listener_refresh_seconds: int = Field(default=20, alias="TELEGRAM_LIVE_LISTENER_REFRESH_SECONDS")
     telegram_live_listener_log_events: bool = Field(default=False, alias="TELEGRAM_LIVE_LISTENER_LOG_EVENTS")
+    enable_tg_group_ingestion: bool = Field(default=False, alias="ENABLE_TG_GROUP_INGESTION")
     telegram_min_send_interval_ms: int = Field(default=2000, alias="TELEGRAM_MIN_SEND_INTERVAL_MS")
     telegram_max_sends_per_minute: int = Field(default=20, alias="TELEGRAM_MAX_SENDS_PER_MINUTE")
     telegram_max_sends_per_5_minutes: int = Field(default=60, alias="TELEGRAM_MAX_SENDS_PER_5_MINUTES")

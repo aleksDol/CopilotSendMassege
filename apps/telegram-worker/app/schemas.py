@@ -51,3 +51,9 @@ class SendMessageRequest(BaseModel):
 class LogoutRequest(BaseModel):
     company_id: str = Field(alias="companyId")
     channel_account_id: str = Field(alias="channelAccountId")
+
+
+class ResolveChatByLinkRequest(BaseModel):
+    company_id: str = Field(alias="companyId")
+    channel_account_id: str = Field(alias="channelAccountId")
+    link: str

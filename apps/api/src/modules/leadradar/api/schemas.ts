@@ -27,6 +27,10 @@ export const createSourceBodySchema = z.object({
   chatType: z.string().max(64).optional().nullable()
 });
 
+export const createSourceByLinkBodySchema = z.object({
+  link: z.string().min(1).max(1024)
+});
+
 export const updateSourceBodySchema = z.object({
   isActive: z.boolean()
 });

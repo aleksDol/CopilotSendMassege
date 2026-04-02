@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 import psycopg
-from telethon.tl.types import Channel, User
+from urllib.parse import urlparse
+from telethon.tl.types import Channel, Chat, User
 
 from app.config import settings
 from app.crypto import SessionCrypto
@@ -26,6 +27,8 @@ def _now() -> datetime:
 def _resolve_conversation_type(entity: Any) -> str:
     if isinstance(entity, Channel):
         return "group" if getattr(entity, "megagroup", False) else "channel"
+    if isinstance(entity, Chat):
+        return "group"
     return "direct"
 
 
@@ -41,6 +44,18 @@ def _is_supported_private_human_dialog(entity: Any) -> bool:
     if getattr(entity, "support", False):
         return False
     return True
+
+
+def _is_supported_dialog(entity: Any) -> bool:
+    if _is_supported_private_human_dialog(entity):
+        return True
+    if not settings.enable_tg_group_ingestion:
+        return False
+    if isinstance(entity, Channel):
+        return bool(getattr(entity, "megagroup", False))
+    if isinstance(entity, Chat):
+        return True
+    return False
 
 
 async def list_connected_accounts() -> list[dict[str, Any]]:
@@ -153,7 +168,7 @@ async def run_initial_sync(
 
             async for dialog in client.iter_dialogs(limit=dialogs_cap):
                 entity = dialog.entity
-                if not _is_supported_private_human_dialog(entity):
+                if not _is_supported_dialog(entity):
                     continue
 
                 result.dialogs_synced += 1
@@ -350,5 +365,96 @@ async def send_message(
             }
         except ValueError as exc:
             raise WorkerError("INVALID_CONVERSATION_ID", "Invalid external conversation id", 400) from exc
+        finally:
+            await client.disconnect()
+
+
+def _normalize_public_chat_link(raw: str) -> str:
+    s = (raw or "").strip()
+    if not s:
+        raise WorkerError("INVALID_CHAT_LINK", "Chat link is empty", 400)
+
+    if s.startswith("@"):
+        s = s[1:]
+
+    if s.startswith("http://") or s.startswith("https://"):
+        try:
+            parsed = urlparse(s)
+            path = (parsed.path or "").strip("/")
+            if not path:
+                raise WorkerError("INVALID_CHAT_LINK", "Chat link is invalid", 400)
+            s = path.split("/")[0]
+        except WorkerError:
+            raise
+        except Exception as exc:
+            raise WorkerError("INVALID_CHAT_LINK", "Chat link is invalid", 400) from exc
+    elif s.startswith("t.me/") or s.startswith("telegram.me/"):
+        s = s.split("/", 1)[1].strip("/")
+
+    # Strip query/hash fragments if user pasted weird formats
+    s = s.split("?")[0].split("#")[0].strip("/")
+
+    if not s:
+        raise WorkerError("INVALID_CHAT_LINK", "Chat link is invalid", 400)
+    if s.lower().startswith("joinchat/") or s.startswith("+"):
+        raise WorkerError("UNSUPPORTED_CHAT_LINK", "Invite links are not supported. Use a public @username link.", 400)
+
+    return s
+
+
+async def resolve_public_group_by_link(
+    *,
+    company_id: str,
+    channel_account_id: str,
+    link: str,
+    crypto: SessionCrypto,
+) -> dict[str, Any]:
+    username = _normalize_public_chat_link(link)
+
+    async with get_connection() as conn:
+        account = await _load_connected_account(conn, company_id, channel_account_id)
+        session = crypto.decrypt(account["sessionDataEncrypted"])
+
+        client = create_client(session)
+        try:
+            await client.connect()
+
+            if not await client.is_user_authorized():
+                await mark_error_by_channel(
+                    company_id,
+                    channel_account_id,
+                    "Telegram session expired, reconnect required",
+                    "RECONNECT_REQUIRED",
+                )
+                raise WorkerError("RECONNECT_REQUIRED", "Telegram session expired, reconnect required", 400)
+
+            try:
+                entity = await client.get_entity(username)
+            except (ValueError, TypeError) as exc:
+                raise WorkerError("CHAT_NOT_FOUND", "Chat not found or not accessible", 404) from exc
+
+            chat_type = _resolve_conversation_type(entity)
+            if chat_type == "direct":
+                raise WorkerError("UNSUPPORTED_CHAT_TYPE", "Only public group chats are supported", 400)
+
+            # Only GROUP/supergroup for now (CHANNEL can be added later if safe)
+            if isinstance(entity, Channel):
+                if not getattr(entity, "megagroup", False):
+                    raise WorkerError("UNSUPPORTED_CHAT_TYPE", "Channels are not supported yet", 400)
+            elif isinstance(entity, Chat):
+                pass
+            else:
+                raise WorkerError("UNSUPPORTED_CHAT_TYPE", "Only public group chats are supported", 400)
+
+            title = getattr(entity, "title", None)
+            resolved_username = getattr(entity, "username", None)
+
+            return {
+                "status": "resolved",
+                "telegramChatId": str(getattr(entity, "id", username)),
+                "chatTitle": title,
+                "chatType": "group",
+                "username": resolved_username,
+            }
         finally:
             await client.disconnect()

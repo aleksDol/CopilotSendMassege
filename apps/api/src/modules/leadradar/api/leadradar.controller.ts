@@ -2,9 +2,11 @@ import type { FastifyPluginAsync } from "fastify";
 import { ChannelAccountStatus, ChannelType, TelegramLoginStatus } from "@prisma/client";
 import { AppError } from "../../../lib/errors.js";
 import { getCompanyScope } from "../../../lib/request-context.js";
+import { TelegramWorkerClient } from "../../../lib/telegram-worker-client.js";
 import { parseWithSchema } from "../../../lib/validation.js";
 import {
   createSourceBodySchema,
+  createSourceByLinkBodySchema,
   createKeywordBodySchema,
   createNegativeKeywordBodySchema,
   listLeadsQuerySchema,
@@ -113,6 +115,48 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       telegram_chat_id: body.telegramChatId,
       chat_title: body.chatTitle ?? null,
       chat_type: body.chatType ?? null,
+      is_active: true
+    });
+
+    return createdOrExisting;
+  });
+
+  app.post("/api/leadradar/sources/by-link", { preHandler: [app.authenticate] }, async (request) => {
+    const scope = getCompanyScope(request);
+    const body = parseWithSchema(createSourceByLinkBodySchema, request.body);
+
+    if (!request.server.leadradar) {
+      throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
+    }
+
+    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram = await app.prisma.telegramAccount.findUnique({
+      where: { id: telegram_account_id },
+      select: { channelAccountId: true }
+    });
+    if (!telegram) {
+      throw new AppError(400, "TELEGRAM_NOT_CONNECTED", "Telegram account not connected");
+    }
+
+    const worker = new TelegramWorkerClient(
+      app.config.env.TELEGRAM_WORKER_URL,
+      app.config.env.INTERNAL_API_TOKEN,
+      app.config.env.TELEGRAM_WORKER_TIMEOUT_MS
+    );
+
+    const resolved = await worker.resolveChat({
+      companyId: scope.companyId,
+      channelAccountId: telegram.channelAccountId,
+      link: body.link
+    });
+
+    const repo = request.server.leadradar.repositories.source;
+    const createdOrExisting = await repo.addSource({
+      user_id: scope.userId,
+      telegram_account_id,
+      telegram_chat_id: resolved.telegramChatId,
+      chat_title: resolved.chatTitle ?? null,
+      chat_type: resolved.chatType ?? null,
       is_active: true
     });
 

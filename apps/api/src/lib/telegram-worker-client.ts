@@ -8,6 +8,14 @@ type WorkerSuccess = {
   details?: unknown;
 };
 
+type ResolveChatSuccess = {
+  status: string;
+  telegramChatId: string;
+  chatTitle: string | null;
+  chatType: "group" | "channel";
+  username?: string | null;
+};
+
 const normalizeWorkerError = async (response: Response): Promise<string> => {
   try {
     const body = (await response.json()) as { error?: { message?: string } };
@@ -99,5 +107,9 @@ export class TelegramWorkerClient {
 
   logout(payload: WorkerPayload) {
     return this.post("/internal/telegram/logout", payload);
+  }
+
+  resolveChat(payload: WorkerPayload) {
+    return this.post("/internal/telegram/resolve-chat", payload) as unknown as Promise<ResolveChatSuccess>;
   }
 }

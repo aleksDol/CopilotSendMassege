@@ -107,7 +107,8 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
       senderExternalId: payload.senderExternalId,
       senderUsername: payload.senderUsername,
       isOutgoing: payload.isOutgoing,
-      rawPayload: payload.rawPayload
+      rawPayload: payload.rawPayload,
+      allowGroupIngestion: app.config.env.ENABLE_TG_GROUP_INGESTION
     })
   ) {
     await app.prisma.telegramAccount.update({
@@ -285,6 +286,25 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
       // the first attempt failed after updating state and before cache invalidation.
       await invalidateConversationCaches(app, companyId);
       await invalidateCacheByPrefix(app, `cache:dashboard:${companyId}:`);
+    }
+
+    // LeadRadar integration (non-blocking, inbound-only, gated by ENABLE_LEADRADAR).
+    // Handle duplicate deliveries too: LeadRadar is idempotent via dedupe/unique keys.
+    if (app.config.env.ENABLE_LEADRADAR && app.leadradar && canTriggerLeadRadar(payload)) {
+      const userId = telegramAccount.channelAccount.createdByUserId;
+      if (typeof userId === "string" && userId.length) {
+        const conversationTitle = conversation.title ?? payload.conversationTitle ?? null;
+        const input = toLeadRadarInput({
+          userId,
+          telegramAccountId: telegramAccount.id,
+          payload,
+          conversationTitle
+        });
+
+        void app.leadradar.services.ingestion.processMessage(input).catch((err: unknown) => {
+          app.log.warn({ err }, "[LeadRadar] realtime ingestion failed");
+        });
+      }
     }
 
     return {

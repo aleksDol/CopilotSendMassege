@@ -254,6 +254,10 @@ export const useLeadRadarConfigActions = () => {
         leadradarApi.addSource(token ?? "", input),
       onSuccess: () => invalidate("leadradar-sources")
     }),
+    addSourceByLink: useMutation({
+      mutationFn: (input: { link: string }) => leadradarApi.addSourceByLink(token ?? "", input),
+      onSuccess: () => invalidate("leadradar-sources")
+    }),
     updateSource: useMutation({
       mutationFn: (input: { id: string; isActive: boolean }) => leadradarApi.updateSource(token ?? "", input.id, { isActive: input.isActive }),
       onSuccess: () => invalidate("leadradar-sources")

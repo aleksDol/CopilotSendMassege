@@ -11,6 +11,7 @@ from app.config import settings
 from app.crypto import SessionCrypto
 from app.schemas import (
     LogoutRequest,
+    ResolveChatByLinkRequest,
     PollLoginQrRequest,
     SendMessageRequest,
     StartLoginQrRequest,
@@ -32,7 +33,7 @@ from app.services.auth_flow import (
     verify_password,
     verify_password_qr,
 )
-from app.services.sync_service import list_connected_accounts, run_initial_sync, send_message
+from app.services.sync_service import list_connected_accounts, run_initial_sync, send_message, resolve_public_group_by_link
 from app.services.live_listener import LiveListenerManager
 from app.services.safety import safety_service
 
@@ -313,3 +314,15 @@ async def internal_logout(payload: LogoutRequest) -> dict:
         except Exception as exc:
             await mark_error_by_channel(payload.company_id, payload.channel_account_id, str(exc), "ERROR")
             raise WorkerError("TELEGRAM_LOGOUT_FAILED", "Failed to logout Telegram session", 500) from exc
+
+
+@app.post("/internal/telegram/resolve-chat", dependencies=[Depends(verify_internal_token)])
+async def internal_resolve_chat(payload: ResolveChatByLinkRequest) -> dict:
+    logger.info("resolve-chat requested for company=%s channelAccount=%s", payload.company_id, payload.channel_account_id)
+    async with concurrency_limiter:
+        return await resolve_public_group_by_link(
+            company_id=payload.company_id,
+            channel_account_id=payload.channel_account_id,
+            link=payload.link,
+            crypto=crypto,
+        )

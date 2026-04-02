@@ -6,7 +6,7 @@ from typing import Any
 
 import psycopg
 from telethon import events
-from telethon.tl.types import Channel, User
+from telethon.tl.types import Channel, Chat, User
 
 from app.config import settings
 from app.crypto import SessionCrypto
@@ -24,6 +24,8 @@ def _now() -> datetime:
 def _resolve_conversation_type(entity: Any) -> str:
     if isinstance(entity, Channel):
         return "group" if getattr(entity, "megagroup", False) else "channel"
+    if isinstance(entity, Chat):
+        return "group"
     return "direct"
 
 
@@ -39,6 +41,20 @@ def _is_supported_private_human_dialog(entity: Any) -> bool:
     if getattr(entity, "support", False):
         return False
     return True
+
+
+def _is_supported_dialog(entity: Any) -> bool:
+    if _is_supported_private_human_dialog(entity):
+        return True
+    if not settings.enable_tg_group_ingestion:
+        return False
+    # Group chats: allow when feature flag enabled
+    if isinstance(entity, Channel):
+        # Telethon: megagroup=True indicates supergroup; megagroup False = channel
+        return bool(getattr(entity, "megagroup", False))
+    if isinstance(entity, Chat):
+        return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -160,7 +176,7 @@ async def _run_account_listener(account: ConnectedAccount, crypto: SessionCrypto
                     if chat is None:
                         return
 
-                    if not _is_supported_private_human_dialog(chat):
+                    if not _is_supported_dialog(chat):
                         return
 
                     conversation_type = _resolve_conversation_type(chat)
