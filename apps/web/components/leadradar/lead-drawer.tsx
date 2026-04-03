@@ -144,10 +144,14 @@ export function LeadDrawer({
                     {(lead.messageText ?? "").trim() || "—"}
                   </div>
                 </div>
-                <div className="grid gap-2 md:grid-cols-2">
+                <div className="grid gap-2 md:grid-cols-3">
                   <div>
                     <div className="text-xs text-muted-foreground">Username</div>
                     <div className="font-medium">{lead.username ? `@${lead.username}` : "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Telegram ID</div>
+                    <div className="font-medium">{lead.telegramUserId ?? "—"}</div>
                   </div>
                   <div>
                     <div className="text-xs text-muted-foreground">Created</div>

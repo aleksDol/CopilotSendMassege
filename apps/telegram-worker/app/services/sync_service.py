@@ -4,7 +4,8 @@ from typing import Any
 
 import psycopg
 from urllib.parse import urlparse
-from telethon.tl.types import Channel, Chat, User
+from telethon.tl.types import Channel, Chat, InputUser, User
+from telethon.tl.functions.users import GetUsersRequest
 from telethon.utils import get_peer_id
 
 from app.config import settings
@@ -61,6 +62,7 @@ async def _resolve_sync_message_sender(
 
     full_name = " ".join(part for part in [u.first_name, u.last_name] if part).strip() or None
     username = u.username
+
     if not username and sender_id is not None:
         try:
             ent = await client.get_entity(sender_id)
@@ -70,6 +72,17 @@ async def _resolve_sync_message_sender(
                     full_name = " ".join(part for part in [ent.first_name, ent.last_name] if part).strip() or None
         except Exception:
             pass
+
+    if not username and u.id and getattr(u, "access_hash", None) is not None:
+        try:
+            results = await client(GetUsersRequest([InputUser(u.id, u.access_hash)]))
+            if results and isinstance(results[0], User) and results[0].username:
+                username = results[0].username
+                if not full_name:
+                    full_name = " ".join(part for part in [results[0].first_name, results[0].last_name] if part).strip() or None
+        except Exception:
+            pass
+
     return full_name, username
 
 

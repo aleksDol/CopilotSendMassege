@@ -81,6 +81,8 @@ const toLeadRadarInput = (params: {
   telegramAccountId: string;
   payload: MessageEventPayload;
   conversationTitle: string | null;
+  participantUsername?: string | null;
+  participantFullName?: string | null;
 }): LeadRadarMessageInput => {
   const chatType = toConversationType(params.payload);
   return {
@@ -91,8 +93,8 @@ const toLeadRadarInput = (params: {
     chatType,
     messageId: params.payload.externalMessageId,
     senderId: params.payload.senderExternalId ?? null,
-    senderUsername: params.payload.senderUsername ?? null,
-    senderDisplayName: params.payload.senderFullName ?? null,
+    senderUsername: params.payload.senderUsername ?? params.participantUsername ?? null,
+    senderDisplayName: params.payload.senderFullName ?? params.participantFullName ?? null,
     text: (params.payload.text ?? "").trim(),
     date: new Date(params.payload.sentAt)
   };
@@ -319,7 +321,9 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
           userId,
           telegramAccountId: telegramAccount.id,
           payload,
-          conversationTitle
+          conversationTitle,
+          participantUsername: participant.username,
+          participantFullName: participant.fullName
         });
         console.log("[LeadRadar-DEBUG] calling processMessage chatId=%s text=%s", input.chatId, (input.text ?? "").slice(0, 80));
 
@@ -423,7 +427,9 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
         userId,
         telegramAccountId: telegramAccount.id,
         payload,
-        conversationTitle
+        conversationTitle,
+        participantUsername: participant.username,
+        participantFullName: participant.fullName
       });
       console.log("[LeadRadar-DEBUG] calling processMessage chatId=%s text=%s", input.chatId, (input.text ?? "").slice(0, 80));
 

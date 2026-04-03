@@ -50,6 +50,12 @@ function displayName(lead: LeadRadarLeadItem) {
   return "—";
 }
 
+function secondaryId(lead: LeadRadarLeadItem): string | null {
+  if (lead.username?.trim()) return `@${lead.username.trim()}`;
+  if (lead.telegramUserId?.trim()) return `ID: ${lead.telegramUserId.trim()}`;
+  return null;
+}
+
 export default function LeadRadarInboxPage() {
   const [filters, setFilters] = useState<{
     status: LeadRadarLeadStatus | "all";
@@ -228,7 +234,7 @@ export default function LeadRadarInboxPage() {
                 >
                   <td className="py-3 pr-3">
                     <div className="font-medium text-foreground">{displayName(lead)}</div>
-                    {lead.username ? <div className="text-xs text-muted-foreground">@{lead.username}</div> : null}
+                    {secondaryId(lead) ? <div className="text-xs text-muted-foreground">{secondaryId(lead)}</div> : null}
                   </td>
                   <td className="py-3 pr-3">
                     <div className="font-medium">{lead.chatTitle ?? lead.chatId}</div>

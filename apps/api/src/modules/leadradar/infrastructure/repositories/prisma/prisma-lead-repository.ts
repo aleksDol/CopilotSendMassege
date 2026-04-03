@@ -78,6 +78,52 @@ const buildWhere = (input: FindLeadFiltersInput): Prisma.LeadRadarLeadWhereInput
 export class PrismaLeadRepository implements LeadRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
+  private async enrichLeadsWithParticipantData(
+    leads: Lead[],
+    telegramAccountId: string
+  ): Promise<Lead[]> {
+    const needEnrichment = leads.filter(
+      (l) => (!l.username || !l.display_name) && l.telegram_user_id
+    );
+    if (!needEnrichment.length) return leads;
+
+    const ta = await this.prisma.telegramAccount.findUnique({
+      where: { id: telegramAccountId },
+      select: { channelAccountId: true }
+    });
+    if (!ta) return leads;
+
+    const tgUserIds = [
+      ...new Set(needEnrichment.map((l) => l.telegram_user_id!))
+    ];
+    const participants = await this.prisma.participant.findMany({
+      where: {
+        channelAccountId: ta.channelAccountId,
+        externalParticipantId: { in: tgUserIds }
+      },
+      select: {
+        externalParticipantId: true,
+        username: true,
+        fullName: true
+      }
+    });
+
+    const pMap = new Map(
+      participants.map((p) => [p.externalParticipantId, p])
+    );
+
+    return leads.map((lead) => {
+      if ((lead.username && lead.display_name) || !lead.telegram_user_id) return lead;
+      const p = pMap.get(lead.telegram_user_id);
+      if (!p) return lead;
+      return {
+        ...lead,
+        username: lead.username || p.username || null,
+        display_name: lead.display_name || p.fullName || null
+      };
+    });
+  }
+
   // Ensure context/events include return expected shape
   async createLead(input: CreateLeadInput): Promise<Lead> {
     return this.prisma.$transaction(async (tx) => {
@@ -146,7 +192,15 @@ export class PrismaLeadRepository implements LeadRepository {
 
     if (!row) return null;
 
-    const lead = leadRadarMappers.lead(row);
+    let lead = leadRadarMappers.lead(row);
+    if ((!lead.username || !lead.display_name) && lead.telegram_user_id) {
+      const [enriched] = await this.enrichLeadsWithParticipantData(
+        [lead],
+        input.telegram_account_id
+      );
+      if (enriched) lead = enriched;
+    }
+
     return {
       ...lead,
       context: row.messageContext
@@ -175,8 +229,14 @@ export class PrismaLeadRepository implements LeadRepository {
       })
     ]);
 
+    const mapped = rows.map(leadRadarMappers.lead);
+    const enriched = await this.enrichLeadsWithParticipantData(
+      mapped,
+      input.telegram_account_id
+    );
+
     return {
-      items: rows.map(leadRadarMappers.lead),
+      items: enriched,
       page,
       limit,
       total
