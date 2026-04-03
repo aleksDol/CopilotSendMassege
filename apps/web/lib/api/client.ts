@@ -34,13 +34,14 @@ async function request<T>(
   body?: unknown,
   options?: RequestOptions
 ): Promise<T> {
+  const hasBody = body !== undefined && body !== null;
   const response = await fetch(buildUrl(path, options?.query), {
     method,
     headers: {
-      "content-type": "application/json",
+      ...(hasBody ? { "content-type": "application/json" } : {}),
       ...(options?.token ? { authorization: `Bearer ${options.token}` } : {})
     },
-    body: body ? JSON.stringify(body) : undefined,
+    body: hasBody ? JSON.stringify(body) : undefined,
     cache: "no-store"
   });
 
