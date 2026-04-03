@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { AppError } from "../../../../../lib/errors.js";
 import type { LeadSourceRepository } from "../lead-source-repository.js";
 import type {
@@ -105,7 +106,14 @@ export class PrismaLeadSourceRepository implements LeadSourceRepository {
       }
       throw new AppError(404, "LEADRADAR_SOURCE_NOT_FOUND", "Lead source not found");
     }
-    await this.prisma.leadRadarSource.delete({ where: { id: existing.id } });
+    try {
+      await this.prisma.leadRadarSource.delete({ where: { id: existing.id } });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        throw new AppError(409, `PRISMA_${err.code}`, `Cannot delete source: ${err.message}`, err.meta);
+      }
+      throw err;
+    }
   }
 
   async findByTelegramChatId(input: FindSourceByTelegramChatIdInput) {

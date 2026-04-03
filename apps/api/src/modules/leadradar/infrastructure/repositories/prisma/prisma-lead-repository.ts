@@ -280,7 +280,11 @@ export class PrismaLeadRepository implements LeadRepository {
       }
       throw new AppError(404, "LEADRADAR_LEAD_NOT_FOUND", "Lead not found");
     }
-    await this.prisma.leadRadarLead.delete({ where: { id: existing.id } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.leadRadarMessageContext.deleteMany({ where: { leadId: existing.id } });
+      await tx.leadRadarEvent.deleteMany({ where: { leadId: existing.id } });
+      await tx.leadRadarLead.delete({ where: { id: existing.id } });
+    });
   }
 
   async existsByMessage(input: ExistsByMessageInput): Promise<boolean> {

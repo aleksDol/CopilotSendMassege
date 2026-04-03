@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { AppError } from "../../../../../lib/errors.js";
 import type { LeadKeywordRepository } from "../lead-keyword-repository.js";
 import type {
@@ -84,7 +85,14 @@ export class PrismaLeadKeywordRepository implements LeadKeywordRepository {
       }
       throw new AppError(404, "LEADRADAR_KEYWORD_NOT_FOUND", "Keyword not found");
     }
-    await this.prisma.leadRadarKeyword.delete({ where: { id: existing.id } });
+    try {
+      await this.prisma.leadRadarKeyword.delete({ where: { id: existing.id } });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        throw new AppError(409, `PRISMA_${err.code}`, `Cannot delete keyword: ${err.message}`, err.meta);
+      }
+      throw err;
+    }
   }
 
   async listNegativeKeywords(input: ListAccountScopedInput) {
@@ -152,7 +160,14 @@ export class PrismaLeadKeywordRepository implements LeadKeywordRepository {
       }
       throw new AppError(404, "LEADRADAR_NEGATIVE_KEYWORD_NOT_FOUND", "Negative keyword not found");
     }
-    await this.prisma.leadRadarNegativeKeyword.delete({ where: { id: existing.id } });
+    try {
+      await this.prisma.leadRadarNegativeKeyword.delete({ where: { id: existing.id } });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        throw new AppError(409, `PRISMA_${err.code}`, `Cannot delete negative keyword: ${err.message}`, err.meta);
+      }
+      throw err;
+    }
   }
 }
 

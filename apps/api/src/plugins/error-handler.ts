@@ -24,21 +24,46 @@ const errorHandlerPlugin: FastifyPluginAsync = async (app) => {
       });
     }
 
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return reply.status(409).send({
-        error: {
-          code: "CONFLICT",
-          message: "Resource already exists"
-        }
-      });
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === "P2002") {
+        return reply.status(409).send({
+          error: {
+            code: "CONFLICT",
+            message: "Resource already exists"
+          }
+        });
+      }
+      if (error.code === "P2003") {
+        return reply.status(409).send({
+          error: {
+            code: "FK_CONSTRAINT",
+            message: "Cannot delete: related records exist",
+            details: error.meta
+          }
+        });
+      }
+      if (error.code === "P2025") {
+        return reply.status(404).send({
+          error: {
+            code: "NOT_FOUND",
+            message: "Record not found or already deleted"
+          }
+        });
+      }
     }
 
     app.log.error(error);
 
+    const errName = error instanceof Error ? error.constructor.name : "UnknownError";
+    const prismaCode = (error as { code?: string })?.code;
+    const safeMessage = error instanceof Error ? error.message : "Internal server error";
+
     return reply.status(500).send({
       error: {
         code: "INTERNAL_ERROR",
-        message: "Internal server error"
+        message: safeMessage,
+        errorType: errName,
+        ...(prismaCode ? { prismaCode } : {})
       }
     });
   });
