@@ -266,8 +266,20 @@ export class PrismaLeadRepository implements LeadRepository {
       },
       select: { id: true }
     });
-    if (!existing) return;
-    // DB cascades to lead_message_context and lead_events via Prisma schema.
+    if (!existing) {
+      const byIdOnly = await this.prisma.leadRadarLead.findFirst({
+        where: { id: input.id },
+        select: { id: true, userId: true, telegramAccountId: true }
+      });
+      if (byIdOnly) {
+        throw new AppError(
+          403,
+          "LEADRADAR_LEAD_SCOPE_MISMATCH",
+          `Lead exists but belongs to another scope (expected userId=${input.user_id}, tgAccountId=${input.telegram_account_id}; actual userId=${byIdOnly.userId}, tgAccountId=${byIdOnly.telegramAccountId})`
+        );
+      }
+      throw new AppError(404, "LEADRADAR_LEAD_NOT_FOUND", "Lead not found");
+    }
     await this.prisma.leadRadarLead.delete({ where: { id: existing.id } });
   }
 

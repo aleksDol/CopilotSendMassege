@@ -91,7 +91,20 @@ export class PrismaLeadSourceRepository implements LeadSourceRepository {
       },
       select: { id: true }
     });
-    if (!existing) return;
+    if (!existing) {
+      const byIdOnly = await this.prisma.leadRadarSource.findFirst({
+        where: { id: input.id },
+        select: { id: true, userId: true, telegramAccountId: true }
+      });
+      if (byIdOnly) {
+        throw new AppError(
+          403,
+          "LEADRADAR_SOURCE_SCOPE_MISMATCH",
+          `Source exists but belongs to another scope (expected userId=${input.user_id}, tgAccountId=${input.telegram_account_id}; actual userId=${byIdOnly.userId}, tgAccountId=${byIdOnly.telegramAccountId})`
+        );
+      }
+      throw new AppError(404, "LEADRADAR_SOURCE_NOT_FOUND", "Lead source not found");
+    }
     await this.prisma.leadRadarSource.delete({ where: { id: existing.id } });
   }
 

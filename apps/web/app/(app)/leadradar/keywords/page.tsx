@@ -161,7 +161,12 @@ export default function LeadRadarKeywordsPage() {
                             onClick={async () => {
                               const ok = window.confirm("Удалить keyword? Это действие необратимо.");
                               if (!ok) return;
-                              await actions.removeKeyword.mutateAsync(k.id);
+                              try {
+                                await actions.removeKeyword.mutateAsync(k.id);
+                              } catch (err) {
+                                const msg = err instanceof Error ? err.message : "Не удалось удалить keyword";
+                                window.alert(`Ошибка удаления: ${msg}`);
+                              }
                             }}
                           >
                             Remove

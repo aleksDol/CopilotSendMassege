@@ -196,6 +196,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     }
 
     const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    app.log.info(`[LeadRadar] DELETE source id=${params.id} userId=${scope.userId} tgAccountId=${telegram_account_id}`);
     const repo = request.server.leadradar.repositories.source;
 
     await repo.removeSource({
@@ -293,6 +294,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     }
 
     const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    app.log.info(`[LeadRadar] DELETE keyword id=${params.id} userId=${scope.userId} tgAccountId=${telegram_account_id}`);
     const repo = request.server.leadradar.repositories.keyword;
 
     await repo.removeKeyword({
@@ -377,6 +379,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     }
 
     const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    app.log.info(`[LeadRadar] DELETE negative-keyword id=${params.id} userId=${scope.userId} tgAccountId=${telegram_account_id}`);
     const repo = request.server.leadradar.repositories.keyword;
 
     await repo.removeNegativeKeyword({
@@ -683,6 +686,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     }
 
     const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    app.log.info(`[LeadRadar] DELETE lead id=${params.id} userId=${scope.userId} tgAccountId=${telegram_account_id}`);
     const repo = request.server.leadradar.repositories.lead;
 
     await repo.removeLead({

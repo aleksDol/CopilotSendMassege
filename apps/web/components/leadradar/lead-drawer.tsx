@@ -96,8 +96,13 @@ export function LeadDrawer({
               if (!lead) return;
               const ok = window.confirm("Удалить лида из Inbox LeadRadar? Это удалит запись лида, а также его context/history. Действие необратимо.");
               if (!ok) return;
-              await actions.removeLead.mutateAsync(lead.id);
-              onClose();
+              try {
+                await actions.removeLead.mutateAsync(lead.id);
+                onClose();
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : "Не удалось удалить лид";
+                window.alert(`Ошибка удаления: ${msg}`);
+              }
             }}
           >
             Delete

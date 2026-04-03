@@ -186,7 +186,12 @@ export default function LeadRadarSourcesPage() {
                                 "Убрать этот чат из мониторинга LeadRadar? Запись в списке Sources будет удалена; лиды в Inbox останутся."
                               );
                               if (!ok) return;
-                              await actions.removeSource.mutateAsync(s.id);
+                              try {
+                                await actions.removeSource.mutateAsync(s.id);
+                              } catch (err) {
+                                const msg = err instanceof Error ? err.message : "Не удалось удалить source";
+                                window.alert(`Ошибка удаления: ${msg}`);
+                              }
                             }}
                           >
                             Remove

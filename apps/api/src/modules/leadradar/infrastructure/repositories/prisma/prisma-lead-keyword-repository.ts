@@ -70,7 +70,20 @@ export class PrismaLeadKeywordRepository implements LeadKeywordRepository {
       where: { id: input.id, userId: input.user_id, telegramAccountId: input.telegram_account_id },
       select: { id: true }
     });
-    if (!existing) return;
+    if (!existing) {
+      const byIdOnly = await this.prisma.leadRadarKeyword.findFirst({
+        where: { id: input.id },
+        select: { id: true, userId: true, telegramAccountId: true }
+      });
+      if (byIdOnly) {
+        throw new AppError(
+          403,
+          "LEADRADAR_KEYWORD_SCOPE_MISMATCH",
+          `Keyword exists but belongs to another scope (expected userId=${input.user_id}, tgAccountId=${input.telegram_account_id}; actual userId=${byIdOnly.userId}, tgAccountId=${byIdOnly.telegramAccountId})`
+        );
+      }
+      throw new AppError(404, "LEADRADAR_KEYWORD_NOT_FOUND", "Keyword not found");
+    }
     await this.prisma.leadRadarKeyword.delete({ where: { id: existing.id } });
   }
 
@@ -125,7 +138,20 @@ export class PrismaLeadKeywordRepository implements LeadKeywordRepository {
       where: { id: input.id, userId: input.user_id, telegramAccountId: input.telegram_account_id },
       select: { id: true }
     });
-    if (!existing) return;
+    if (!existing) {
+      const byIdOnly = await this.prisma.leadRadarNegativeKeyword.findFirst({
+        where: { id: input.id },
+        select: { id: true, userId: true, telegramAccountId: true }
+      });
+      if (byIdOnly) {
+        throw new AppError(
+          403,
+          "LEADRADAR_NEGATIVE_KEYWORD_SCOPE_MISMATCH",
+          `Negative keyword exists but belongs to another scope (expected userId=${input.user_id}, tgAccountId=${input.telegram_account_id}; actual userId=${byIdOnly.userId}, tgAccountId=${byIdOnly.telegramAccountId})`
+        );
+      }
+      throw new AppError(404, "LEADRADAR_NEGATIVE_KEYWORD_NOT_FOUND", "Negative keyword not found");
+    }
     await this.prisma.leadRadarNegativeKeyword.delete({ where: { id: existing.id } });
   }
 }
