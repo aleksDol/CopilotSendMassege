@@ -87,9 +87,25 @@ export function LeadDrawer({
             {lead?.chatTitle ?? lead?.chatId ?? "—"}
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={onClose}>
-          Close
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={!lead || actions.removeLead?.isPending}
+            onClick={async () => {
+              if (!lead) return;
+              const ok = window.confirm("Удалить лида из Inbox LeadRadar? Это удалит запись лида, а также его context/history. Действие необратимо.");
+              if (!ok) return;
+              await actions.removeLead.mutateAsync(lead.id);
+              onClose();
+            }}
+          >
+            Delete
+          </Button>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Close
+          </Button>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">

@@ -198,6 +198,13 @@ export const useLeadRadarActions = () => {
         invalidateList();
         invalidateLead(vars.leadId);
       }
+    }),
+    removeLead: useMutation({
+      mutationFn: (leadId: string) => leadradarApi.removeLead(token ?? "", leadId),
+      onSuccess: (_data, leadId) => {
+        invalidateList();
+        void qc.invalidateQueries({ queryKey: ["leadradar-lead", scope, leadId] });
+      }
     })
   };
 };

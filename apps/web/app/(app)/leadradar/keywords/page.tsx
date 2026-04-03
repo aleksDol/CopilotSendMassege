@@ -158,7 +158,11 @@ export default function LeadRadarKeywordsPage() {
                             variant="outline"
                             size="sm"
                             disabled={actions.removeKeyword.isPending}
-                            onClick={() => actions.removeKeyword.mutateAsync(k.id)}
+                            onClick={async () => {
+                              const ok = window.confirm("Удалить keyword? Это действие необратимо.");
+                              if (!ok) return;
+                              await actions.removeKeyword.mutateAsync(k.id);
+                            }}
                           >
                             Remove
                           </Button>

@@ -124,7 +124,11 @@ export default function LeadRadarNegativeKeywordsPage() {
                             variant="outline"
                             size="sm"
                             disabled={actions.removeNegativeKeyword.isPending}
-                            onClick={() => actions.removeNegativeKeyword.mutateAsync(k.id)}
+                            onClick={async () => {
+                              const ok = window.confirm("Удалить negative keyword? Это действие необратимо.");
+                              if (!ok) return;
+                              await actions.removeNegativeKeyword.mutateAsync(k.id);
+                            }}
                           >
                             Remove
                           </Button>

@@ -8,6 +8,7 @@ export interface LeadRepository {
   findByFilters(input: FindLeadFiltersInput): Promise<{ items: Lead[]; page: number; limit: number; total: number }>;
   updateStatus(input: UpdateLeadStatusInput): Promise<Lead>;
   updateNotes(input: UpdateLeadNotesInput): Promise<Lead>;
+  removeLead(input: { id: string; user_id: string; telegram_account_id: string }): Promise<void>;
   existsByMessage(input: ExistsByMessageInput): Promise<boolean>;
 
   existsRecentFromSenderInChat(input: {

@@ -44,6 +44,8 @@ export const leadradarApi = {
 
   ,
 
+  removeLead: (token: string, leadId: string) => apiClient.delete(`/leadradar/leads/${leadId}`, { token }),
+
   // ===== Sources =====
   listSources: (token: string) => apiClient.get<LeadRadarListSourcesResponse>("/leadradar/sources", { token }),
   addSource: (

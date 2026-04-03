@@ -673,6 +673,26 @@ const leadradarController: FastifyPluginAsync = async (app) => {
 
     return toLeadItem(updated);
   });
+
+  app.delete("/api/leadradar/leads/:id", { preHandler: [app.authenticate] }, async (request) => {
+    const scope = getCompanyScope(request);
+    const params = parseWithSchema(sourceIdParamsSchema, request.params);
+
+    if (!request.server.leadradar) {
+      throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
+    }
+
+    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const repo = request.server.leadradar.repositories.lead;
+
+    await repo.removeLead({
+      id: params.id,
+      user_id: scope.userId,
+      telegram_account_id
+    });
+
+    return { ok: true };
+  });
 };
 
 export default leadradarController;

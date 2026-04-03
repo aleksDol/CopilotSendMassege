@@ -257,6 +257,20 @@ export class PrismaLeadRepository implements LeadRepository {
     });
   }
 
+  async removeLead(input: { id: string; user_id: string; telegram_account_id: string }): Promise<void> {
+    const existing = await this.prisma.leadRadarLead.findFirst({
+      where: {
+        id: input.id,
+        userId: input.user_id,
+        telegramAccountId: input.telegram_account_id
+      },
+      select: { id: true }
+    });
+    if (!existing) return;
+    // DB cascades to lead_message_context and lead_events via Prisma schema.
+    await this.prisma.leadRadarLead.delete({ where: { id: existing.id } });
+  }
+
   async existsByMessage(input: ExistsByMessageInput): Promise<boolean> {
     const row = await this.prisma.leadRadarLead.findFirst({
       where: {
