@@ -25,8 +25,11 @@ export const isSupportedTelegramMessagePayload = (payload: {
   if (dialogType) {
     if (dialogType === "direct") {
       // ok
-    } else if (payload.allowGroupIngestion && (dialogType === "group" || dialogType === "channel")) {
-      // allow non-direct only when explicitly enabled
+    } else if (
+      payload.allowGroupIngestion &&
+      (dialogType === "group" || dialogType === "channel" || dialogType === "channel_comment")
+    ) {
+      // channel_comment: discussion-group replies linked to a channel post (LeadRadar channel_comments source)
     } else {
       return false;
     }
