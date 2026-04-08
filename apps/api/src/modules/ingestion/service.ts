@@ -259,9 +259,52 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
         externalMessageId: payload.externalMessageId
       }
     },
-    select: { id: true }
+    select: {
+      id: true,
+      messageType: true,
+      relatedChannelId: true,
+      relatedPostId: true,
+      contextPreview: true,
+      dedupeKey: true
+    }
   });
   if (existing) {
+    // If this is a Telegram "channel comment" delivered after the same message was already ingested
+    // via a generic group sync, update the message with the richer channel-comment metadata.
+    // This keeps the pipeline idempotent while allowing us to "upgrade" previously ingested rows.
+    if (payload.rawPayload?.dialogType === "channel_comment") {
+      const desiredType = toMessageType(payload);
+      const relatedChannelId = getRawString(payload.rawPayload?.relatedChannelId) ?? null;
+      const relatedPostId = getRawString(payload.rawPayload?.relatedPostId) ?? null;
+      const contextPreview =
+        getRawPreview(payload.rawPayload?.contextPreview, 240) ??
+        ((payload.text ?? "").slice(0, 240) || null);
+      const dedupeKey =
+        getRawString(payload.rawPayload?.dedupeKey) ??
+        `${payload.telegramAccountId}:${payload.externalConversationId}:${payload.externalMessageId}`;
+
+      const needsUpgrade =
+        existing.messageType !== desiredType ||
+        existing.relatedChannelId !== relatedChannelId ||
+        existing.relatedPostId !== relatedPostId ||
+        (contextPreview && existing.contextPreview !== contextPreview) ||
+        (dedupeKey && existing.dedupeKey !== dedupeKey);
+
+      if (needsUpgrade) {
+        await app.prisma.message.update({
+          where: { id: existing.id },
+          data: {
+            messageType: desiredType,
+            relatedChannelId,
+            relatedPostId,
+            contextPreview,
+            dedupeKey,
+            rawPayload: (payload.rawPayload as Prisma.InputJsonValue) ?? undefined
+          }
+        });
+      }
+    }
+
     // A duplicate event can happen (sync + live listener / retries).
     // Previously we returned early, which could permanently leave `conversation_state`
     // stale if the first attempt inserted the message but failed before state update.
