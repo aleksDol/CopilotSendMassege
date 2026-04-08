@@ -476,9 +476,21 @@ async def _ingest_channel_comments_for_sources(
                 if not discussion_messages:
                     logger.info("channel_comments postId=%s has no discussion messages, skipping", post_id)
                     continue
-                discussion_root = discussion_messages[0]
-                discussion_chat = getattr(discussion_root, "peer_id", None)
-                discussion_msg_id = getattr(discussion_root, "id", None)
+                # Telethon may return multiple messages (channel + discussion). We must pick the one
+                # that belongs to the discussion chat, otherwise fetching replies will fail.
+                discussion_chat = None
+                discussion_root = None
+                discussion_msg_id = None
+                for dm in discussion_messages:
+                    peer = getattr(dm, "peer_id", None)
+                    # For discussion root we expect a PeerChannel/PeerChat peer_id (not the channel post peer).
+                    if peer is not None:
+                        discussion_chat = peer
+                        discussion_root = dm
+                        discussion_msg_id = getattr(dm, "id", None)
+                        # Prefer messages that are not the original channel post id.
+                        if isinstance(discussion_msg_id, int) and discussion_msg_id != post_id:
+                            break
                 if discussion_chat is None or not isinstance(discussion_msg_id, int):
                     logger.info("channel_comments postId=%s discussion_chat/msg_id invalid, skipping", post_id)
                     continue
@@ -496,67 +508,81 @@ async def _ingest_channel_comments_for_sources(
                 continue
 
             count = 0
-            async for c in client.iter_messages(discussion_entity, reply_to=discussion_msg_id):
-                if count >= max_comments_per_post:
-                    break
-                if getattr(c, "out", False):
-                    continue
-                text = (getattr(c, "message", None) or "").strip()
-                if len(text) < min_text_len:
-                    comments_skipped += 1
-                    continue
-                comments_found += 1
+            try:
+                async for c in client.iter_messages(discussion_entity, reply_to=discussion_msg_id):
+                    if count >= max_comments_per_post:
+                        break
+                    if getattr(c, "out", False):
+                        continue
+                    text = (getattr(c, "message", None) or "").strip()
+                    if len(text) < min_text_len:
+                        comments_skipped += 1
+                        continue
+                    comments_found += 1
 
-                sender_id = getattr(c, "sender_id", None)
-                sender_external_id = str(sender_id) if sender_id is not None else ""
-                if not sender_external_id:
-                    comments_skipped += 1
-                    continue
+                    sender_id = getattr(c, "sender_id", None)
+                    sender_external_id = str(sender_id) if sender_id is not None else ""
+                    if not sender_external_id:
+                        comments_skipped += 1
+                        continue
 
-                # Best-effort sender fields.
-                sender_full_name = None
-                sender_username = None
-                try:
-                    sender = await c.get_sender()
-                    if isinstance(sender, User):
-                        sender_full_name = " ".join(part for part in [sender.first_name, sender.last_name] if part).strip() or None
-                        sender_username = sender.username
-                except Exception:
-                    pass
+                    # Best-effort sender fields.
+                    sender_full_name = None
+                    sender_username = None
+                    try:
+                        sender = await c.get_sender()
+                        if isinstance(sender, User):
+                            sender_full_name = " ".join(part for part in [sender.first_name, sender.last_name] if part).strip() or None
+                            sender_username = sender.username
+                    except Exception:
+                        pass
 
-                payload: dict[str, Any] = {
-                    "telegramAccountId": telegram_account_id,
-                    "externalConversationId": str(get_peer_id(discussion_entity)),
-                    "externalMessageId": str(getattr(c, "id", "")),
-                    "senderExternalId": sender_external_id,
-                    "senderType": "user",
-                    "senderFullName": sender_full_name,
-                    "senderUsername": sender_username,
-                    "text": text,
-                    "sentAt": getattr(c, "date", _now()).isoformat(),
-                    "isOutgoing": False,
-                    "replyToExternalMessageId": str(discussion_msg_id),
-                    "rawPayload": {
-                        "dialogType": "channel_comment",
-                        "sourceId": source_id,
-                        "chatType": "channel_comments",
-                        "relatedChannelId": channel_peer_id,
-                        "relatedPostId": str(post_id),
-                        "contextPreview": context_preview,
-                        # Required dedupe format: source_id + post_id + message_id
-                        "dedupeKey": f"{source_id}:{post_id}:{getattr(c, 'id', '')}",
-                    },
-                    "conversationTitle": getattr(discussion_entity, "title", None),
-                    "hasAttachment": bool(getattr(c, "media", None)),
-                }
+                    payload: dict[str, Any] = {
+                        "telegramAccountId": telegram_account_id,
+                        "externalConversationId": str(get_peer_id(discussion_entity)),
+                        "externalMessageId": str(getattr(c, "id", "")),
+                        "senderExternalId": sender_external_id,
+                        "senderType": "user",
+                        "senderFullName": sender_full_name,
+                        "senderUsername": sender_username,
+                        "text": text,
+                        "sentAt": getattr(c, "date", _now()).isoformat(),
+                        "isOutgoing": False,
+                        "replyToExternalMessageId": str(discussion_msg_id),
+                        "rawPayload": {
+                            "dialogType": "channel_comment",
+                            "sourceId": source_id,
+                            "chatType": "channel_comments",
+                            "relatedChannelId": channel_peer_id,
+                            "relatedPostId": str(post_id),
+                            "contextPreview": context_preview,
+                            # Required dedupe format: source_id + post_id + message_id
+                            "dedupeKey": f"{source_id}:{post_id}:{getattr(c, 'id', '')}",
+                        },
+                        "conversationTitle": getattr(discussion_entity, "title", None),
+                        "hasAttachment": bool(getattr(c, "media", None)),
+                    }
 
-                try:
-                    await push_message_event(payload)
-                    count += 1
-                    comments_saved += 1
-                except Exception as exc:
-                    logger.warning("channel_comments push_message_event FAILED postId=%s commentId=%s error=%s", post_id, getattr(c, 'id', '?'), exc)
-                    comments_skipped += 1
+                    try:
+                        await push_message_event(payload)
+                        count += 1
+                        comments_saved += 1
+                    except Exception as exc:
+                        logger.warning(
+                            "channel_comments push_message_event FAILED postId=%s commentId=%s error=%s",
+                            post_id,
+                            getattr(c, "id", "?"),
+                            exc,
+                        )
+                        comments_skipped += 1
+            except Exception as exc:
+                logger.warning(
+                    "channel_comments iter_messages(replies) FAILED postId=%s rootMsgId=%s error=%s",
+                    post_id,
+                    discussion_msg_id,
+                    exc,
+                )
+                continue
 
             # log per post
             logger.info(
