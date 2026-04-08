@@ -299,12 +299,17 @@ async def run_initial_sync(
                     if sender_username:
                         payload["senderUsername"] = sender_username
 
-                    await push_message_event(payload)
-                    result.messages_synced += 1
+                    try:
+                        await push_message_event(payload)
+                        result.messages_synced += 1
+                    except Exception as exc:
+                        logger.warning("auto-sync push_message_event failed dialog=%s msgId=%s error=%s", dialog.id, message.id, exc)
 
             # LeadRadar channel comments ingestion (optional, source-driven).
             try:
+                logger.info("channel_comments fetching sources for telegramAccountId=%s", str(account["telegramAccountId"]))
                 sources = await list_channel_comment_sources(telegram_account_id=str(account["telegramAccountId"]))
+                logger.info("channel_comments sources fetched count=%s", len(sources))
                 if sources:
                     await _ingest_channel_comments_for_sources(
                         conn=conn,
@@ -314,11 +319,10 @@ async def run_initial_sync(
                         max_comments_per_post=50,
                         min_text_len=5,
                     )
-            except WorkerError:
-                # Do not fail the main sync if LeadRadar sources fetching/ingestion fails.
-                pass
-            except Exception:
-                pass
+            except WorkerError as exc:
+                logger.warning("channel_comments WorkerError: code=%s message=%s", exc.code, exc.message)
+            except Exception as exc:
+                logger.warning("channel_comments unexpected error: %s", exc, exc_info=True)
 
             await _set_sync_markers(conn, account["telegramAccountId"], account["channelAccountId"])
             return result
@@ -395,9 +399,12 @@ async def _ingest_channel_comments_for_sources(
         channel_peer_id = str(src.get("telegramChatId") or "")
         source_id = str(src.get("id") or "")
         if not channel_peer_id or not source_id:
+            logger.warning("channel_comments skipping source: missing peer_id or source_id src=%s", src)
             continue
 
+        logger.info("channel_comments processing source id=%s channelPeerId=%s", source_id, channel_peer_id)
         last_post_id = await _get_last_processed_post_id(conn=conn, related_channel_id=channel_peer_id)
+        logger.info("channel_comments last_post_id=%s for channelPeerId=%s", last_post_id, channel_peer_id)
         processed_posts_this_run: set[int] = set()
 
         posts_found = 0
@@ -409,8 +416,12 @@ async def _ingest_channel_comments_for_sources(
         # Fetch a small window of newest posts; filter by last_post_id.
         # NOTE: channel message ids are monotonically increasing per channel.
         try:
-            channel_entity = await client.get_entity(int(channel_peer_id) if channel_peer_id.lstrip("-").isdigit() else channel_peer_id)
-        except Exception:
+            resolved_id = int(channel_peer_id) if channel_peer_id.lstrip("-").isdigit() else channel_peer_id
+            logger.info("channel_comments resolving entity peerId=%s resolvedId=%s", channel_peer_id, resolved_id)
+            channel_entity = await client.get_entity(resolved_id)
+            logger.info("channel_comments entity resolved: %s (type=%s)", getattr(channel_entity, 'title', '?'), type(channel_entity).__name__)
+        except Exception as exc:
+            logger.warning("channel_comments get_entity FAILED peerId=%s error=%s", channel_peer_id, exc, exc_info=True)
             continue
 
         # Only channels are expected here.
@@ -423,7 +434,9 @@ async def _ingest_channel_comments_for_sources(
                 if mid <= last_post_id:
                     break
                 posts.append(m)
-        except Exception:
+            logger.info("channel_comments fetched %s posts from channel %s (last_post_id=%s)", len(posts), channel_peer_id, last_post_id)
+        except Exception as exc:
+            logger.warning("channel_comments iter_messages FAILED channel=%s error=%s", channel_peer_id, exc, exc_info=True)
             continue
 
         posts_found = len(posts)
@@ -457,23 +470,29 @@ async def _ingest_channel_comments_for_sources(
 
             # Resolve the linked discussion message for this channel post.
             try:
+                logger.info("channel_comments resolving discussion for postId=%s", post_id)
                 discussion = await client(GetDiscussionMessageRequest(peer=channel_entity, msg_id=post_id))
-                # Telethon returns a Messages object; the discussion message is typically the first in `messages`.
                 discussion_messages = getattr(discussion, "messages", None) or []
                 if not discussion_messages:
+                    logger.info("channel_comments postId=%s has no discussion messages, skipping", post_id)
                     continue
                 discussion_root = discussion_messages[0]
                 discussion_chat = getattr(discussion_root, "peer_id", None)
                 discussion_msg_id = getattr(discussion_root, "id", None)
                 if discussion_chat is None or not isinstance(discussion_msg_id, int):
+                    logger.info("channel_comments postId=%s discussion_chat/msg_id invalid, skipping", post_id)
                     continue
-            except Exception:
+                logger.info("channel_comments postId=%s discussion resolved: chatPeer=%s rootMsgId=%s", post_id, discussion_chat, discussion_msg_id)
+            except Exception as exc:
+                logger.warning("channel_comments GetDiscussionMessage FAILED postId=%s error=%s", post_id, exc)
                 continue
 
             # Fetch up to N comments (replies) for the discussion root.
             try:
                 discussion_entity = await client.get_entity(discussion_chat)
-            except Exception:
+                logger.info("channel_comments discussion entity resolved: %s", getattr(discussion_entity, 'title', '?'))
+            except Exception as exc:
+                logger.warning("channel_comments get_entity discussion FAILED postId=%s error=%s", post_id, exc)
                 continue
 
             count = 0
@@ -535,10 +554,9 @@ async def _ingest_channel_comments_for_sources(
                     await push_message_event(payload)
                     count += 1
                     comments_saved += 1
-                except Exception:
-                    # Best-effort; continue other comments
+                except Exception as exc:
+                    logger.warning("channel_comments push_message_event FAILED postId=%s commentId=%s error=%s", post_id, getattr(c, 'id', '?'), exc)
                     comments_skipped += 1
-                    pass
 
             # log per post
             logger.info(
