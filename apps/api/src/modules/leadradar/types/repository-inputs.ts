@@ -43,6 +43,9 @@ export type CreateLeadInput = {
   display_name?: string | null;
   chat_id: string;
   chat_title?: string | null;
+  source_type?: string | null;
+  related_post_id?: string | null;
+  context_preview?: string | null;
   message_id: string;
   message_text?: string | null;
   message_date: Date;

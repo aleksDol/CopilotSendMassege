@@ -11,6 +11,11 @@ export type LeadRadarMessageInput = {
   senderUsername: string | null;
   senderDisplayName: string | null;
 
+  sourceType?: string | null;
+  relatedPostId?: string | null;
+  contextPreview?: string | null;
+  relatedChannelId?: string | null;
+
   text: string;
   date: Date;
 };

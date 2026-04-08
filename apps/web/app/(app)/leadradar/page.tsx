@@ -44,6 +44,10 @@ function truncate(text: string | null, max = 120): string {
   return t.length > max ? `${t.slice(0, max)}…` : t;
 }
 
+function isChannelCommentLead(lead: LeadRadarLeadItem): boolean {
+  return lead.sourceType === "channel_comments";
+}
+
 function displayName(lead: LeadRadarLeadItem) {
   if (lead.displayName?.trim()) return lead.displayName.trim();
   if (lead.username?.trim()) return `@${lead.username.trim()}`;
@@ -242,6 +246,17 @@ export default function LeadRadarInboxPage() {
                   </td>
                   <td className="py-3 pr-3">
                     <div className="max-w-[420px] whitespace-pre-wrap text-foreground/90">{truncate(lead.messageText, 160) || "—"}</div>
+                    {isChannelCommentLead(lead) ? (
+                      <div className="pt-1 text-xs text-muted-foreground">
+                        <span className="rounded border border-border bg-muted/30 px-1.5 py-0.5">Комментарий канала</span>
+                        {lead.relatedPostId?.trim() ? <span className="pl-2">post: {lead.relatedPostId}</span> : null}
+                      </div>
+                    ) : null}
+                    {lead.contextPreview?.trim() ? (
+                      <div className="pt-1 max-w-[420px] text-xs text-muted-foreground whitespace-pre-wrap">
+                        {truncate(lead.contextPreview, 160)}
+                      </div>
+                    ) : null}
                   </td>
                   <td className="py-3 pr-3">{lead.score}</td>
                   <td className="py-3 pr-3 text-muted-foreground">{formatDate(lead.createdAt)}</td>

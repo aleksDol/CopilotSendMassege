@@ -291,6 +291,21 @@ async def _run_account_listener(account: ConnectedAccount, crypto: SessionCrypto
                         "hasAttachment": has_attachment,
                     }
 
+                    # Telegram channel comments:
+                    # Messages are authored in the linked discussion group (megagroup) and can be tied back to a channel.
+                    linked_channel_id = getattr(chat, "linked_chat_id", None)
+                    if conversation_type == "group" and linked_channel_id:
+                        payload["rawPayload"]["dialogType"] = "channel_comment"
+                        payload["rawPayload"]["chatType"] = "channel_comments"
+                        payload["rawPayload"]["relatedChannelId"] = str(linked_channel_id)
+                        payload["rawPayload"]["relatedPostId"] = (
+                            str(msg.reply_to.reply_to_msg_id) if getattr(msg, "reply_to", None) else None
+                        )
+                        payload["rawPayload"]["contextPreview"] = None
+                        payload["rawPayload"]["dedupeKey"] = (
+                            f'{account.telegram_account_id}:{linked_channel_id}:{payload["rawPayload"]["relatedPostId"]}:{payload["externalMessageId"]}'
+                        )
+
                     if settings.telegram_live_listener_log_events:
                         logger.info(
                             "listener event telegramAccountId=%s externalConversationId=%s externalMessageId=%s senderExternalId=%s",

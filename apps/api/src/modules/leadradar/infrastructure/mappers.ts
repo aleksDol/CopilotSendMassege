@@ -22,6 +22,9 @@ export const leadRadarMappers = {
     displayName: string | null;
     chatId: string;
     chatTitle: string | null;
+    sourceType?: string | null;
+    relatedPostId?: string | null;
+    contextPreview?: string | null;
     messageId: string;
     messageText: string | null;
     messageDate: Date;
@@ -42,6 +45,9 @@ export const leadRadarMappers = {
     display_name: row.displayName,
     chat_id: row.chatId,
     chat_title: row.chatTitle,
+    source_type: row.sourceType ?? null,
+    related_post_id: row.relatedPostId ?? null,
+    context_preview: row.contextPreview ?? null,
     message_id: row.messageId,
     message_text: row.messageText,
     message_date: row.messageDate,

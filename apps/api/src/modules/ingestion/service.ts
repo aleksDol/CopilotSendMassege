@@ -32,6 +32,13 @@ const getRawString = (raw: unknown): string | null => {
   return value.length ? value : null;
 };
 
+const getRawPreview = (raw: unknown, maxLen: number): string | null => {
+  if (typeof raw !== "string") return null;
+  const v = raw.trim();
+  if (!v) return null;
+  return v.length > maxLen ? v.slice(0, maxLen) : v;
+};
+
 const toConversationType = (payload: MessageEventPayload): "DIRECT" | "GROUP" | "CHANNEL" => {
   const kind = payload.rawPayload?.dialogType;
   if (kind === "group") {
@@ -40,6 +47,11 @@ const toConversationType = (payload: MessageEventPayload): "DIRECT" | "GROUP" | 
   if (kind === "channel") {
     return "CHANNEL";
   }
+  if (kind === "channel_comment") {
+    // Telegram "channel comments" are authored in the linked discussion group,
+    // but we keep them as a special messageType while the conversation remains GROUP.
+    return "GROUP";
+  }
   return "DIRECT";
 };
 
@@ -47,6 +59,9 @@ const toMessageDirection = (isOutgoing: boolean): MessageDirection =>
   isOutgoing ? MessageDirection.OUTBOUND : MessageDirection.INBOUND;
 
 const toMessageType = (payload: MessageEventPayload): MessageType => {
+  if (payload.rawPayload?.dialogType === "channel_comment") {
+    return MessageType.CHANNEL_COMMENT;
+  }
   if (payload.hasAttachment) {
     return MessageType.MEDIA;
   }
@@ -95,6 +110,10 @@ const toLeadRadarInput = (params: {
     senderId: params.payload.senderExternalId ?? null,
     senderUsername: params.payload.senderUsername ?? params.participantUsername ?? null,
     senderDisplayName: params.payload.senderFullName ?? params.participantFullName ?? null,
+    sourceType: getRawString(params.payload.rawPayload?.chatType) ?? null,
+    relatedChannelId: getRawString(params.payload.rawPayload?.relatedChannelId) ?? null,
+    relatedPostId: getRawString(params.payload.rawPayload?.relatedPostId) ?? null,
+    contextPreview: getRawString(params.payload.rawPayload?.contextPreview) ?? null,
     text: (params.payload.text ?? "").trim(),
     date: new Date(params.payload.sentAt)
   };
@@ -356,6 +375,14 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
       sentAt: new Date(payload.sentAt),
       replyToExternalMessageId: payload.replyToExternalMessageId ?? null,
       hasAttachment: payload.hasAttachment ?? false,
+      relatedChannelId: getRawString(payload.rawPayload?.relatedChannelId) ?? null,
+      relatedPostId: getRawString(payload.rawPayload?.relatedPostId) ?? null,
+      contextPreview:
+        getRawPreview(payload.rawPayload?.contextPreview, 240) ??
+        ((payload.text ?? "").slice(0, 240) || null),
+      dedupeKey:
+        getRawString(payload.rawPayload?.dedupeKey) ??
+        `${payload.telegramAccountId}:${payload.externalConversationId}:${payload.externalMessageId}`,
       rawPayload: (payload.rawPayload as Prisma.InputJsonValue) ?? undefined
     },
     create: {
@@ -370,6 +397,14 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
       normalizedText: payload.text?.toLowerCase() ?? null,
       sentAt: new Date(payload.sentAt),
       hasAttachment: payload.hasAttachment ?? false,
+      relatedChannelId: getRawString(payload.rawPayload?.relatedChannelId) ?? null,
+      relatedPostId: getRawString(payload.rawPayload?.relatedPostId) ?? null,
+      contextPreview:
+        getRawPreview(payload.rawPayload?.contextPreview, 240) ??
+        ((payload.text ?? "").slice(0, 240) || null),
+      dedupeKey:
+        getRawString(payload.rawPayload?.dedupeKey) ??
+        `${payload.telegramAccountId}:${payload.externalConversationId}:${payload.externalMessageId}`,
       rawPayload: (payload.rawPayload as Prisma.InputJsonValue) ?? undefined
     }
   });

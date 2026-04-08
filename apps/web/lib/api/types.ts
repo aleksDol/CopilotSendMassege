@@ -229,6 +229,9 @@ export type LeadRadarLeadItem = {
   telegramUserId: string | null;
   chatId: string;
   chatTitle: string | null;
+  sourceType?: string | null;
+  relatedPostId?: string | null;
+  contextPreview?: string | null;
   messageText: string | null;
   score: number;
   status: LeadRadarLeadStatus;
@@ -266,6 +269,9 @@ export type LeadRadarLeadDetailsResponse = {
     telegramUserId: string | null;
     chatId: string;
     chatTitle: string | null;
+    sourceType?: string | null;
+    relatedPostId?: string | null;
+    contextPreview?: string | null;
     messageText: string | null;
     score: number;
     status: LeadRadarLeadStatus;

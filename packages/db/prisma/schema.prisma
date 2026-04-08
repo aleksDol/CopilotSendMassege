@@ -90,6 +90,7 @@ enum MessageType {
   TEXT
   MEDIA
   SERVICE
+  CHANNEL_COMMENT
   OTHER
 }
 
@@ -534,6 +535,10 @@ model Message {
   editedAt                 DateTime?
   isDeleted                Boolean          @default(false)
   hasAttachment            Boolean          @default(false)
+  relatedChannelId         String?          @map("related_channel_id")
+  relatedPostId            String?          @map("related_post_id")
+  contextPreview           String?          @map("context_preview")
+  dedupeKey                String?          @map("dedupe_key")
   rawPayload               Json?
   createdAt                DateTime         @default(now())
 
@@ -550,6 +555,7 @@ model Message {
   @@index([conversationId, sentAt(sort: Desc)])
   @@index([companyId, sentAt(sort: Desc)])
   @@index([participantId])
+  @@unique([dedupeKey], map: "Message_dedupe_key_key")
 }
 
 /// =========================
@@ -856,6 +862,9 @@ model LeadRadarLead {
   displayName       String?             @map("display_name")
   chatId            String              @map("chat_id")
   chatTitle         String?             @map("chat_title")
+  sourceType        String?             @map("source_type")
+  relatedPostId     String?             @map("related_post_id")
+  contextPreview    String?             @map("context_preview")
   messageId         String              @map("message_id")
   messageText       String?             @map("message_text")
   messageDate       DateTime            @map("message_date")

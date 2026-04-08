@@ -115,13 +115,18 @@ export class LeadRadarIngestionService {
     }
 
     // 2) Source check
+    const sourceChatId =
+      input.chatType === "GROUP" && input.relatedChannelId ? input.relatedChannelId : input.chatId;
+
     const source = await this.deps.sourceRepo.findByTelegramChatId({
       user_id: input.userId,
       telegram_account_id: input.telegramAccountId,
-      telegram_chat_id: input.chatId
+      telegram_chat_id: sourceChatId
     });
 
-    log(`[LeadRadar-DEBUG] source lookup chatId=${input.chatId} found=${!!source} active=${source?.is_active ?? "N/A"}`);
+    log(
+      `[LeadRadar-DEBUG] source lookup chatId=${sourceChatId} found=${!!source} active=${source?.is_active ?? "N/A"}`
+    );
 
     if (!source || !source.is_active) {
       log("[LeadRadar] skipped: not a source");
@@ -206,8 +211,11 @@ export class LeadRadarIngestionService {
       telegram_user_id: input.senderId,
       username: input.senderUsername,
       display_name: input.senderDisplayName,
-      chat_id: input.chatId,
+      chat_id: sourceChatId,
       chat_title: input.chatTitle ?? null,
+      source_type: source.chat_type ?? input.sourceType ?? null,
+      related_post_id: input.relatedPostId ?? null,
+      context_preview: input.contextPreview ?? null,
       message_id: input.messageId,
       message_text: input.text ?? null,
       message_date: input.date,

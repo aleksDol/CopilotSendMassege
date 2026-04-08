@@ -144,6 +144,32 @@ export function LeadDrawer({
                     {(lead.messageText ?? "").trim() || "—"}
                   </div>
                 </div>
+                {lead.sourceType === "channel_comments" ? (
+                  <div className="grid gap-2 md:grid-cols-3">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Type</div>
+                      <div className="font-medium">
+                        <Badge variant="outline">Комментарий канала</Badge>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Post ID</div>
+                      <div className="font-medium">{lead.relatedPostId ?? "—"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Source type</div>
+                      <div className="font-medium">{lead.sourceType ?? "—"}</div>
+                    </div>
+                  </div>
+                ) : null}
+                {lead.contextPreview?.trim() ? (
+                  <div>
+                    <div className="text-xs text-muted-foreground">Context preview (post)</div>
+                    <div className="whitespace-pre-wrap rounded-md border border-border bg-muted/20 p-3">
+                      {lead.contextPreview}
+                    </div>
+                  </div>
+                ) : null}
                 <div className="grid gap-2 md:grid-cols-3">
                   <div>
                     <div className="text-xs text-muted-foreground">Username</div>

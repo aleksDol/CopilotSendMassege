@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -6,15 +7,18 @@ import psycopg
 from urllib.parse import urlparse
 from telethon.tl.types import Channel, Chat, InputUser, User
 from telethon.tl.functions.users import GetUsersRequest
+from telethon.tl.functions.messages import GetDiscussionMessageRequest
 from telethon.utils import get_peer_id
 
 from app.config import settings
 from app.crypto import SessionCrypto
 from app.db import get_connection
-from app.internal_api_client import push_message_event
+from app.internal_api_client import list_channel_comment_sources, push_message_event
 from app.services.auth_flow import WorkerError, mark_error_by_channel
 from app.telegram_client import create_client
 
+
+logger = logging.getLogger("telegram-worker.sync")
 
 @dataclass
 class SyncResult:
@@ -277,6 +281,19 @@ async def run_initial_sync(
                         "conversationTitle": dialog.title,
                         "hasAttachment": bool(getattr(message, "media", None)),
                     }
+
+                    # Telegram channel comments (linked discussion group -> channel).
+                    linked_channel_id = getattr(entity, "linked_chat_id", None)
+                    if conversation_type == "group" and linked_channel_id:
+                        payload["rawPayload"]["dialogType"] = "channel_comment"
+                        payload["rawPayload"]["relatedChannelId"] = str(linked_channel_id)
+                        payload["rawPayload"]["relatedPostId"] = (
+                            str(message.reply_to.reply_to_msg_id) if message.reply_to else None
+                        )
+                        payload["rawPayload"]["contextPreview"] = None
+                        payload["rawPayload"]["dedupeKey"] = (
+                            f'{payload["telegramAccountId"]}:{linked_channel_id}:{payload["rawPayload"]["relatedPostId"]}:{payload["externalMessageId"]}'
+                        )
                     if sender_full_name:
                         payload["senderFullName"] = sender_full_name
                     if sender_username:
@@ -285,10 +302,265 @@ async def run_initial_sync(
                     await push_message_event(payload)
                     result.messages_synced += 1
 
+            # LeadRadar channel comments ingestion (optional, source-driven).
+            try:
+                sources = await list_channel_comment_sources(telegram_account_id=str(account["telegramAccountId"]))
+                if sources:
+                    await _ingest_channel_comments_for_sources(
+                        conn=conn,
+                        client=client,
+                        telegram_account_id=str(account["telegramAccountId"]),
+                        sources=sources,
+                        max_comments_per_post=50,
+                        min_text_len=5,
+                    )
+            except WorkerError:
+                # Do not fail the main sync if LeadRadar sources fetching/ingestion fails.
+                pass
+            except Exception:
+                pass
+
             await _set_sync_markers(conn, account["telegramAccountId"], account["channelAccountId"])
             return result
         finally:
             await client.disconnect()
+
+
+async def _get_last_processed_post_id(
+    *, conn: psycopg.AsyncConnection, related_channel_id: str
+) -> int:
+    """
+    No new tables: derive progress from already stored Message rows.
+    We store related_post_id as TEXT; pick the max numeric value.
+    """
+    async with conn.cursor() as cur:
+        await cur.execute(
+            """
+            SELECT COALESCE(MAX(NULLIF(m."related_post_id", '')::bigint), 0) AS max_post_id
+            FROM "Message" m
+            WHERE m."related_channel_id" = %s
+            """,
+            (related_channel_id,),
+        )
+        row = await cur.fetchone()
+    try:
+        return int(row[0] or 0)
+    except Exception:
+        return 0
+
+
+async def _is_post_already_processed(
+    *, conn: psycopg.AsyncConnection, source_id: str, related_channel_id: str, related_post_id: int
+) -> bool:
+    """
+    No new tables: consider a post processed if we already saved at least one comment for it
+    (dedupe_key prefix exists) OR any message row exists for (channel, post) with this sourceId.
+    """
+    prefix = f"{source_id}:{related_post_id}:"
+    async with conn.cursor() as cur:
+        await cur.execute(
+            """
+            SELECT 1
+            FROM "Message" m
+            WHERE m."related_channel_id" = %s
+              AND m."related_post_id" = %s
+              AND (
+                m."dedupe_key" LIKE %s
+                OR (m."rawPayload"->>'sourceId') = %s
+              )
+            LIMIT 1
+            """,
+            (related_channel_id, str(related_post_id), prefix + "%", source_id),
+        )
+        row = await cur.fetchone()
+    return bool(row)
+
+
+async def _ingest_channel_comments_for_sources(
+    *,
+    conn: psycopg.AsyncConnection,
+    client: Any,
+    telegram_account_id: str,
+    sources: list[dict[str, Any]],
+    max_comments_per_post: int,
+    min_text_len: int,
+) -> None:
+    """
+    Ingest Telegram channel comments as regular message events:
+    - fetch new channel posts
+    - for each post fetch up to N comments via discussion group
+    - push each comment through existing /internal/telegram/events/message ingestion
+    """
+    for src in sources:
+        channel_peer_id = str(src.get("telegramChatId") or "")
+        source_id = str(src.get("id") or "")
+        if not channel_peer_id or not source_id:
+            continue
+
+        last_post_id = await _get_last_processed_post_id(conn=conn, related_channel_id=channel_peer_id)
+        processed_posts_this_run: set[int] = set()
+
+        posts_found = 0
+        posts_skipped_already = 0
+        comments_found = 0
+        comments_saved = 0
+        comments_skipped = 0
+
+        # Fetch a small window of newest posts; filter by last_post_id.
+        # NOTE: channel message ids are monotonically increasing per channel.
+        try:
+            channel_entity = await client.get_entity(int(channel_peer_id) if channel_peer_id.lstrip("-").isdigit() else channel_peer_id)
+        except Exception:
+            continue
+
+        # Only channels are expected here.
+        posts: list[Any] = []
+        try:
+            async for m in client.iter_messages(channel_entity, limit=20):
+                mid = getattr(m, "id", None)
+                if not isinstance(mid, int):
+                    continue
+                if mid <= last_post_id:
+                    break
+                posts.append(m)
+        except Exception:
+            continue
+
+        posts_found = len(posts)
+
+        # Process from oldest to newest to keep ordering stable.
+        for post in reversed(posts):
+            post_id = getattr(post, "id", None)
+            if not isinstance(post_id, int) or post_id <= last_post_id:
+                continue
+            if post_id in processed_posts_this_run:
+                posts_skipped_already += 1
+                continue
+            processed_posts_this_run.add(post_id)
+
+            # Do not process the same post repeatedly across sync runs.
+            try:
+                if await _is_post_already_processed(
+                    conn=conn,
+                    source_id=source_id,
+                    related_channel_id=channel_peer_id,
+                    related_post_id=post_id,
+                ):
+                    posts_skipped_already += 1
+                    continue
+            except Exception:
+                # Best-effort: if this check fails, continue ingestion.
+                pass
+
+            post_text = getattr(post, "message", None) or ""
+            context_preview = (post_text or "").strip()[:240] or None
+
+            # Resolve the linked discussion message for this channel post.
+            try:
+                discussion = await client(GetDiscussionMessageRequest(peer=channel_entity, msg_id=post_id))
+                # Telethon returns a Messages object; the discussion message is typically the first in `messages`.
+                discussion_messages = getattr(discussion, "messages", None) or []
+                if not discussion_messages:
+                    continue
+                discussion_root = discussion_messages[0]
+                discussion_chat = getattr(discussion_root, "peer_id", None)
+                discussion_msg_id = getattr(discussion_root, "id", None)
+                if discussion_chat is None or not isinstance(discussion_msg_id, int):
+                    continue
+            except Exception:
+                continue
+
+            # Fetch up to N comments (replies) for the discussion root.
+            try:
+                discussion_entity = await client.get_entity(discussion_chat)
+            except Exception:
+                continue
+
+            count = 0
+            async for c in client.iter_messages(discussion_entity, reply_to=discussion_msg_id):
+                if count >= max_comments_per_post:
+                    break
+                if getattr(c, "out", False):
+                    continue
+                text = (getattr(c, "message", None) or "").strip()
+                if len(text) < min_text_len:
+                    comments_skipped += 1
+                    continue
+                comments_found += 1
+
+                sender_id = getattr(c, "sender_id", None)
+                sender_external_id = str(sender_id) if sender_id is not None else ""
+                if not sender_external_id:
+                    comments_skipped += 1
+                    continue
+
+                # Best-effort sender fields.
+                sender_full_name = None
+                sender_username = None
+                try:
+                    sender = await c.get_sender()
+                    if isinstance(sender, User):
+                        sender_full_name = " ".join(part for part in [sender.first_name, sender.last_name] if part).strip() or None
+                        sender_username = sender.username
+                except Exception:
+                    pass
+
+                payload: dict[str, Any] = {
+                    "telegramAccountId": telegram_account_id,
+                    "externalConversationId": str(get_peer_id(discussion_entity)),
+                    "externalMessageId": str(getattr(c, "id", "")),
+                    "senderExternalId": sender_external_id,
+                    "senderType": "user",
+                    "senderFullName": sender_full_name,
+                    "senderUsername": sender_username,
+                    "text": text,
+                    "sentAt": getattr(c, "date", _now()).isoformat(),
+                    "isOutgoing": False,
+                    "replyToExternalMessageId": str(discussion_msg_id),
+                    "rawPayload": {
+                        "dialogType": "channel_comment",
+                        "sourceId": source_id,
+                        "chatType": "channel_comments",
+                        "relatedChannelId": channel_peer_id,
+                        "relatedPostId": str(post_id),
+                        "contextPreview": context_preview,
+                        # Required dedupe format: source_id + post_id + message_id
+                        "dedupeKey": f"{source_id}:{post_id}:{getattr(c, 'id', '')}",
+                    },
+                    "conversationTitle": getattr(discussion_entity, "title", None),
+                    "hasAttachment": bool(getattr(c, "media", None)),
+                }
+
+                try:
+                    await push_message_event(payload)
+                    count += 1
+                    comments_saved += 1
+                except Exception:
+                    # Best-effort; continue other comments
+                    comments_skipped += 1
+                    pass
+
+            # log per post
+            logger.info(
+                "channel_comments post processed sourceId=%s channelId=%s postId=%s saved=%s skipped=%s (limit=%s)",
+                source_id,
+                channel_peer_id,
+                post_id,
+                comments_saved,
+                comments_skipped,
+                max_comments_per_post,
+            )
+
+        logger.info(
+            "channel_comments source run summary sourceId=%s channelId=%s postsFound=%s postsSkipped=%s commentsFound=%s commentsSaved=%s commentsSkipped=%s",
+            source_id,
+            channel_peer_id,
+            posts_found,
+            posts_skipped_already,
+            comments_found,
+            comments_saved,
+            comments_skipped,
+        )
 
 
 def _parse_peer_id(raw: str) -> int | str:
@@ -493,14 +765,14 @@ async def resolve_public_group_by_link(
             if chat_type == "direct":
                 raise WorkerError("UNSUPPORTED_CHAT_TYPE", "Only public group chats are supported", 400)
 
-            # Only GROUP/supergroup for now (CHANNEL can be added later if safe)
+            # Support public groups AND channels. Channels are used for "channel comments" sources.
             if isinstance(entity, Channel):
-                if not getattr(entity, "megagroup", False):
-                    raise WorkerError("UNSUPPORTED_CHAT_TYPE", "Channels are not supported yet", 400)
+                # ok: can be megagroup (supergroup) or a channel (megagroup=False)
+                pass
             elif isinstance(entity, Chat):
                 pass
             else:
-                raise WorkerError("UNSUPPORTED_CHAT_TYPE", "Only public group chats are supported", 400)
+                raise WorkerError("UNSUPPORTED_CHAT_TYPE", "Only public group chats and channels are supported", 400)
 
             title = getattr(entity, "title", None)
             resolved_username = getattr(entity, "username", None)
@@ -512,7 +784,8 @@ async def resolve_public_group_by_link(
                 "status": "resolved",
                 "telegramChatId": peer_id,
                 "chatTitle": title,
-                "chatType": "group",
+                # For channels we configure sources as "channel_comments" to ingest discussion comments.
+                "chatType": "channel_comments" if chat_type == "channel" else "group",
                 "username": resolved_username,
             }
         finally:

@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { ChannelAccountStatus, ChannelType, TelegramLoginStatus } from "@prisma/client";
 import { AppError } from "../../../lib/errors.js";
+import { ensureInternalToken } from "../../../lib/internal-auth.js";
 import { getCompanyScope } from "../../../lib/request-context.js";
 import { TelegramWorkerClient } from "../../../lib/telegram-worker-client.js";
 import { parseWithSchema } from "../../../lib/validation.js";
@@ -31,6 +32,30 @@ import {
  * - Endpoints will be added in later steps.
  */
 const leadradarController: FastifyPluginAsync = async (app) => {
+  // Internal: used by telegram-worker to discover configured channel-comment sources.
+  app.get("/internal/leadradar/sources/channel-comments", async (request) => {
+    ensureInternalToken(
+      typeof request.headers["x-internal-token"] === "string" ? request.headers["x-internal-token"] : undefined,
+      app.config.env.INTERNAL_API_TOKEN
+    );
+
+    const telegramAccountId = (request.query as any)?.telegramAccountId;
+    if (typeof telegramAccountId !== "string" || !telegramAccountId.length) {
+      throw new AppError(400, "BAD_REQUEST", "telegramAccountId is required");
+    }
+
+    const rows = await app.prisma.leadRadarSource.findMany({
+      where: {
+        telegramAccountId,
+        isActive: true,
+        chatType: "channel_comments"
+      },
+      select: { id: true, telegramChatId: true, chatTitle: true, chatType: true }
+    });
+
+    return { items: rows };
+  });
+
   app.get("/api/leadradar", async () => {
     return {
       ok: true,
