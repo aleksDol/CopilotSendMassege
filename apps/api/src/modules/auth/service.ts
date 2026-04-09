@@ -287,7 +287,8 @@ export const registerUser = async (
 
   const subscription = await ensureSubscription(app, {
     companyId: company.id,
-    plan: company.plan
+    plan: company.plan,
+    initializeTrial: true
   });
   const access = resolveSubscriptionState({
     subscription,
@@ -674,7 +675,8 @@ export const registerVerifyCode = async (
 
   const subscription = await ensureSubscription(app, {
     companyId: company.id,
-    plan: company.plan
+    plan: company.plan,
+    initializeTrial: true
   });
   const access = resolveSubscriptionState({
     subscription,

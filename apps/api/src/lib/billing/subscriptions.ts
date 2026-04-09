@@ -82,7 +82,7 @@ export const ensureSubscription = async (
         plan: params.plan ?? Plan.FREE,
         status: isTrial ? SubscriptionStatus.TRIALING : SubscriptionStatus.ACTIVE,
         stripeCustomerId: params.stripeCustomerId ?? null,
-        currentPeriodStart: isTrial ? now : monthEnd,
+        currentPeriodStart: isTrial ? now : now,
         currentPeriodEnd: isTrial ? trialEndsAt : monthEnd,
         trialStartedAt: isTrial ? now : null,
         trialEndsAt: isTrial ? trialEndsAt : null
@@ -99,7 +99,7 @@ export const ensureSubscription = async (
         plan: params.plan ?? Plan.FREE,
         status: isTrial ? SubscriptionStatus.TRIALING : SubscriptionStatus.ACTIVE,
         stripeCustomerId: params.stripeCustomerId ?? null,
-        currentPeriodStart: isTrial ? now : monthEnd,
+        currentPeriodStart: isTrial ? now : now,
         currentPeriodEnd: isTrial ? trialEndsAt : monthEnd
       }
     });
