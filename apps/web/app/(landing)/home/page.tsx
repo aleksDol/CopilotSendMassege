@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import { TrackingLink } from "@/components/marketing/tracking-link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -6,7 +7,9 @@ import {
   Bot,
   CheckCircle2,
   ChartColumn,
+  Inbox,
   MessageCircle,
+  Search,
   ShieldCheck,
   Sparkles,
   Smartphone,
@@ -25,9 +28,9 @@ const defaultLg = `${baseButton} h-11 rounded-md px-8 bg-primary text-primary-fo
 const outlineLg = `${baseButton} h-11 rounded-md px-8 border border-border bg-background hover:bg-muted`;
 
 export const metadata: Metadata = {
-  title: "AI-помощник для продаж в Telegram",
+  title: "AI Sales Assistant для Telegram — ответы + поиск лидов",
   description:
-    "Ведите все личные диалоги в одном месте, отвечайте быстрее с подсказками AI и не теряйте клиентов.",
+    "Обрабатывайте входящие диалоги быстрее с AI-подсказками и находите новых потенциальных клиентов в чатах и комментариях через LeadRadar.",
   alternates: {
     canonical: canonicalUrl
   },
@@ -35,15 +38,15 @@ export const metadata: Metadata = {
     type: "website",
     locale: "ru_RU",
     url: canonicalUrl,
-    title: "AI-помощник для продаж в Telegram",
+    title: "AI Sales Assistant для Telegram — ответы + поиск лидов",
     description:
-      "Ведите все личные диалоги в одном месте, отвечайте быстрее с подсказками AI и не теряйте клиентов."
+      "Обрабатывайте входящие диалоги быстрее с AI-подсказками и находите новых потенциальных клиентов в чатах и комментариях через LeadRadar."
   },
   twitter: {
     card: "summary",
-    title: "AI-помощник для продаж в Telegram",
+    title: "AI Sales Assistant для Telegram — ответы + поиск лидов",
     description:
-      "Ведите все личные диалоги в одном месте, отвечайте быстрее с подсказками AI и не теряйте клиентов."
+      "Обрабатывайте входящие диалоги быстрее с AI-подсказками и находите новых потенциальных клиентов в чатах и комментариях через LeadRadar."
   }
 };
 
@@ -64,14 +67,7 @@ function ScreenshotCard({
         </div>
 
         <div className="relative aspect-[16/10] w-full overflow-hidden rounded-lg border border-border bg-background/30 p-2">
-          <img
-            src={src}
-            alt={title}
-            loading="lazy"
-            decoding="async"
-            fetchPriority="low"
-            className="absolute inset-0 h-full w-full object-contain p-2"
-          />
+          <Image src={src} alt={title} fill className="object-contain p-2" sizes="(max-width: 768px) 100vw, 50vw" />
         </div>
       </div>
 
@@ -91,13 +87,13 @@ export default function HomeLandingPage() {
             <div className="space-y-6">
               <div className="space-y-2">
                 <span className="inline-flex w-fit items-center rounded-full border border-transparent bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground transition-colors">
-                  AI Sales Assistant
+                  AI Sales Assistant for Telegram
                 </span>
                 <h1 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl lg:text-5xl">
-                  AI-помощник для продаж в Telegram
+                  Не упускайте входящие запросы и находите новые возможности в Telegram
                 </h1>
                 <p className="text-base text-muted-foreground sm:text-lg">
-                  Ведите все личные диалоги в одном месте, отвечайте быстрее с подсказками AI и не теряйте клиентов.
+                  AI Copilot помогает отвечать быстрее в переписке, а LeadRadar — находить потенциальных клиентов в чатах и комментариях каналов, где вы уже состоите.
                 </p>
               </div>
 
@@ -110,38 +106,9 @@ export default function HomeLandingPage() {
                 </TrackingLink>
               </div>
 
-              <div className="text-sm text-muted-foreground">
-                Хотите посмотреть, как это работает?{" "}
-                <a href="#how-it-works" className="text-primary underline underline-offset-4 hover:brightness-110">
-                  Перейдите к шагам
-                </a>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Card className="border-primary/20 bg-primary/5">
-                  <CardHeader className="p-4">
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <MessageCircle className="h-4 w-4 text-primary" />
-                      Диалоги в одном месте
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-4 pt-0 text-sm text-muted-foreground">
-                    Все личные чаты доступны из единого интерфейса.
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="p-4">
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <Bot className="h-4 w-4 text-primary" />
-                      Подсказки AI для ответов
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-4 pt-0 text-sm text-muted-foreground">
-                    AI помогает подобрать формулировку с учетом контекста.
-                  </CardContent>
-                </Card>
-              </div>
+              <p className="text-xs text-muted-foreground">
+                Бесплатный старт: регистрация → подключение Telegram → первые подсказки и первые лиды из ваших источников.
+              </p>
             </div>
 
             <div className="relative">
@@ -151,9 +118,9 @@ export default function HomeLandingPage() {
                     <Target className="h-5 w-5 text-primary" />
                   </div>
                   <div className="space-y-1">
-                    <h2 className="text-lg font-semibold">Не теряйте лидов</h2>
+                    <h2 className="text-lg font-semibold">Два источника роста в одном сервисе</h2>
                     <p className="text-sm text-muted-foreground">
-                      Пропущенные ответы и забытые follow-up быстро подсветятся, чтобы диалоги не остывали.
+                      Входящие диалоги — под контролем. Параллельно — поиск новых людей, которым уже может быть нужна ваша услуга.
                     </p>
                   </div>
                 </div>
@@ -161,31 +128,21 @@ export default function HomeLandingPage() {
                 <div className="mt-6 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-xl border border-border bg-card p-4">
                     <div className="flex items-center gap-2 text-sm font-medium">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                      Быстрее отвечаете
+                      <Bot className="h-4 w-4 text-primary" />
+                      AI Copilot
                     </div>
-                    <p className="mt-1 text-xs text-muted-foreground">AI подсказывает, что написать клиенту.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Подсказки ответа с учетом контекста. AI ничего не отправляет сам — вы контролируете сообщение.
+                    </p>
                   </div>
                   <div className="rounded-xl border border-border bg-card p-4">
                     <div className="flex items-center gap-2 text-sm font-medium">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                      Единый стиль общения
+                      <Search className="h-4 w-4 text-primary" />
+                      LeadRadar
                     </div>
-                    <p className="mt-1 text-xs text-muted-foreground">Политика ответов задает правила и формат.</p>
-                  </div>
-                  <div className="rounded-xl border border-border bg-card p-4">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                      Следите за follow-up
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">Задачи помогают не забывать про клиентов.</p>
-                  </div>
-                  <div className="rounded-xl border border-border bg-card p-4">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                      Контроль переписок
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">Вся активность видна в дашборде.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Мониторит выбранные чаты и комментарии каналов, где вы состоите, и находит потенциальных клиентов по сигналам.
+                    </p>
                   </div>
                 </div>
 
@@ -202,6 +159,10 @@ export default function HomeLandingPage() {
                     <ShieldCheck className="h-4 w-4 text-primary" />
                     Политика ответов
                   </div>
+                  <div className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+                    <Inbox className="h-4 w-4 text-primary" />
+                    Inbox лидов
+                  </div>
                 </div>
               </div>
             </div>
@@ -211,89 +172,34 @@ export default function HomeLandingPage() {
 
       <section className="border-t border-border">
         <div className="mx-auto max-w-6xl px-4 py-12 md:px-8 md:py-16">
-          <div className="space-y-3">
-            <h2 className="text-2xl font-semibold">Для кого</h2>
-            <p className="text-sm text-muted-foreground">
-              Подходит компаниям, которым важны скорость ответов и контроль переписок в Telegram.
-            </p>
-          </div>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {[
-              { title: "Онлайн-школы", icon: Users, desc: "Обрабатывайте входящие заявки и отвечайте быстрее." },
-              { title: "Агентства", icon: MessageCircle, desc: "Ведите несколько клиентов и не теряйте follow-up." },
-              { title: "Эксперты", icon: Sparkles, desc: "Сохраняйте темп общения и единый стиль ответов." },
-              {
-                title: "Команды продаж в Telegram",
-                icon: Target,
-                desc: "Давайте менеджерам подсказки и контролируйте результат."
-              }
-            ].map((item) => (
-              <Card key={item.title}>
-                <CardContent className="p-5">
-                  <div className="flex items-start gap-3">
-                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/20">
-                      <item.icon className="h-5 w-5" />
-                    </div>
-                    <div className="space-y-1">
-                      <h3 className="text-base font-semibold">{item.title}</h3>
-                      <p className="text-sm text-muted-foreground">{item.desc}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="border-t border-border">
-        <div className="mx-auto max-w-6xl px-4 py-12 md:px-8 md:py-16">
-          <div className="space-y-3">
-            <h2 className="text-2xl font-semibold">Какие проблемы решает</h2>
-            <p className="text-sm text-muted-foreground">Убираем типичные боли продаж в личных чатах.</p>
-          </div>
-
-          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Что обычно идет не так</CardTitle>
+                <CardTitle className="text-base">Сценарий 1: входящие под контролем</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {[
-                  "Новые обращения теряются",
-                  "Менеджеры отвечают слишком долго",
-                  "Follow-up забываются",
-                  "Нет единого стандарта ответов",
-                  "Сложно контролировать переписки"
-                ].map((t) => (
-                  <div key={t} className="flex items-start gap-2 text-sm">
-                    <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-destructive/10 text-destructive">
-                      !
-                    </span>
-                    <p className="text-muted-foreground">{t}</p>
-                  </div>
-                ))}
+                <p className="text-sm text-muted-foreground">
+                  Вы ведете переписку в одном интерфейсе и отвечаете быстрее, когда AI предлагает черновик ответа по контексту диалога.
+                </p>
+                <div className="flex items-start gap-2 text-sm">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                  <p className="text-muted-foreground">AI предлагает — вы отправляете. Никаких автосообщений.</p>
+                </div>
               </CardContent>
             </Card>
 
             <Card className="border-primary/20 bg-primary/5">
               <CardHeader>
-                <CardTitle className="text-base">Как продукт помогает</CardTitle>
+                <CardTitle className="text-base">Сценарий 2: новые лиды из Telegram</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {[
-                  "Единый интерфейс для всех личных чатов в Telegram",
-                  "AI-подсказки, что ответить клиенту с учетом контекста",
-                  "Задачи и follow-up, чтобы ничего не было пропущено",
-                  "Политика ответов — контроль стиля и правил общения",
-                  "Дашборд и контроль входящих диалогов"
-                ].map((t) => (
-                  <div key={t} className="flex items-start gap-2 text-sm">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                    <p className="text-muted-foreground">{t}</p>
-                  </div>
-                ))}
+                <p className="text-sm text-muted-foreground">
+                  Добавляете чаты, группы и комментарии каналов как источники — LeadRadar отслеживает новые сообщения и подсвечивает людей с релевантным запросом.
+                </p>
+                <div className="flex items-start gap-2 text-sm">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                  <p className="text-muted-foreground">Работает только в источниках, где вы уже состоите.</p>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -305,17 +211,17 @@ export default function HomeLandingPage() {
           <div className="space-y-3">
             <h2 className="text-2xl font-semibold">Как это работает</h2>
             <p className="text-sm text-muted-foreground">
-              Быстрый путь от подключения Telegram до удобной работы с диалогами и результатом.
+              Простой путь: входящие → подсказки → источники → лиды → диалог.
             </p>
           </div>
 
           <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-5">
             {[
-              { step: 1, title: "Подключаете Telegram", desc: "Задаёте источник входящих диалогов и запускаете синхронизацию." },
-              { step: 2, title: "Видите чаты в одном интерфейсе", desc: "Все личные диалоги — в едином списке и окне диалога." },
-              { step: 3, title: "Используете AI-подсказки", desc: "AI предлагает вариант ответа и помогает быстрее формулировать сообщение." },
-              { step: 4, title: "Следите за задачами и follow-up", desc: "Система показывает, где нужно ответить и когда написать повторно." },
-              { step: 5, title: "Управляете диалогами быстрее", desc: "Снижаете ручную рутину и доводите клиентов до результата." }
+              { step: 1, title: "Подключаете Telegram", desc: "Подключаете аккаунт и получаете единый интерфейс для переписки." },
+              { step: 2, title: "Отвечаете быстрее", desc: "AI Copilot предлагает черновик ответа по контексту — вы решаете, что отправить." },
+              { step: 3, title: "Добавляете источники", desc: "Выбираете чаты/группы и комментарии каналов, где вы уже состоите." },
+              { step: 4, title: "Находите лидов", desc: "LeadRadar подсвечивает сообщения с потенциальным спросом и сохраняет лидов в inbox." },
+              { step: 5, title: "Переводите в диалог", desc: "Быстро переходите к контакту и ведете коммуникацию в одном месте." }
             ].map((s) => (
               <Card key={s.step} className="h-full">
                 <CardContent className="p-5">
@@ -335,34 +241,28 @@ export default function HomeLandingPage() {
 
       <section className="border-t border-border">
         <div className="mx-auto max-w-6xl px-4 py-12 md:px-8 md:py-16">
-          <div className="space-y-3">
-            <h2 className="text-2xl font-semibold">Основные функции</h2>
-            <p className="text-sm text-muted-foreground">Ключевые возможности для работы в Telegram.</p>
-          </div>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {[
-              { title: "Все личные чаты в одном месте", icon: MessageCircle, desc: "Не нужно переключаться между окнами и источниками переписок." },
-              { title: "AI-подсказки ответов", icon: Bot, desc: "Сокращайте время на черновики и улучшайте качество формулировок." },
-              { title: "Follow-up и задачи", icon: Target, desc: "Система подсказывает, кому нужно ответить и что написать повторно." },
-              { title: "Дашборд с метриками", icon: ChartColumn, desc: "Отслеживайте активность и динамику по диалогам и лидам." },
-              { title: "База знаний компании", icon: BookOpen, desc: "FAQ, цены и правила — для точных ответов AI." },
-              { title: "Политика ответов", icon: ShieldCheck, desc: "Единый стиль общения и ограничения для AI." }
-            ].map((f) => (
-              <Card key={f.title}>
-                <CardContent className="p-5">
-                  <div className="flex items-start gap-3">
-                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/20">
-                      <f.icon className="h-5 w-5" />
-                    </div>
-                    <div className="space-y-1">
-                      <h3 className="text-base font-semibold">{f.title}</h3>
-                      <p className="text-sm text-muted-foreground">{f.desc}</p>
-                    </div>
+          <div className="grid gap-6 lg:grid-cols-2 lg:items-center">
+            <div className="space-y-3">
+              <h2 className="text-2xl font-semibold">LeadRadar — поиск лидов без “серых” обещаний</h2>
+              <p className="text-sm text-muted-foreground">
+                Вы выбираете источники (чаты, группы и комментарии каналов), где вы уже состоите. Мы не “парсим весь Telegram” и не занимаемся спамом.
+              </p>
+            </div>
+            <Card className="border-primary/20 bg-primary/5">
+              <CardContent className="space-y-3 p-6">
+                {[
+                  { title: "Мониторинг источников", desc: "Отслеживаем новые сообщения в ваших выбранных чатах и комментариях." },
+                  { title: "Сигналы спроса", desc: "Подсвечиваем сообщения по ключевым фразам и intent-сигналам." },
+                  { title: "Inbox лидов", desc: "Сохраняем найденных лидов в мини-CRM, чтобы не потерять и быстро обработать." },
+                  { title: "Быстрый переход к контакту", desc: "Переводите лид в диалог и ведите коммуникацию внутри продукта." }
+                ].map((i) => (
+                  <div key={i.title} className="rounded-xl border border-border bg-card p-4">
+                    <div className="text-sm font-medium">{i.title}</div>
+                    <div className="mt-1 text-sm text-muted-foreground">{i.desc}</div>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
+                ))}
+              </CardContent>
+            </Card>
           </div>
         </div>
       </section>
@@ -371,9 +271,7 @@ export default function HomeLandingPage() {
         <div className="mx-auto max-w-6xl px-4 py-12 md:px-8 md:py-16">
           <div className="space-y-3">
             <h2 className="text-2xl font-semibold">Интерфейс продукта</h2>
-            <p className="text-sm text-muted-foreground">
-              Ниже — легкие заглушки под скриншоты. Позже вы сможете заменить их на реальные изображения.
-            </p>
+            <p className="text-sm text-muted-foreground">Пара экранов, чтобы быстро понять, как выглядит продукт.</p>
           </div>
 
           <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -404,22 +302,22 @@ export default function HomeLandingPage() {
       <section className="border-t border-border">
         <div className="mx-auto max-w-6xl px-4 py-12 md:px-8 md:py-16">
           <div className="space-y-3">
-            <h2 className="text-2xl font-semibold">Почему это выгодно</h2>
-            <p className="text-sm text-muted-foreground">Результат — в скорости и контроле диалогов.</p>
+            <h2 className="text-2xl font-semibold">Результат для продаж</h2>
+            <p className="text-sm text-muted-foreground">Фокус на итог: меньше потерь, больше релевантных диалогов.</p>
           </div>
 
           <div className="mt-6">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Что вы получаете</CardTitle>
+                <CardTitle className="text-base">Что меняется в работе</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {[
-                  "Быстрее отвечаете клиентам",
-                  "Не забываете про лидов",
-                  "Меньше ручной рутины",
-                  "Удобнее вести продажи в Telegram",
-                  "AI помогает сохранять единый стиль общения"
+                  "Быстрее ответы и меньше “зависших” диалогов",
+                  "Меньше потерянных лидов — входящие под контролем",
+                  "Больше релевантных диалогов — лиды из ваших источников",
+                  "Меньше ручного поиска клиентов в чатах и комментариях",
+                  "Больше шансов на продажу за счет скорости и фокуса"
                 ].map((t) => (
                   <div key={t} className="flex items-start gap-2 text-sm">
                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
@@ -434,61 +332,18 @@ export default function HomeLandingPage() {
 
       <section className="border-t border-border">
         <div className="mx-auto max-w-6xl px-4 py-12 md:px-8 md:py-16">
-          <div className="space-y-3">
-            <h2 className="text-2xl font-semibold">Начать просто</h2>
-            <p className="text-sm text-muted-foreground">
-              Зарегистрируйтесь и выполните 4 коротких шага, чтобы начать работать с чатами в Telegram.
-            </p>
-          </div>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            {[
-              { title: "Зарегистрироваться", icon: Sparkles, desc: "Создайте аккаунт и получите доступ к рабочему пространству." },
-              { title: "Подключить Telegram", icon: Smartphone, desc: "Синхронизируйте диалоги, чтобы они появились в интерфейсе." },
-              { title: "Добавить базу знаний", icon: BookOpen, desc: "FAQ, цены и правила помогают AI отвечать точнее." },
-              { title: "Начать работать с чатами", icon: MessageCircle, desc: "Просматривайте личные диалоги в одном месте и отвечайте быстрее." }
-            ].map((s) => (
-              <Card key={s.title}>
-                <CardContent className="p-5">
-                  <div className="flex items-start gap-3">
-                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/20">
-                      <s.icon className="h-5 w-5" />
-                    </div>
-                    <div className="space-y-1">
-                      <h3 className="text-base font-semibold">{s.title}</h3>
-                      <p className="text-sm text-muted-foreground">{s.desc}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <TrackingLink href="/register" className={defaultLg}>
-              Зарегистрироваться
-            </TrackingLink>
-            <TrackingLink href="/login" className={outlineLg}>
-              Войти
-            </TrackingLink>
-          </div>
-        </div>
-      </section>
-
-      <section className="border-t border-border">
-        <div className="mx-auto max-w-6xl px-4 py-12 md:px-8 md:py-16">
           <div className="rounded-2xl border border-border bg-card p-6 md:p-10">
             <div className="grid gap-8 lg:grid-cols-2 lg:items-center">
               <div className="space-y-4">
-                <h2 className="text-2xl font-semibold">Начните работать с клиентами в Telegram удобнее</h2>
+                <h2 className="text-2xl font-semibold">Попробуйте AI Sales Assistant в вашем Telegram</h2>
                 <p className="text-sm text-muted-foreground">
-                  Зарегистрируйтесь, подключите Telegram, добавьте базу знаний и начните отвечать быстрее с подсказками AI.
+                  Начните с trial: подключите Telegram, ускорьте ответы с AI Copilot и включите LeadRadar для поиска лидов в ваших источниках.
                 </p>
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center lg:justify-end">
                 <TrackingLink href="/register" className={defaultLg}>
-                  Зарегистрироваться
+                  Начать trial
                 </TrackingLink>
                 <TrackingLink href="/login" className={outlineLg}>
                   Войти
@@ -498,7 +353,7 @@ export default function HomeLandingPage() {
           </div>
 
           <div className="mt-8 text-center text-xs text-muted-foreground">
-            AI Sales Assistant для Telegram — единый интерфейс для диалогов и помощник для ответов.
+            Честно: LeadRadar работает только в чатах и комментариях каналов, где вы уже состоите.
           </div>
         </div>
       </section>
