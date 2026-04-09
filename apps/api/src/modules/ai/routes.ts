@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { getCompanyScope } from "../../lib/request-context.js";
+import { requireTrialOrActive } from "../../lib/access.js";
 import { parseWithSchema } from "../../lib/validation.js";
 import {
   listSuggestionsParamsSchema,
@@ -12,12 +13,14 @@ import { ReplySuggestionService } from "./reply-suggestion-service.js";
 
 const aiRoutes: FastifyPluginAsync = async (app) => {
   const service = new ReplySuggestionService(app);
+  const requireAccess = requireTrialOrActive(app);
 
   app.post(
     "/conversations/:id/ai/suggest-reply",
     {
       preHandler: [
         app.authenticate,
+        requireAccess,
         app.rateLimit({
           groupId: "ai:suggest-reply",
           max: 30,
@@ -52,7 +55,7 @@ const aiRoutes: FastifyPluginAsync = async (app) => {
     });
   });
 
-  app.post("/ai/suggestions/:id/accept", { preHandler: [app.authenticate] }, async (request) => {
+  app.post("/ai/suggestions/:id/accept", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const params = parseWithSchema(suggestionActionParamsSchema, request.params);
 
@@ -62,7 +65,7 @@ const aiRoutes: FastifyPluginAsync = async (app) => {
     });
   });
 
-  app.post("/ai/suggestions/:id/reject", { preHandler: [app.authenticate] }, async (request) => {
+  app.post("/ai/suggestions/:id/reject", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const params = parseWithSchema(suggestionActionParamsSchema, request.params);
 

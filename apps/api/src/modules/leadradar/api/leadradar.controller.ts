@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { ChannelAccountStatus, ChannelType, TelegramLoginStatus } from "@prisma/client";
 import { AppError } from "../../../lib/errors.js";
+import { requireTrialOrActive } from "../../../lib/access.js";
 import { ensureInternalToken } from "../../../lib/internal-auth.js";
 import { getCompanyScope } from "../../../lib/request-context.js";
 import { TelegramWorkerClient } from "../../../lib/telegram-worker-client.js";
@@ -32,6 +33,8 @@ import {
  * - Endpoints will be added in later steps.
  */
 const leadradarController: FastifyPluginAsync = async (app) => {
+  const requireAccess = requireTrialOrActive(app);
+
   // Internal: used by telegram-worker to discover configured channel-comment sources.
   app.get("/internal/leadradar/sources/channel-comments", async (request) => {
     ensureInternalToken(
@@ -89,7 +92,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     return active.id;
   };
 
-  app.get("/api/leadradar/sources", { preHandler: [app.authenticate] }, async (request) => {
+  app.get("/api/leadradar/sources", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const query = parseWithSchema(listSourcesQuerySchema, request.query);
 
@@ -123,7 +126,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     };
   });
 
-  app.post("/api/leadradar/sources", { preHandler: [app.authenticate] }, async (request) => {
+  app.post("/api/leadradar/sources", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const body = parseWithSchema(createSourceBodySchema, request.body);
 
@@ -146,7 +149,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     return createdOrExisting;
   });
 
-  app.post("/api/leadradar/sources/by-link", { preHandler: [app.authenticate] }, async (request) => {
+  app.post("/api/leadradar/sources/by-link", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const body = parseWithSchema(createSourceByLinkBodySchema, request.body);
 
@@ -188,7 +191,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     return createdOrExisting;
   });
 
-  app.patch("/api/leadradar/sources/:id", { preHandler: [app.authenticate] }, async (request) => {
+  app.patch("/api/leadradar/sources/:id", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const params = parseWithSchema(sourceIdParamsSchema, request.params);
     const body = parseWithSchema(updateSourceBodySchema, request.body);
@@ -212,7 +215,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     return updated;
   });
 
-  app.delete("/api/leadradar/sources/:id", { preHandler: [app.authenticate] }, async (request) => {
+  app.delete("/api/leadradar/sources/:id", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const params = parseWithSchema(sourceIdParamsSchema, request.params);
 
@@ -233,7 +236,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     return { ok: true };
   });
 
-  app.get("/api/leadradar/keywords", { preHandler: [app.authenticate] }, async (request) => {
+  app.get("/api/leadradar/keywords", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const query = parseWithSchema(listKeywordsQuerySchema, request.query);
 
@@ -258,7 +261,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     return { items: filtered, total: filtered.length };
   });
 
-  app.post("/api/leadradar/keywords", { preHandler: [app.authenticate] }, async (request) => {
+  app.post("/api/leadradar/keywords", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const body = parseWithSchema(createKeywordBodySchema, request.body);
 
@@ -282,7 +285,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     return created;
   });
 
-  app.patch("/api/leadradar/keywords/:id", { preHandler: [app.authenticate] }, async (request) => {
+  app.patch("/api/leadradar/keywords/:id", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const params = parseWithSchema(sourceIdParamsSchema, request.params);
     const body = parseWithSchema(updateKeywordBodySchema, request.body);
@@ -310,7 +313,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     return updated;
   });
 
-  app.delete("/api/leadradar/keywords/:id", { preHandler: [app.authenticate] }, async (request) => {
+  app.delete("/api/leadradar/keywords/:id", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const params = parseWithSchema(sourceIdParamsSchema, request.params);
 
@@ -331,7 +334,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     return { ok: true };
   });
 
-  app.get("/api/leadradar/negative-keywords", { preHandler: [app.authenticate] }, async (request) => {
+  app.get("/api/leadradar/negative-keywords", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
 
     if (!request.server.leadradar) {
@@ -349,7 +352,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     return { items, total: items.length };
   });
 
-  app.post("/api/leadradar/negative-keywords", { preHandler: [app.authenticate] }, async (request) => {
+  app.post("/api/leadradar/negative-keywords", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const body = parseWithSchema(createNegativeKeywordBodySchema, request.body);
 
@@ -370,7 +373,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     return created;
   });
 
-  app.patch("/api/leadradar/negative-keywords/:id", { preHandler: [app.authenticate] }, async (request) => {
+  app.patch("/api/leadradar/negative-keywords/:id", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const params = parseWithSchema(sourceIdParamsSchema, request.params);
     const body = parseWithSchema(updateNegativeKeywordBodySchema, request.body);
@@ -395,7 +398,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     return updated;
   });
 
-  app.delete("/api/leadradar/negative-keywords/:id", { preHandler: [app.authenticate] }, async (request) => {
+  app.delete("/api/leadradar/negative-keywords/:id", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const params = parseWithSchema(sourceIdParamsSchema, request.params);
 
@@ -416,7 +419,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     return { ok: true };
   });
 
-  app.get("/api/leadradar/settings", { preHandler: [app.authenticate] }, async (request) => {
+  app.get("/api/leadradar/settings", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
 
     if (!request.server.leadradar) {
@@ -448,7 +451,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     };
   });
 
-  app.patch("/api/leadradar/settings", { preHandler: [app.authenticate] }, async (request) => {
+  app.patch("/api/leadradar/settings", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const body = parseWithSchema(updateSettingsBodySchema, request.body);
 
@@ -559,7 +562,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     updatedAt: lead.updated_at.toISOString()
   });
 
-  app.get("/api/leadradar/leads", { preHandler: [app.authenticate] }, async (request) => {
+  app.get("/api/leadradar/leads", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const query = parseWithSchema(listLeadsQuerySchema, request.query);
 
@@ -592,7 +595,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     };
   });
 
-  app.get("/api/leadradar/leads/:id", { preHandler: [app.authenticate] }, async (request) => {
+  app.get("/api/leadradar/leads/:id", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const params = parseWithSchema(sourceIdParamsSchema, request.params);
 
@@ -658,7 +661,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     };
   });
 
-  app.patch("/api/leadradar/leads/:id/status", { preHandler: [app.authenticate] }, async (request) => {
+  app.patch("/api/leadradar/leads/:id/status", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const params = parseWithSchema(sourceIdParamsSchema, request.params);
     const body = parseWithSchema(updateLeadStatusBodySchema, request.body);
@@ -680,7 +683,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     return toLeadItem(updated);
   });
 
-  app.patch("/api/leadradar/leads/:id/notes", { preHandler: [app.authenticate] }, async (request) => {
+  app.patch("/api/leadradar/leads/:id/notes", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const params = parseWithSchema(sourceIdParamsSchema, request.params);
     const body = parseWithSchema(updateLeadNotesBodySchema, request.body);
@@ -702,7 +705,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     return toLeadItem(updated);
   });
 
-  app.delete("/api/leadradar/leads/:id", { preHandler: [app.authenticate] }, async (request) => {
+  app.delete("/api/leadradar/leads/:id", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const params = parseWithSchema(sourceIdParamsSchema, request.params);
 

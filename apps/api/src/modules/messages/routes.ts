@@ -1,10 +1,13 @@
 import type { FastifyPluginAsync } from "fastify";
 import { getCompanyScope } from "../../lib/request-context.js";
+import { requireTrialOrActive } from "../../lib/access.js";
 import { parseWithSchema } from "../../lib/validation.js";
 import { listConversationMessages, sendConversationMessage } from "./service.js";
 import { conversationParamsSchema, listMessagesQuerySchema, sendMessageBodySchema } from "./schemas.js";
 
 const messageRoutes: FastifyPluginAsync = async (app) => {
+  const requireAccess = requireTrialOrActive(app);
+
   app.get("/conversations/:id/messages", { preHandler: [app.authenticate] }, async (request) => {
     const scope = getCompanyScope(request);
     const params = parseWithSchema(conversationParamsSchema, request.params);
@@ -18,7 +21,7 @@ const messageRoutes: FastifyPluginAsync = async (app) => {
     });
   });
 
-  app.post("/conversations/:id/messages", { preHandler: [app.authenticate] }, async (request) => {
+  app.post("/conversations/:id/messages", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const params = parseWithSchema(conversationParamsSchema, request.params);
     const body = parseWithSchema(sendMessageBodySchema, request.body);

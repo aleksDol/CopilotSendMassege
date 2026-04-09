@@ -18,6 +18,7 @@ import {
   PanelLeftOpen
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import { useAuth } from "@/lib/auth/context";
 
 const SIDEBAR_STORAGE_KEY = "app-sidebar-collapsed";
 
@@ -59,6 +60,7 @@ export function AppSidebar({
   onExpandRequest?: () => void;
 }) {
   const pathname = usePathname();
+  const { access } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
@@ -86,6 +88,9 @@ export function AppSidebar({
   };
 
   const effectiveCollapsed = forceCollapsed ? true : forceExpanded ? false : collapsed;
+
+  const isExpired = access?.subscriptionStatus === "expired";
+  const visibleNavItems = isExpired ? navItems.filter((i) => i.href !== "/leadradar") : navItems;
 
   return (
     <aside
@@ -116,7 +121,7 @@ export function AppSidebar({
       </div>
 
       <nav className="space-y-1 px-2 py-2">
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const Icon = item.icon;
           const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (

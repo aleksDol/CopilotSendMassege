@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { EmptyState } from "@/components/common/empty-state";
 import { LoadingState } from "@/components/common/loading-state";
+import { TrialPaywallCard } from "@/components/billing/trial-paywall-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
@@ -11,6 +12,7 @@ import type { LeadRadarLeadItem, LeadRadarLeadStatus } from "@/lib/api/types";
 import { LeadDrawer } from "@/components/leadradar/lead-drawer";
 import { LeadRadarNav } from "@/components/leadradar/leadradar-nav";
 import Link from "next/link";
+import { useAuth } from "@/lib/auth/context";
 
 const STATUSES: Array<{ label: string; value: LeadRadarLeadStatus | "all" }> = [
   { label: "Все статусы", value: "all" },
@@ -61,6 +63,7 @@ function secondaryId(lead: LeadRadarLeadItem): string | null {
 }
 
 export default function LeadRadarInboxPage() {
+  const { access } = useAuth();
   const [filters, setFilters] = useState<{
     status: LeadRadarLeadStatus | "all";
     search: string;
@@ -83,6 +86,21 @@ export default function LeadRadarInboxPage() {
     const total = leads.data?.total ?? 0;
     return Math.max(1, Math.ceil(total / limit));
   }, [leads.data?.total]);
+
+  if (access?.subscriptionStatus === "expired") {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-2xl font-semibold">LeadRadar</h1>
+          <p className="text-sm text-muted-foreground">Inbox лидов.</p>
+          <div className="pt-2">
+            <LeadRadarNav />
+          </div>
+        </div>
+        <TrialPaywallCard />
+      </div>
+    );
+  }
 
   if (leads.isLoading) {
     return <LoadingState label="Загрузка лидов..." />;
