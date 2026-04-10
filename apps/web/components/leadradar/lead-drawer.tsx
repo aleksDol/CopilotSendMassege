@@ -4,12 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@/components/common/empty-state";
 import { LoadingState } from "@/components/common/loading-state";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useLeadRadarActions, useLeadRadarLead } from "@/lib/hooks/use-app-data";
 import type { LeadRadarLeadStatus } from "@/lib/api/types";
+import { cn } from "@/lib/utils/cn";
 
 const STATUS_OPTIONS: Array<{ label: string; value: LeadRadarLeadStatus }> = [
   { label: "new", value: "new" },
@@ -39,10 +40,18 @@ function renderContextLine(m: { sender: string | null; text: string | null }) {
   return `[${sender}]: ${text}`;
 }
 
-function statusBadgeVariant(status: LeadRadarLeadStatus): "secondary" | "warning" | "success" | "outline" {
-  if (status === "hot") return "warning";
+function statusBadgeVariant(
+  status: LeadRadarLeadStatus
+): "secondary" | "warning" | "success" | "outline" | "destructive" {
+  if (status === "new") return "secondary";
+  if (status === "contacted") return "warning";
+  if (status === "replied") return "success";
+  // "Closed" equivalents (we keep LeadRadar statuses):
+  if (status === "lost" || status === "spam") return "destructive";
+
   if (status === "won") return "success";
-  if (status === "lost" || status === "spam") return "outline";
+  if (status === "hot") return "warning";
+  if (status === "ignored") return "outline";
   return "secondary";
 }
 
@@ -74,6 +83,17 @@ export function LeadDrawer({
     if (!lead) return "Lead";
     const name = lead.displayName?.trim() || (lead.username ? `@${lead.username}` : "—");
     return name;
+  }, [lead]);
+
+  const telegramProfileUrl = useMemo(() => {
+    if (!lead) return null;
+    const username = (lead.username ?? "").trim().replace(/^@/, "");
+    if (username) return `https://t.me/${encodeURIComponent(username)}`;
+    const id = (lead.telegramUserId ?? "").trim();
+    // Web t.me doesn't support opening a private user by numeric id.
+    // `tg://user?id=` works when Telegram client is installed.
+    if (id) return `tg://user?id=${encodeURIComponent(id)}`;
+    return null;
   }, [lead]);
 
   if (!leadId) return null;
@@ -183,6 +203,23 @@ export function LeadDrawer({
                     <div className="text-xs text-muted-foreground">Created</div>
                     <div className="font-medium">{formatDate(lead.createdAt)}</div>
                   </div>
+                </div>
+
+                <div className="pt-1">
+                  {telegramProfileUrl ? (
+                    <a
+                      className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                      href={telegramProfileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Открыть в Telegram
+                    </a>
+                  ) : (
+                    <Button variant="outline" size="sm" disabled title="Нет username или Telegram ID">
+                      Открыть в Telegram
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>

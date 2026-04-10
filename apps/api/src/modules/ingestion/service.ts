@@ -39,6 +39,12 @@ const getRawPreview = (raw: unknown, maxLen: number): string | null => {
   return v.length > maxLen ? v.slice(0, maxLen) : v;
 };
 
+const normalizeUsername = (raw: unknown): string | null => {
+  const v = getRawString(raw);
+  if (!v) return null;
+  return v.startsWith("@") ? v.slice(1) : v;
+};
+
 const toConversationType = (payload: MessageEventPayload): "DIRECT" | "GROUP" | "CHANNEL" => {
   const kind = payload.rawPayload?.dialogType;
   if (kind === "group") {
@@ -117,6 +123,45 @@ const toLeadRadarInput = (params: {
     text: (params.payload.text ?? "").trim(),
     date: new Date(params.payload.sentAt)
   };
+};
+
+const maybeMarkLeadContacted = async (app: FastifyInstance, params: { telegramAccountId: string; payload: MessageEventPayload }) => {
+  // We only auto-update on the first outbound message in a DIRECT chat.
+  if (!params.payload.isOutgoing) return;
+  if (toConversationType(params.payload) !== "DIRECT") return;
+
+  const peerExternalId = getRawString(params.payload.rawPayload?.peerExternalId);
+  const peerUsername = normalizeUsername(params.payload.rawPayload?.peerUsername);
+  if (!peerExternalId && !peerUsername) return;
+
+  // Mark as contacted only once, and only if still "new".
+  // Scope by telegramAccountId + chatId (direct dialog id) to avoid cross-chat collisions.
+  const result = await app.prisma.leadRadarLead.updateMany({
+    where: {
+      telegramAccountId: params.telegramAccountId,
+      chatId: params.payload.externalConversationId,
+      status: "new",
+      contactedAt: null,
+      OR: [
+        ...(peerExternalId ? [{ telegramUserId: peerExternalId }] : []),
+        ...(peerUsername ? [{ username: peerUsername }] : [])
+      ]
+    },
+    data: {
+      status: "contacted",
+      contactedAt: new Date(params.payload.sentAt)
+    }
+  });
+
+  if (result.count > 0) {
+    console.log(
+      "[LeadRadar] auto-contacted lead: telegramAccountId=%s chatId=%s peerId=%s peerUsername=%s",
+      params.telegramAccountId,
+      params.payload.externalConversationId,
+      peerExternalId,
+      peerUsername
+    );
+  }
 };
 
 export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageEventPayload) => {
@@ -269,6 +314,8 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
     }
   });
   if (existing) {
+    await maybeMarkLeadContacted(app, { telegramAccountId: telegramAccount.id, payload });
+
     // If this is a Telegram "channel comment" delivered after the same message was already ingested
     // via a generic group sync, update the message with the richer channel-comment metadata.
     // This keeps the pipeline idempotent while allowing us to "upgrade" previously ingested rows.
@@ -494,6 +541,8 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
     conversationTitle: conversationTitle ?? undefined,
     isOutbound: payload.isOutgoing ?? false
   });
+
+  await maybeMarkLeadContacted(app, { telegramAccountId: telegramAccount.id, payload });
 
   // LeadRadar integration (non-blocking, inbound-only, gated by ENABLE_LEADRADAR).
   console.log("[LeadRadar-DEBUG] gate (new-msg): ENABLE_LEADRADAR=%s hasModule=%s", app.config.env.ENABLE_LEADRADAR, !!app.leadradar);

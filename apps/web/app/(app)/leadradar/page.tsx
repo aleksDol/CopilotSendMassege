@@ -10,6 +10,7 @@ import { Select } from "@/components/ui/select";
 import { useLeadRadarActions, useLeadRadarLeads } from "@/lib/hooks/use-app-data";
 import type { LeadRadarLeadItem, LeadRadarLeadStatus } from "@/lib/api/types";
 import { LeadDrawer } from "@/components/leadradar/lead-drawer";
+import { Badge } from "@/components/ui/badge";
 import { LeadRadarNav } from "@/components/leadradar/leadradar-nav";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth/context";
@@ -31,6 +32,19 @@ const STATUSES: Array<{ label: string; value: LeadRadarLeadStatus | "all" }> = [
 const ROW_STATUS_OPTIONS: Array<{ label: string; value: LeadRadarLeadStatus }> = STATUSES.filter(
   (s): s is { label: string; value: LeadRadarLeadStatus } => s.value !== "all"
 );
+
+const statusBadgeVariant = (
+  status: LeadRadarLeadStatus
+): "secondary" | "warning" | "success" | "outline" | "destructive" => {
+  if (status === "new") return "secondary";
+  if (status === "contacted") return "warning";
+  if (status === "replied") return "success";
+  if (status === "lost" || status === "spam") return "destructive";
+  if (status === "won") return "success";
+  if (status === "hot") return "warning";
+  if (status === "ignored") return "outline";
+  return "secondary";
+};
 
 function formatDate(iso: string): string {
   try {
@@ -279,6 +293,9 @@ export default function LeadRadarInboxPage() {
                   <td className="py-3 pr-3">{lead.score}</td>
                   <td className="py-3 pr-3 text-muted-foreground">{formatDate(lead.createdAt)}</td>
                   <td className="py-3 pr-3" onClick={(e) => e.stopPropagation()}>
+                    <div className="pb-1">
+                      <Badge variant={statusBadgeVariant(lead.status)}>{lead.status}</Badge>
+                    </div>
                     <Select
                       className="h-9 min-w-[11rem] max-w-[14rem] text-xs"
                       value={lead.status}
