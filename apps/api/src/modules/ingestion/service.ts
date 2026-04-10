@@ -40,6 +40,23 @@ const getRawPreview = (raw: unknown, maxLen: number): string | null => {
   return v.length > maxLen ? v.slice(0, maxLen) : v;
 };
 
+const toSafePrismaJson = (raw: unknown): Prisma.InputJsonValue | undefined => {
+  if (raw == null) return undefined;
+  try {
+    // Ensure payload is JSON-serializable and does not contain embedded NUL bytes.
+    // If anything goes wrong, we prefer dropping rawPayload over breaking ingestion.
+    const json = JSON.stringify(raw, (_k, v) => {
+      if (typeof v === "string") {
+        return v.replaceAll("\u0000", "");
+      }
+      return v;
+    });
+    return JSON.parse(json) as Prisma.InputJsonValue;
+  } catch {
+    return undefined;
+  }
+};
+
 const normalizeUsername = (raw: unknown): string | null => {
   const v = getRawString(raw);
   if (!v) return null;
@@ -373,7 +390,7 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
             relatedPostId,
             contextPreview,
             dedupeKey,
-            rawPayload: (payload.rawPayload as Prisma.InputJsonValue) ?? undefined
+            rawPayload: toSafePrismaJson(payload.rawPayload)
           }
         });
       }
@@ -483,7 +500,7 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
     };
   }
 
-  const message = await app.prisma.message.upsert({
+  const upsertArgs = {
     where: {
       conversationId_externalMessageId: {
         conversationId: conversation.id,
@@ -507,7 +524,7 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
       dedupeKey:
         getRawString(payload.rawPayload?.dedupeKey) ??
         `${payload.telegramAccountId}:${payload.externalConversationId}:${payload.externalMessageId}`,
-      rawPayload: (payload.rawPayload as Prisma.InputJsonValue) ?? undefined
+      rawPayload: toSafePrismaJson(payload.rawPayload)
     },
     create: {
       companyId,
@@ -529,9 +546,27 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
       dedupeKey:
         getRawString(payload.rawPayload?.dedupeKey) ??
         `${payload.telegramAccountId}:${payload.externalConversationId}:${payload.externalMessageId}`,
-      rawPayload: (payload.rawPayload as Prisma.InputJsonValue) ?? undefined
+      rawPayload: toSafePrismaJson(payload.rawPayload)
     }
-  });
+  } satisfies Prisma.MessageUpsertArgs;
+
+  let message;
+  try {
+    message = await app.prisma.message.upsert(upsertArgs);
+  } catch (err) {
+    // Safety net: if rawPayload breaks JSON transport/encoding, retry without it.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.toLowerCase().includes("hex escape")) {
+      app.log.warn({ err }, "[Ingestion] message upsert failed due to rawPayload encoding; retrying without rawPayload");
+      message = await app.prisma.message.upsert({
+        ...upsertArgs,
+        update: { ...upsertArgs.update, rawPayload: undefined },
+        create: { ...upsertArgs.create, rawPayload: undefined }
+      });
+    } else {
+      throw err;
+    }
+  }
 
   const stateService = new ConversationStateService(app.prisma);
   const preview = (payload.text ?? "").slice(0, 240) || null;
