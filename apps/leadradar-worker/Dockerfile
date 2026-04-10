@@ -10,6 +10,7 @@ COPY apps ./apps
 COPY packages ./packages
 
 RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @repo/db prisma:generate
 RUN pnpm --filter @repo/leadradar-worker build
 RUN pnpm prune --prod
 
