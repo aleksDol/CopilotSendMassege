@@ -44,6 +44,11 @@ const envSchema = z.object({
   TELEGRAM_WORKER_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   /** Longer timeout for resolve-chat-by-link (add LeadRadar source); avoids 504 when Telegram is slow. */
   TELEGRAM_WORKER_RESOLVE_CHAT_TIMEOUT_MS: z.coerce.number().int().positive().default(90000),
+  /**
+   * Longer timeout for send-message: client Abort does not cancel Telethon — a short global timeout
+   * causes "Telegram worker request timed out" even when the message was already sent.
+   */
+  TELEGRAM_WORKER_SEND_MESSAGE_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
   FOLLOW_UP_UNANSWERED_HOURS: z.coerce.number().int().positive().default(24),
   FOLLOW_UP_WARM_LEAD_HOURS: z.coerce.number().int().positive().default(48),
   DASHBOARD_ACTIVITY_WINDOW_DAYS: z.coerce.number().int().positive().default(7),
@@ -90,6 +95,7 @@ const parsedEnv = envSchema.safeParse({
   INTERNAL_API_TOKEN: process.env.INTERNAL_API_TOKEN,
   TELEGRAM_WORKER_TIMEOUT_MS: process.env.TELEGRAM_WORKER_TIMEOUT_MS,
   TELEGRAM_WORKER_RESOLVE_CHAT_TIMEOUT_MS: process.env.TELEGRAM_WORKER_RESOLVE_CHAT_TIMEOUT_MS,
+  TELEGRAM_WORKER_SEND_MESSAGE_TIMEOUT_MS: process.env.TELEGRAM_WORKER_SEND_MESSAGE_TIMEOUT_MS,
   FOLLOW_UP_UNANSWERED_HOURS: process.env.FOLLOW_UP_UNANSWERED_HOURS,
   FOLLOW_UP_WARM_LEAD_HOURS: process.env.FOLLOW_UP_WARM_LEAD_HOURS,
   DASHBOARD_ACTIVITY_WINDOW_DAYS: process.env.DASHBOARD_ACTIVITY_WINDOW_DAYS,

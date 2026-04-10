@@ -33,12 +33,15 @@ export class TelegramWorkerClient {
   /**
    * @param resolveChatTimeoutMs — optional longer timeout for `/internal/telegram/resolve-chat`
    * (Telethon may need time for get_dialogs / get_entity on cold cache).
+   * @param sendMessageTimeoutMs — optional longer timeout for `/internal/telegram/send-message`
+   * (abort on the API side does not cancel the worker; too short a limit causes false timeouts after send).
    */
   constructor(
     private readonly baseUrl: string,
     private readonly token: string,
     private readonly timeoutMs: number,
-    private readonly resolveChatTimeoutMs?: number
+    private readonly resolveChatTimeoutMs?: number,
+    private readonly sendMessageTimeoutMs?: number
   ) {}
 
   private async post(path: string, payload: WorkerPayload, timeoutOverrideMs?: number): Promise<WorkerSuccess> {
@@ -108,7 +111,8 @@ export class TelegramWorkerClient {
   }
 
   sendMessage(payload: WorkerPayload) {
-    return this.post("/internal/telegram/send-message", payload);
+    const ms = this.sendMessageTimeoutMs ?? this.timeoutMs;
+    return this.post("/internal/telegram/send-message", payload, ms);
   }
 
   logout(payload: WorkerPayload) {
