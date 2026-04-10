@@ -9,7 +9,8 @@ from app.services.auth_flow import WorkerError
 async def push_message_event(event: dict[str, Any]) -> None:
     url = f"{settings.api_internal_url}/internal/telegram/events/message"
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
+    # Keep this short: telegram-worker outbound send should not block on API ingestion.
+    async with httpx.AsyncClient(timeout=8.0) as client:
         response = await client.post(
             url,
             headers={"x-internal-token": settings.internal_api_token},

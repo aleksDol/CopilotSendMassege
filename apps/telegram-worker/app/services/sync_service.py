@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+import asyncio
 import psycopg
 from urllib.parse import urlparse
 from telethon.tl.types import Channel, Chat, InputUser, User
@@ -668,43 +669,26 @@ async def send_message(
                 )
             sent = await client.send_message(entity=input_entity, message=text)
 
-            await push_message_event(
-                {
-                    "telegramAccountId": str(account["telegramAccountId"]),
-                    "externalConversationId": external_conversation_id,
-                    "externalMessageId": str(sent.id),
-                    "senderExternalId": str(me.id),
-                    "senderType": "self",
-                    "senderFullName": " ".join(part for part in [me.first_name, me.last_name] if part).strip() or None,
-                    "senderUsername": me.username,
-                    "text": sent.message,
-                    "sentAt": sent.date.isoformat(),
-                    "isOutgoing": True,
-                    "replyToExternalMessageId": None,
-                    "rawPayload": {
-                        "id": sent.id,
-                        "out": True,
-                        "senderId": me.id,
-                        "dialogType": _resolve_conversation_type(resolved_entity),
-                        "peerIsHuman": True,
-                        "peerExternalId": str(getattr(resolved_entity, "id", "")),
-                        "peerFullName": " ".join(
-                            part
-                            for part in [
-                                getattr(resolved_entity, "first_name", None),
-                                getattr(resolved_entity, "last_name", None),
-                            ]
-                            if part
-                        ).strip()
-                        or None,
-                        "peerUsername": getattr(resolved_entity, "username", None),
-                        "peerIsBot": bool(getattr(resolved_entity, "bot", False)),
-                        "isServiceDialog": bool(
-                            getattr(resolved_entity, "support", False) or getattr(resolved_entity, "is_self", False)
-                        ),
-                        "hasMedia": bool(getattr(sent, "media", None)),
-                    },
-                    "conversationTitle": " ".join(
+            event = {
+                "telegramAccountId": str(account["telegramAccountId"]),
+                "externalConversationId": external_conversation_id,
+                "externalMessageId": str(sent.id),
+                "senderExternalId": str(me.id),
+                "senderType": "self",
+                "senderFullName": " ".join(part for part in [me.first_name, me.last_name] if part).strip() or None,
+                "senderUsername": me.username,
+                "text": sent.message,
+                "sentAt": sent.date.isoformat(),
+                "isOutgoing": True,
+                "replyToExternalMessageId": None,
+                "rawPayload": {
+                    "id": sent.id,
+                    "out": True,
+                    "senderId": me.id,
+                    "dialogType": _resolve_conversation_type(resolved_entity),
+                    "peerIsHuman": True,
+                    "peerExternalId": str(getattr(resolved_entity, "id", "")),
+                    "peerFullName": " ".join(
                         part
                         for part in [
                             getattr(resolved_entity, "first_name", None),
@@ -712,11 +696,41 @@ async def send_message(
                         ]
                         if part
                     ).strip()
-                    or getattr(resolved_entity, "username", None)
-                    or str(getattr(resolved_entity, "id", external_conversation_id)),
-                    "hasAttachment": bool(getattr(sent, "media", None)),
-                }
-            )
+                    or None,
+                    "peerUsername": getattr(resolved_entity, "username", None),
+                    "peerIsBot": bool(getattr(resolved_entity, "bot", False)),
+                    "isServiceDialog": bool(
+                        getattr(resolved_entity, "support", False) or getattr(resolved_entity, "is_self", False)
+                    ),
+                    "hasMedia": bool(getattr(sent, "media", None)),
+                },
+                "conversationTitle": " ".join(
+                    part
+                    for part in [
+                        getattr(resolved_entity, "first_name", None),
+                        getattr(resolved_entity, "last_name", None),
+                    ]
+                    if part
+                ).strip()
+                or getattr(resolved_entity, "username", None)
+                or str(getattr(resolved_entity, "id", external_conversation_id)),
+                "hasAttachment": bool(getattr(sent, "media", None)),
+            }
+
+            async def _ingest() -> None:
+                try:
+                    await push_message_event(event)
+                except Exception as exc:
+                    logger.warning(
+                        "push_message_event failed after send channelAccount=%s conversation=%s msgId=%s err=%s",
+                        channel_account_id,
+                        external_conversation_id,
+                        str(sent.id),
+                        exc,
+                    )
+
+            # Do not block HTTP response on ingestion.
+            asyncio.create_task(_ingest())
 
             now = _now()
             async with conn.cursor() as cur:

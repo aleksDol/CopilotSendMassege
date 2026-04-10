@@ -31,7 +31,7 @@ const envSchema = z.object({
   ENABLE_TG_GROUP_INGESTION: booleanFromEnv.default(false),
   TELEGRAM_WORKER_URL: z.string().url(),
   INTERNAL_API_TOKEN: z.string().min(16),
-  TELEGRAM_WORKER_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
+  TELEGRAM_WORKER_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   FOLLOW_UP_UNANSWERED_HOURS: z.coerce.number().int().positive().default(24),
   FOLLOW_UP_WARM_LEAD_HOURS: z.coerce.number().int().positive().default(48),
   DASHBOARD_ACTIVITY_WINDOW_DAYS: z.coerce.number().int().positive().default(7),
