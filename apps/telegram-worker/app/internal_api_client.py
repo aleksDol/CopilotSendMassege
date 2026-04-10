@@ -6,11 +6,16 @@ from app.config import settings
 from app.services.auth_flow import WorkerError
 
 
-async def push_message_event(event: dict[str, Any]) -> None:
+async def push_message_event(event: dict[str, Any], *, timeout_s: float = 8.0) -> None:
+    """
+    Deliver message event to API.
+
+    Important: keep timeout short by default to avoid accumulating load.
+    Reliability-critical paths (live listener / sync) should pass a larger timeout explicitly.
+    """
     url = f"{settings.api_internal_url}/internal/telegram/events/message"
 
-    # Keep this short: telegram-worker outbound send should not block on API ingestion.
-    async with httpx.AsyncClient(timeout=8.0) as client:
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
         response = await client.post(
             url,
             headers={"x-internal-token": settings.internal_api_token},

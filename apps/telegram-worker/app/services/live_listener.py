@@ -184,7 +184,7 @@ async def _push_with_retry(
     last_exc: Exception | None = None
     for i in range(attempts):
         try:
-            await push_message_event(payload)
+            await push_message_event(payload, timeout_s=20.0)
             return
         except Exception as exc:
             last_exc = exc

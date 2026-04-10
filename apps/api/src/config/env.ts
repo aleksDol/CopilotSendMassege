@@ -28,6 +28,16 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(32),
   CORS_ORIGIN: z.string().min(1).default("http://localhost:3000"),
   ENABLE_LEADRADAR: booleanFromEnv.default(false),
+  /**
+   * When true, API enqueues LeadRadar jobs (async) instead of running LeadRadar in-process.
+   * Keep default false for safe rollout.
+   */
+  ENABLE_LEADRADAR_QUEUE: booleanFromEnv.default(false),
+  /**
+   * Emergency fallback: allow running LeadRadar in API ingestion process.
+   * Default true to preserve existing behavior when queue is disabled.
+   */
+  ENABLE_LEADRADAR_INGESTION_IN_API: booleanFromEnv.default(true),
   ENABLE_TG_GROUP_INGESTION: booleanFromEnv.default(false),
   TELEGRAM_WORKER_URL: z.string().url(),
   INTERNAL_API_TOKEN: z.string().min(16),
@@ -71,6 +81,8 @@ const parsedEnv = envSchema.safeParse({
   JWT_SECRET: process.env.JWT_SECRET,
   CORS_ORIGIN: process.env.CORS_ORIGIN,
   ENABLE_LEADRADAR: process.env.ENABLE_LEADRADAR,
+  ENABLE_LEADRADAR_QUEUE: process.env.ENABLE_LEADRADAR_QUEUE,
+  ENABLE_LEADRADAR_INGESTION_IN_API: process.env.ENABLE_LEADRADAR_INGESTION_IN_API,
   ENABLE_TG_GROUP_INGESTION: process.env.ENABLE_TG_GROUP_INGESTION,
   TELEGRAM_WORKER_URL: process.env.TELEGRAM_WORKER_URL,
   INTERNAL_API_TOKEN: process.env.INTERNAL_API_TOKEN,

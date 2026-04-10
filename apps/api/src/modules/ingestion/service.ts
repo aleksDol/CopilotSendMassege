@@ -8,6 +8,7 @@ import { isSupportedTelegramMessagePayload } from "../conversations/support.js";
 import { upsertParticipant } from "../participants/service.js";
 import { ConversationStateService } from "../state/service.js";
 import type { LeadRadarMessageInput } from "../leadradar/types/ingestion.js";
+import { enqueueLeadRadarJob } from "../leadradar/queue/leadradar-queue.js";
 
 type MessageEventPayload = {
   telegramAccountId: string;
@@ -81,19 +82,15 @@ const toMessageType = (payload: MessageEventPayload): MessageType => {
 
 const canTriggerLeadRadar = (payload: MessageEventPayload): boolean => {
   if (payload.isOutgoing) {
-    console.log("[LeadRadar-DEBUG] canTrigger: SKIP isOutgoing=true chatId=%s senderType=%s", payload.externalConversationId, payload.senderType);
     return false;
   }
   if (payload.senderType !== "user") {
-    console.log("[LeadRadar-DEBUG] canTrigger: SKIP senderType=%s (not 'user') chatId=%s", payload.senderType, payload.externalConversationId);
     return false;
   }
   const text = typeof payload.text === "string" ? payload.text.trim() : "";
   if (!text.length) {
-    console.log("[LeadRadar-DEBUG] canTrigger: SKIP empty text chatId=%s", payload.externalConversationId);
     return false;
   }
-  console.log("[LeadRadar-DEBUG] canTrigger: OK chatId=%s text=%s", payload.externalConversationId, text.slice(0, 80));
   return true;
 };
 
@@ -122,6 +119,29 @@ const toLeadRadarInput = (params: {
     contextPreview: getRawString(params.payload.rawPayload?.contextPreview) ?? null,
     text: (params.payload.text ?? "").trim(),
     date: new Date(params.payload.sentAt)
+  };
+};
+
+const toLeadRadarJobPayload = (params: { telegramAccountId: string; payload: MessageEventPayload }) => {
+  const relatedChannelId = getRawString(params.payload.rawPayload?.relatedChannelId);
+  const relatedPostId = getRawString(params.payload.rawPayload?.relatedPostId);
+  const sourceType = getRawString(params.payload.rawPayload?.chatType);
+
+  const sourceHints =
+    relatedChannelId || relatedPostId || sourceType
+      ? {
+          relatedChannelId: relatedChannelId ?? null,
+          relatedPostId: relatedPostId ?? null,
+          sourceType: sourceType ?? null
+        }
+      : undefined;
+
+  return {
+    telegramAccountId: params.telegramAccountId,
+    chatId: params.payload.externalConversationId,
+    externalMessageId: params.payload.externalMessageId,
+    sentAt: params.payload.sentAt,
+    ...(sourceHints ? { sourceHints } : {})
   };
 };
 
@@ -418,27 +438,34 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
       await invalidateCacheByPrefix(app, `cache:dashboard:${companyId}:`);
     }
 
-    // LeadRadar integration (non-blocking, inbound-only, gated by ENABLE_LEADRADAR).
-    // Handle duplicate deliveries too: LeadRadar is idempotent via dedupe/unique keys.
-    console.log("[LeadRadar-DEBUG] gate (dup-path): ENABLE_LEADRADAR=%s hasModule=%s", app.config.env.ENABLE_LEADRADAR, !!app.leadradar);
-    if (app.config.env.ENABLE_LEADRADAR && app.leadradar && canTriggerLeadRadar(payload)) {
-      const userId = telegramAccount.channelAccount.createdByUserId;
-      console.log("[LeadRadar-DEBUG] userId=%s chatId=%s", userId, payload.externalConversationId);
-      if (typeof userId === "string" && userId.length) {
-        const conversationTitle = conversation.title ?? payload.conversationTitle ?? null;
-        const input = toLeadRadarInput({
-          userId,
-          telegramAccountId: telegramAccount.id,
-          payload,
-          conversationTitle,
-          participantUsername: participant.username,
-          participantFullName: participant.fullName
-        });
-        console.log("[LeadRadar-DEBUG] calling processMessage chatId=%s text=%s", input.chatId, (input.text ?? "").slice(0, 80));
+    // LeadRadar trigger (async).
+    // IMPORTANT: keep ingestion response fast; never await LeadRadar processing here.
+    // Default rollout: ENABLE_LEADRADAR_QUEUE=false keeps legacy in-process behavior (if enabled).
+    if (app.config.env.ENABLE_LEADRADAR && canTriggerLeadRadar(payload)) {
+      if (app.config.env.ENABLE_LEADRADAR_QUEUE) {
+        const jobPayload = toLeadRadarJobPayload({ telegramAccountId: telegramAccount.id, payload });
+        void enqueueLeadRadarJob(app.config.env, jobPayload).then(
+          ({ jobId }) => app.log.info({ jobId, chatId: jobPayload.chatId }, "[LeadRadar] job enqueued"),
+          (err: unknown) => app.log.warn({ err }, "[LeadRadar] failed to enqueue job")
+        );
+      } else if (app.config.env.ENABLE_LEADRADAR_INGESTION_IN_API && app.leadradar) {
+        // Legacy fallback: run in-process (non-blocking).
+        const userId = telegramAccount.channelAccount.createdByUserId;
+        if (typeof userId === "string" && userId.length) {
+          const conversationTitle = conversation.title ?? payload.conversationTitle ?? null;
+          const input = toLeadRadarInput({
+            userId,
+            telegramAccountId: telegramAccount.id,
+            payload,
+            conversationTitle,
+            participantUsername: participant.username,
+            participantFullName: participant.fullName
+          });
 
-        void app.leadradar.services.ingestion.processMessage(input).catch((err: unknown) => {
-          app.log.warn({ err }, "[LeadRadar] realtime ingestion failed");
-        });
+          void app.leadradar.services.ingestion.processMessage(input).catch((err: unknown) => {
+            app.log.warn({ err }, "[LeadRadar] in-process ingestion failed");
+          });
+        }
       }
     }
 
@@ -544,25 +571,30 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
 
   await maybeMarkLeadContacted(app, { telegramAccountId: telegramAccount.id, payload });
 
-  // LeadRadar integration (non-blocking, inbound-only, gated by ENABLE_LEADRADAR).
-  console.log("[LeadRadar-DEBUG] gate (new-msg): ENABLE_LEADRADAR=%s hasModule=%s", app.config.env.ENABLE_LEADRADAR, !!app.leadradar);
-  if (app.config.env.ENABLE_LEADRADAR && app.leadradar && canTriggerLeadRadar(payload)) {
-    const userId = telegramAccount.channelAccount.createdByUserId;
-    console.log("[LeadRadar-DEBUG] userId=%s chatId=%s", userId, payload.externalConversationId);
-    if (typeof userId === "string" && userId.length) {
-      const input = toLeadRadarInput({
-        userId,
-        telegramAccountId: telegramAccount.id,
-        payload,
-        conversationTitle,
-        participantUsername: participant.username,
-        participantFullName: participant.fullName
-      });
-      console.log("[LeadRadar-DEBUG] calling processMessage chatId=%s text=%s", input.chatId, (input.text ?? "").slice(0, 80));
+  // LeadRadar trigger (async).
+  if (app.config.env.ENABLE_LEADRADAR && canTriggerLeadRadar(payload)) {
+    if (app.config.env.ENABLE_LEADRADAR_QUEUE) {
+      const jobPayload = toLeadRadarJobPayload({ telegramAccountId: telegramAccount.id, payload });
+      void enqueueLeadRadarJob(app.config.env, jobPayload).then(
+        ({ jobId }) => app.log.info({ jobId, chatId: jobPayload.chatId }, "[LeadRadar] job enqueued"),
+        (err: unknown) => app.log.warn({ err }, "[LeadRadar] failed to enqueue job")
+      );
+    } else if (app.config.env.ENABLE_LEADRADAR_INGESTION_IN_API && app.leadradar) {
+      const userId = telegramAccount.channelAccount.createdByUserId;
+      if (typeof userId === "string" && userId.length) {
+        const input = toLeadRadarInput({
+          userId,
+          telegramAccountId: telegramAccount.id,
+          payload,
+          conversationTitle,
+          participantUsername: participant.username,
+          participantFullName: participant.fullName
+        });
 
-      void app.leadradar.services.ingestion.processMessage(input).catch((err: unknown) => {
-        app.log.warn({ err }, "[LeadRadar] realtime ingestion failed");
-      });
+        void app.leadradar.services.ingestion.processMessage(input).catch((err: unknown) => {
+          app.log.warn({ err }, "[LeadRadar] in-process ingestion failed");
+        });
+      }
     }
   }
 

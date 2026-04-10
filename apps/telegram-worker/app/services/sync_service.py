@@ -301,7 +301,7 @@ async def run_initial_sync(
                         payload["senderUsername"] = sender_username
 
                     try:
-                        await push_message_event(payload)
+                        await push_message_event(payload, timeout_s=20.0)
                         result.messages_synced += 1
                     except Exception as exc:
                         logger.warning("auto-sync push_message_event failed dialog=%s msgId=%s error=%s", dialog.id, message.id, exc)
@@ -565,7 +565,7 @@ async def _ingest_channel_comments_for_sources(
                     }
 
                     try:
-                        await push_message_event(payload)
+                        await push_message_event(payload, timeout_s=20.0)
                         count += 1
                         comments_saved += 1
                     except Exception as exc:
@@ -719,7 +719,7 @@ async def send_message(
 
             async def _ingest() -> None:
                 try:
-                    await push_message_event(event)
+                    await push_message_event(event, timeout_s=20.0)
                 except Exception as exc:
                     logger.warning(
                         "push_message_event failed after send channelAccount=%s conversation=%s msgId=%s err=%s",

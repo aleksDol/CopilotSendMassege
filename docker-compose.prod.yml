@@ -84,6 +84,9 @@ services:
       REDIS_URL: ${REDIS_URL}
       JWT_SECRET: ${JWT_SECRET}
       CORS_ORIGIN: ${CORS_ORIGIN}
+      ENABLE_LEADRADAR: ${ENABLE_LEADRADAR}
+      ENABLE_LEADRADAR_QUEUE: ${ENABLE_LEADRADAR_QUEUE}
+      ENABLE_LEADRADAR_INGESTION_IN_API: ${ENABLE_LEADRADAR_INGESTION_IN_API}
       TELEGRAM_WORKER_URL: http://telegram-worker:8080
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
       TELEGRAM_WORKER_TIMEOUT_MS: ${TELEGRAM_WORKER_TIMEOUT_MS:-15000}
@@ -113,6 +116,40 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://localhost:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 15s
+      timeout: 5s
+      retries: 8
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - app_internal
+
+  leadradar-worker:
+    build:
+      context: .
+      dockerfile: apps/leadradar-worker/Dockerfile
+    container_name: ai-sales-leadradar-worker
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      LEADRADAR_WORKER_PORT: 8092
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      LEADRADAR_WORKER_CONCURRENCY: ${LEADRADAR_WORKER_CONCURRENCY:-4}
+    expose:
+      - "8092"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:8092/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 20s
       timeout: 5s
       retries: 8
     logging:
