@@ -2,12 +2,24 @@ import { createServer } from "node:http";
 import { QueueEvents, Worker } from "bullmq";
 import { Prisma, PrismaClient } from "@prisma/client";
 
-import {
-  LEADRADAR_JOB_NAME,
-  LEADRADAR_QUEUE_NAME,
-  type LeadRadarProcessMessageJob
-} from "@repo/api/src/modules/leadradar/queue/leadradar-queue.js";
-import { createLeadRadarIngestionService } from "@repo/api/src/modules/leadradar/compose.js";
+// Keep the job contract stable and independent from API package internals.
+// This avoids runtime failures when API sources are not shipped in production images.
+const LEADRADAR_QUEUE_NAME = "leadradar-ingestion" as const;
+const LEADRADAR_JOB_NAME = "process-message" as const;
+
+type LeadRadarSourceHints = {
+  relatedChannelId?: string | null;
+  relatedPostId?: string | null;
+  sourceType?: string | null;
+};
+
+export type LeadRadarProcessMessageJob = {
+  telegramAccountId: string;
+  chatId: string;
+  externalMessageId: string;
+  sentAt?: string;
+  sourceHints?: LeadRadarSourceHints;
+};
 
 const startedAt = Date.now();
 const healthPort = Number(process.env.LEADRADAR_WORKER_PORT ?? 8092);
@@ -47,12 +59,26 @@ const log = (level: "info" | "warn" | "error", message: string, extra: Record<st
 };
 
 const prisma = new PrismaClient();
-const leadradarIngestion = createLeadRadarIngestionService({
-  prisma,
-  logger: {
-    info: (msg: string) => log("info", msg)
-  }
-});
+
+const loadLeadRadarIngestion = async () => {
+  // Runtime dependency: compiled API module (built into the same monorepo image).
+  // Path is relative to /app/apps/leadradar-worker/dist/index.js
+  const composeUrl = new URL("../../api/dist/modules/leadradar/compose.js", import.meta.url);
+  const mod = (await import(composeUrl.href)) as unknown as {
+    createLeadRadarIngestionService: (params: { prisma: PrismaClient; logger?: { info: (msg: string) => void } }) => {
+      processMessage: (input: any) => Promise<void>;
+    };
+  };
+
+  return mod.createLeadRadarIngestionService({
+    prisma,
+    logger: {
+      info: (msg: string) => log("info", msg)
+    }
+  });
+};
+
+const leadradarIngestion = await loadLeadRadarIngestion();
 
 const jobEvents = new QueueEvents(LEADRADAR_QUEUE_NAME, { connection });
 jobEvents.on("failed", ({ jobId, failedReason }) => {
