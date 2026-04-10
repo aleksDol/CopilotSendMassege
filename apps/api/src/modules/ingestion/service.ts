@@ -145,7 +145,10 @@ const toLeadRadarJobPayload = (params: { telegramAccountId: string; payload: Mes
   };
 };
 
-const maybeMarkLeadContacted = async (app: FastifyInstance, params: { telegramAccountId: string; payload: MessageEventPayload }) => {
+const maybeMarkLeadContacted = async (
+  app: FastifyInstance,
+  params: { telegramAccountId: string; payload: MessageEventPayload }
+) => {
   // We only auto-update on the first outbound message in a DIRECT chat.
   if (!params.payload.isOutgoing) return;
   if (toConversationType(params.payload) !== "DIRECT") return;
@@ -155,11 +158,11 @@ const maybeMarkLeadContacted = async (app: FastifyInstance, params: { telegramAc
   if (!peerExternalId && !peerUsername) return;
 
   // Mark as contacted only once, and only if still "new".
-  // Scope by telegramAccountId + chatId (direct dialog id) to avoid cross-chat collisions.
-  const result = await app.prisma.leadRadarLead.updateMany({
+  // NOTE: leads can originate from groups/channels, while the first outbound message will be in DIRECT.
+  // So we match by telegramUserId/username within the telegramAccount (not by chatId).
+  const lead = await app.prisma.leadRadarLead.findFirst({
     where: {
       telegramAccountId: params.telegramAccountId,
-      chatId: params.payload.externalConversationId,
       status: "new",
       contactedAt: null,
       OR: [
@@ -167,17 +170,21 @@ const maybeMarkLeadContacted = async (app: FastifyInstance, params: { telegramAc
         ...(peerUsername ? [{ username: peerUsername }] : [])
       ]
     },
-    data: {
-      status: "contacted",
-      contactedAt: new Date(params.payload.sentAt)
-    }
+    orderBy: [{ createdAt: "desc" }]
   });
 
-  if (result.count > 0) {
+  if (!lead) return;
+
+  const updated = await app.prisma.leadRadarLead.updateMany({
+    where: { id: lead.id, status: "new", contactedAt: null },
+    data: { status: "contacted", contactedAt: new Date(params.payload.sentAt) }
+  });
+
+  if (updated.count > 0) {
     console.log(
-      "[LeadRadar] auto-contacted lead: telegramAccountId=%s chatId=%s peerId=%s peerUsername=%s",
+      "[LeadRadar] auto-contacted lead: telegramAccountId=%s leadId=%s peerId=%s peerUsername=%s",
       params.telegramAccountId,
-      params.payload.externalConversationId,
+      lead.id,
       peerExternalId,
       peerUsername
     );
