@@ -6,6 +6,7 @@ from typing import Any
 import asyncio
 import psycopg
 from urllib.parse import urlparse
+from telethon.errors import FloodWaitError, RPCError, ServerError, TimedOutError
 from telethon.tl.types import Channel, Chat, InputUser, User
 from telethon.tl.functions.users import GetUsersRequest
 from telethon.tl.functions.messages import GetDiscussionMessageRequest
@@ -818,6 +819,32 @@ async def resolve_public_group_by_link(
                 entity = await client.get_entity(username)
             except (ValueError, TypeError) as exc:
                 raise WorkerError("CHAT_NOT_FOUND", "Chat not found or not accessible", 404) from exc
+            except FloodWaitError as exc:
+                raise WorkerError(
+                    "TELEGRAM_RATE_LIMITED",
+                    f"Telegram rate limited. Retry in {exc.seconds}s",
+                    429,
+                ) from exc
+            except (ServerError, TimedOutError) as exc:
+                raise WorkerError(
+                    "TELEGRAM_TRANSIENT_ERROR",
+                    "Temporary Telegram error. Retry shortly.",
+                    503,
+                ) from exc
+            except RPCError as exc:
+                logger.warning("resolve get_entity RPCError: %s", exc)
+                raise WorkerError(
+                    "CHAT_NOT_FOUND",
+                    f"Chat not found or not accessible: {exc!s}",
+                    404,
+                ) from exc
+            except Exception as exc:
+                logger.exception("resolve get_entity failed username=%s", username)
+                raise WorkerError(
+                    "CHAT_RESOLVE_FAILED",
+                    f"Could not resolve chat: {exc!s}",
+                    502,
+                ) from exc
 
             chat_type = _resolve_conversation_type(entity)
             if chat_type == "direct":
