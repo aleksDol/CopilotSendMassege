@@ -10,7 +10,6 @@ import { Select } from "@/components/ui/select";
 import { useLeadRadarActions, useLeadRadarLeads } from "@/lib/hooks/use-app-data";
 import type { LeadRadarLeadItem, LeadRadarLeadStatus } from "@/lib/api/types";
 import { LeadDrawer } from "@/components/leadradar/lead-drawer";
-import { Badge } from "@/components/ui/badge";
 import { LeadRadarNav } from "@/components/leadradar/leadradar-nav";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth/context";
@@ -33,17 +32,21 @@ const ROW_STATUS_OPTIONS: Array<{ label: string; value: LeadRadarLeadStatus }> =
   (s): s is { label: string; value: LeadRadarLeadStatus } => s.value !== "all"
 );
 
-const statusBadgeVariant = (
-  status: LeadRadarLeadStatus
-): "secondary" | "warning" | "success" | "outline" | "destructive" => {
-  if (status === "new") return "secondary";
-  if (status === "contacted") return "warning";
-  if (status === "replied") return "success";
-  if (status === "lost" || status === "spam") return "destructive";
-  if (status === "won") return "success";
-  if (status === "hot") return "warning";
-  if (status === "ignored") return "outline";
-  return "secondary";
+const statusChipClassName = (status: LeadRadarLeadStatus): string => {
+  // Requested palette:
+  // new -> red, contacted -> yellow, replied -> blue, qualified -> dark green, spam -> black, won -> light green
+  if (status === "new") return "border-transparent bg-red-100 text-red-800";
+  if (status === "contacted") return "border-transparent bg-amber-100 text-amber-800";
+  if (status === "replied") return "border-transparent bg-blue-100 text-blue-800";
+  if (status === "qualified") return "border-transparent bg-emerald-200 text-emerald-950";
+  if (status === "spam") return "border-transparent bg-black text-white";
+  if (status === "won") return "border-transparent bg-emerald-100 text-emerald-800";
+
+  // Defaults for other statuses.
+  if (status === "hot") return "border-transparent bg-amber-100 text-amber-800";
+  if (status === "lost") return "border-transparent bg-red-100 text-red-800";
+  if (status === "ignored") return "bg-transparent text-foreground";
+  return "border-transparent bg-secondary text-secondary-foreground";
 };
 
 function formatDate(iso: string): string {
@@ -293,11 +296,11 @@ export default function LeadRadarInboxPage() {
                   <td className="py-3 pr-3">{lead.score}</td>
                   <td className="py-3 pr-3 text-muted-foreground">{formatDate(lead.createdAt)}</td>
                   <td className="py-3 pr-3" onClick={(e) => e.stopPropagation()}>
-                    <div className="pb-1">
-                      <Badge variant={statusBadgeVariant(lead.status)}>{lead.status}</Badge>
-                    </div>
                     <Select
-                      className="h-9 min-w-[11rem] max-w-[14rem] text-xs"
+                      className={[
+                        "h-8 min-w-[10rem] max-w-[14rem] cursor-pointer rounded-full border px-2.5 py-0.5 text-xs font-semibold",
+                        statusChipClassName(lead.status)
+                      ].join(" ")}
                       value={lead.status}
                       disabled={actions.updateLeadStatus.isPending}
                       options={ROW_STATUS_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}

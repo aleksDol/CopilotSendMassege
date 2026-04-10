@@ -40,19 +40,21 @@ function renderContextLine(m: { sender: string | null; text: string | null }) {
   return `[${sender}]: ${text}`;
 }
 
-function statusBadgeVariant(
-  status: LeadRadarLeadStatus
-): "secondary" | "warning" | "success" | "outline" | "destructive" {
-  if (status === "new") return "secondary";
-  if (status === "contacted") return "warning";
-  if (status === "replied") return "success";
-  // "Closed" equivalents (we keep LeadRadar statuses):
-  if (status === "lost" || status === "spam") return "destructive";
+function statusBadgeClassName(status: LeadRadarLeadStatus): string {
+  // Requested palette:
+  // new -> red, contacted -> yellow, replied -> blue, qualified -> dark green, spam -> black, won -> light green
+  if (status === "new") return "border-transparent bg-red-100 text-red-800";
+  if (status === "contacted") return "border-transparent bg-amber-100 text-amber-800";
+  if (status === "replied") return "border-transparent bg-blue-100 text-blue-800";
+  if (status === "qualified") return "border-transparent bg-emerald-200 text-emerald-950";
+  if (status === "spam") return "border-transparent bg-black text-white";
+  if (status === "won") return "border-transparent bg-emerald-100 text-emerald-800";
 
-  if (status === "won") return "success";
-  if (status === "hot") return "warning";
-  if (status === "ignored") return "outline";
-  return "secondary";
+  // Keep reasonable defaults for other statuses.
+  if (status === "hot") return "border-transparent bg-amber-100 text-amber-800";
+  if (status === "lost") return "border-transparent bg-red-100 text-red-800";
+  if (status === "ignored") return "bg-transparent text-foreground";
+  return "border-transparent bg-secondary text-secondary-foreground";
 }
 
 export function LeadDrawer({
@@ -155,7 +157,7 @@ export function LeadDrawer({
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={statusBadgeVariant(lead.status)}>{lead.status}</Badge>
+                  <Badge className={statusBadgeClassName(lead.status)}>{lead.status}</Badge>
                   <span className="text-muted-foreground">score:</span> <span className="font-medium">{lead.score}</span>
                 </div>
                 <div>
