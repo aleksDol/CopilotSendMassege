@@ -320,9 +320,23 @@ async def internal_logout(payload: LogoutRequest) -> dict:
 async def internal_resolve_chat(payload: ResolveChatByLinkRequest) -> dict:
     logger.info("resolve-chat requested for company=%s channelAccount=%s", payload.company_id, payload.channel_account_id)
     async with concurrency_limiter:
-        return await resolve_public_group_by_link(
-            company_id=payload.company_id,
-            channel_account_id=payload.channel_account_id,
-            link=payload.link,
-            crypto=crypto,
-        )
+        try:
+            return await resolve_public_group_by_link(
+                company_id=payload.company_id,
+                channel_account_id=payload.channel_account_id,
+                link=payload.link,
+                crypto=crypto,
+            )
+        except WorkerError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                "resolve-chat failed company=%s channelAccount=%s",
+                payload.company_id,
+                payload.channel_account_id,
+            )
+            raise WorkerError(
+                "RESOLVE_CHAT_FAILED",
+                str(exc) or "Failed to resolve chat",
+                502,
+            ) from exc
