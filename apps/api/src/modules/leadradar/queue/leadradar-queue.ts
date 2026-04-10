@@ -54,7 +54,8 @@ export const getLeadRadarQueue = (env: Env): Queue<LeadRadarProcessMessageJob> =
 };
 
 export const toLeadRadarJobId = (payload: Pick<LeadRadarProcessMessageJob, "telegramAccountId" | "chatId" | "externalMessageId">) =>
-  `leadradar:${payload.telegramAccountId}:${payload.chatId}:${payload.externalMessageId}`;
+  // BullMQ prohibits ":" in custom jobId. Use "-" to keep it readable + stable.
+  `leadradar-${payload.telegramAccountId}-${payload.chatId}-${payload.externalMessageId}`;
 
 export async function enqueueLeadRadarJob(env: Env, payload: LeadRadarProcessMessageJob): Promise<{ jobId: string }> {
   const queue = getLeadRadarQueue(env);
