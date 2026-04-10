@@ -169,7 +169,8 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     const worker = new TelegramWorkerClient(
       app.config.env.TELEGRAM_WORKER_URL,
       app.config.env.INTERNAL_API_TOKEN,
-      app.config.env.TELEGRAM_WORKER_TIMEOUT_MS
+      app.config.env.TELEGRAM_WORKER_TIMEOUT_MS,
+      app.config.env.TELEGRAM_WORKER_RESOLVE_CHAT_TIMEOUT_MS
     );
 
     const resolved = await worker.resolveChat({

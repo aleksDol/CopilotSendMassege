@@ -30,15 +30,21 @@ const normalizeWorkerError = async (response: Response): Promise<string> => {
 };
 
 export class TelegramWorkerClient {
+  /**
+   * @param resolveChatTimeoutMs — optional longer timeout for `/internal/telegram/resolve-chat`
+   * (Telethon may need time for get_dialogs / get_entity on cold cache).
+   */
   constructor(
     private readonly baseUrl: string,
     private readonly token: string,
-    private readonly timeoutMs: number
+    private readonly timeoutMs: number,
+    private readonly resolveChatTimeoutMs?: number
   ) {}
 
-  private async post(path: string, payload: WorkerPayload): Promise<WorkerSuccess> {
+  private async post(path: string, payload: WorkerPayload, timeoutOverrideMs?: number): Promise<WorkerSuccess> {
+    const ms = timeoutOverrideMs ?? this.timeoutMs;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timeout = setTimeout(() => controller.abort(), ms);
 
     try {
       const response = await fetch(`${this.baseUrl}${path}`, {
@@ -110,6 +116,7 @@ export class TelegramWorkerClient {
   }
 
   resolveChat(payload: WorkerPayload) {
-    return this.post("/internal/telegram/resolve-chat", payload) as unknown as Promise<ResolveChatSuccess>;
+    const ms = this.resolveChatTimeoutMs ?? this.timeoutMs;
+    return this.post("/internal/telegram/resolve-chat", payload, ms) as unknown as Promise<ResolveChatSuccess>;
   }
 }

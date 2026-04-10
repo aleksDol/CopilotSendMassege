@@ -208,6 +208,49 @@ const maybeMarkLeadContacted = async (
   }
 };
 
+const maybeMarkLeadReplied = async (
+  app: FastifyInstance,
+  params: { telegramAccountId: string; payload: MessageEventPayload }
+) => {
+  // Only on first inbound message in a DIRECT chat.
+  if (params.payload.isOutgoing) return;
+  if (params.payload.senderType !== "user") return;
+  if (toConversationType(params.payload) !== "DIRECT") return;
+
+  const senderExternalId = getRawString(params.payload.senderExternalId);
+  const senderUsername = normalizeUsername(params.payload.senderUsername);
+  if (!senderExternalId && !senderUsername) return;
+
+  // Promote contacted -> replied only once.
+  const lead = await app.prisma.leadRadarLead.findFirst({
+    where: {
+      telegramAccountId: params.telegramAccountId,
+      status: "contacted",
+      OR: [
+        ...(senderExternalId ? [{ telegramUserId: senderExternalId }] : []),
+        ...(senderUsername ? [{ username: senderUsername }] : [])
+      ]
+    },
+    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }]
+  });
+  if (!lead) return;
+
+  const updated = await app.prisma.leadRadarLead.updateMany({
+    where: { id: lead.id, status: "contacted" },
+    data: { status: "replied" }
+  });
+
+  if (updated.count > 0) {
+    console.log(
+      "[LeadRadar] auto-replied lead: telegramAccountId=%s leadId=%s senderId=%s senderUsername=%s",
+      params.telegramAccountId,
+      lead.id,
+      senderExternalId,
+      senderUsername
+    );
+  }
+};
+
 export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageEventPayload) => {
   const telegramAccount = await app.prisma.telegramAccount.findUnique({
     where: { id: payload.telegramAccountId },
@@ -359,6 +402,7 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
   });
   if (existing) {
     await maybeMarkLeadContacted(app, { telegramAccountId: telegramAccount.id, payload });
+    await maybeMarkLeadReplied(app, { telegramAccountId: telegramAccount.id, payload });
 
     // If this is a Telegram "channel comment" delivered after the same message was already ingested
     // via a generic group sync, update the message with the richer channel-comment metadata.
@@ -612,6 +656,7 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
   });
 
   await maybeMarkLeadContacted(app, { telegramAccountId: telegramAccount.id, payload });
+  await maybeMarkLeadReplied(app, { telegramAccountId: telegramAccount.id, payload });
 
   // LeadRadar trigger (async).
   if (app.config.env.ENABLE_LEADRADAR && canTriggerLeadRadar(payload)) {
