@@ -19,9 +19,7 @@ const getWorkerClient = (app: FastifyInstance): TelegramWorkerClient =>
   new TelegramWorkerClient(
     app.config.env.TELEGRAM_WORKER_URL,
     app.config.env.INTERNAL_API_TOKEN,
-    app.config.env.TELEGRAM_WORKER_TIMEOUT_MS,
-    undefined,
-    app.config.env.TELEGRAM_WORKER_SEND_MESSAGE_TIMEOUT_MS
+    app.config.env.TELEGRAM_WORKER_TIMEOUT_MS
   );
 
 const ensureChannelAndAccount = async (app: FastifyInstance, scope: Scope, phone: string) => {
