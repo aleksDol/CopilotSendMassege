@@ -13,7 +13,7 @@ from app.config import settings
 from app.crypto import SessionCrypto
 from app.db import get_connection
 from app.internal_api_client import push_message_event
-from app.telegram_client import create_client
+from app.telegram_client import create_client, telegram_proxy_log_context
 
 logger = logging.getLogger("telegram-worker.live-listener")
 
@@ -350,7 +350,12 @@ async def _run_account_listener(account: ConnectedAccount, crypto: SessionCrypto
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.warning("listener error telegramAccountId=%s: %s", account.telegram_account_id, exc)
+            logger.warning(
+                "listener error telegramAccountId=%s: %s (%s)",
+                account.telegram_account_id,
+                exc,
+                telegram_proxy_log_context(),
+            )
         finally:
             try:
                 await client.disconnect()
@@ -385,7 +390,12 @@ class LiveListenerManager:
             if exc:
                 self.last_task_error_count += 1
                 self._last_task_error = f"{telegram_account_id}: {exc!s}"
-                logger.warning("listener task crashed telegramAccountId=%s err=%s", telegram_account_id, exc)
+                logger.warning(
+                    "listener task crashed telegramAccountId=%s err=%s (%s)",
+                    telegram_account_id,
+                    exc,
+                    telegram_proxy_log_context(),
+                )
 
         task.add_done_callback(_done)
 

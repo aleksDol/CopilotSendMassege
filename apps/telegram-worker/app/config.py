@@ -40,5 +40,14 @@ class Settings(BaseSettings):
     telegram_sync_min_interval_seconds: int = Field(default=30, alias="TELEGRAM_SYNC_MIN_INTERVAL_SECONDS")
     telegram_max_concurrent_syncs_per_account: int = Field(default=1, alias="TELEGRAM_MAX_CONCURRENT_SYNCS_PER_ACCOUNT")
 
+    # Optional SOCKS5 for Telethon only (MTProto). When disabled or incomplete, connections go direct.
+    tg_proxy_enabled: bool = Field(default=False, alias="TG_PROXY_ENABLED")
+    tg_proxy_type: str = Field(default="socks5", alias="TG_PROXY_TYPE")
+    tg_proxy_host: str = Field(default="", alias="TG_PROXY_HOST")
+    tg_proxy_port: int | None = Field(default=None, alias="TG_PROXY_PORT")
+    tg_proxy_username: str = Field(default="", alias="TG_PROXY_USERNAME")
+    tg_proxy_password: str = Field(default="", alias="TG_PROXY_PASSWORD")
+    tg_proxy_rdns: bool = Field(default=True, alias="TG_PROXY_RDNS")
+
 
 settings = Settings()

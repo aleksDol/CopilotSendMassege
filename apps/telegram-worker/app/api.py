@@ -36,6 +36,7 @@ from app.services.auth_flow import (
 from app.services.sync_service import list_connected_accounts, run_initial_sync, send_message, resolve_public_group_by_link
 from app.services.live_listener import LiveListenerManager
 from app.services.safety import safety_service
+from app.telegram_client import log_telegram_proxy_on_startup
 
 logger = logging.getLogger("telegram-worker")
 logging.basicConfig(
@@ -136,6 +137,7 @@ async def _auto_sync_loop() -> None:
 @app.on_event("startup")
 async def _startup_auto_sync() -> None:
     global auto_sync_task, live_listener_task, live_listener_manager
+    log_telegram_proxy_on_startup()
     if not settings.telegram_auto_sync_enabled:
         logger.info("telegram auto-sync disabled")
     else:
