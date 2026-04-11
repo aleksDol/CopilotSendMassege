@@ -8,6 +8,12 @@ import { LeadStatus } from "../../domain/enums/lead-status.js";
 import type { LeadRadarMessageInput } from "../../types/ingestion.js";
 import type { PrismaClient } from "@prisma/client";
 
+const normalizeUsernameForMerge = (u: string | null | undefined): string | null => {
+  const t = u?.trim();
+  if (!t) return null;
+  return t.replace(/^@+/u, "").toLowerCase();
+};
+
 export class LeadRadarIngestionService {
   constructor(
     private readonly deps: {
@@ -19,6 +25,9 @@ export class LeadRadarIngestionService {
       dedupeService: LeadDeduplicationService;
       prisma: PrismaClient;
       logger?: { info: (msg: string) => void };
+      /** Hours: same Telegram user across different chats → merge into one lead */
+      multiChatDedupeWindowHours: number;
+      multiChatScoreBonus: number;
     }
   ) {}
 
@@ -176,6 +185,36 @@ export class LeadRadarIngestionService {
       return;
     }
 
+    // 6b) Multi-chat merge: same Telegram user (strict id OR username), different chat, within window — no new lead
+    const senderExternalId = input.senderId?.trim() || null;
+    const usernameKey = normalizeUsernameForMerge(input.senderUsername);
+    if (senderExternalId || usernameKey) {
+      const windowMs = Math.max(1, this.deps.multiChatDedupeWindowHours) * 60 * 60 * 1000;
+      const since = new Date(Date.now() - windowMs);
+      const existing = await this.deps.leadRepo.findRecentLeadForMultiChatMerge({
+        user_id: input.userId,
+        telegram_account_id: input.telegramAccountId,
+        telegram_user_id: senderExternalId,
+        username_normalized: senderExternalId ? null : usernameKey,
+        since
+      });
+      if (existing && existing.chat_id !== sourceChatId) {
+        await this.deps.leadRepo.mergeMultiChatLead({
+          lead_id: existing.id,
+          user_id: input.userId,
+          telegram_account_id: input.telegramAccountId,
+          score_delta: this.deps.multiChatScoreBonus,
+          source_chat_id: sourceChatId,
+          source_type: source.chat_type ?? input.sourceType ?? null,
+          related_channel_id: input.relatedChannelId ?? null,
+          last_seen_at: input.date
+        });
+        log("[LeadRadar] Lead merged (multi-chat)");
+        log("[LeadRadar] message processed");
+        return;
+      }
+    }
+
     // 7) Load context (best effort)
     let contextBefore: Array<{ text: string | null; sender: string | null; date: string }> = [];
     let contextAfter: Array<{ text: string | null; sender: string | null; date: string }> = [];
@@ -238,7 +277,7 @@ export class LeadRadarIngestionService {
           : null
     });
 
-    log("[LeadRadar] lead created");
+    log("[LeadRadar] New lead created");
     log("[LeadRadar] message processed");
   }
 }

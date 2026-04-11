@@ -71,6 +71,10 @@ const envSchema = z.object({
   REDIS_CACHE_TTL: z.coerce.number().int().min(5).max(600).default(45),
   AI_WORKER_CONCURRENCY: z.coerce.number().int().positive().default(2),
   TELEGRAM_WORKER_CONCURRENCY: z.coerce.number().int().positive().default(2),
+  /** LeadRadar: merge leads from same Telegram user across chats within this window (hours). */
+  LEADRADAR_MULTI_CHAT_DEDUPE_WINDOW_HOURS: z.coerce.number().int().min(1).max(168).default(3),
+  /** Score bonus when merging multi-chat activity into an existing lead. */
+  LEADRADAR_MULTI_CHAT_SCORE_BONUS: z.coerce.number().int().min(0).max(500).default(35),
   /** Comma-separated emails allowed to use /admin API (empty = no platform admins). */
   ADMIN_EMAILS: z.string().optional().default("")
 });
@@ -117,6 +121,8 @@ const parsedEnv = envSchema.safeParse({
   REDIS_CACHE_TTL: process.env.REDIS_CACHE_TTL,
   AI_WORKER_CONCURRENCY: process.env.AI_WORKER_CONCURRENCY,
   TELEGRAM_WORKER_CONCURRENCY: process.env.TELEGRAM_WORKER_CONCURRENCY,
+  LEADRADAR_MULTI_CHAT_DEDUPE_WINDOW_HOURS: process.env.LEADRADAR_MULTI_CHAT_DEDUPE_WINDOW_HOURS,
+  LEADRADAR_MULTI_CHAT_SCORE_BONUS: process.env.LEADRADAR_MULTI_CHAT_SCORE_BONUS,
   ADMIN_EMAILS: process.env.ADMIN_EMAILS
 });
 

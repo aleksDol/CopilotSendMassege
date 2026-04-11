@@ -9,7 +9,12 @@ export type LeadRadarLogger = {
   info: (msg: string) => void;
 };
 
-export function createLeadRadarIngestionService(params: { prisma: PrismaClient; logger?: LeadRadarLogger }) {
+export function createLeadRadarIngestionService(params: {
+  prisma: PrismaClient;
+  logger?: LeadRadarLogger;
+  multiChatDedupeWindowHours?: number;
+  multiChatScoreBonus?: number;
+}) {
   const leadRepo = new PrismaLeadRepository(params.prisma);
   const sourceRepo = new PrismaLeadSourceRepository(params.prisma);
   const keywordRepo = new PrismaLeadKeywordRepository(params.prisma);
@@ -19,6 +24,9 @@ export function createLeadRadarIngestionService(params: { prisma: PrismaClient; 
   const scoringService = new LeadScoringService();
   const dedupeService = new LeadDeduplicationService({ leadRepo });
 
+  const dedupeH = params.multiChatDedupeWindowHours ?? Number(process.env.LEADRADAR_MULTI_CHAT_DEDUPE_WINDOW_HOURS ?? 3);
+  const bonus = params.multiChatScoreBonus ?? Number(process.env.LEADRADAR_MULTI_CHAT_SCORE_BONUS ?? 35);
+
   return new LeadRadarIngestionService({
     leadRepo,
     sourceRepo,
@@ -27,7 +35,9 @@ export function createLeadRadarIngestionService(params: { prisma: PrismaClient; 
     scoringService,
     dedupeService,
     prisma: params.prisma,
-    logger: params.logger
+    logger: params.logger,
+    multiChatDedupeWindowHours: Number.isFinite(dedupeH) && dedupeH > 0 ? dedupeH : 3,
+    multiChatScoreBonus: Number.isFinite(bonus) && bonus >= 0 ? bonus : 35
   });
 }
 

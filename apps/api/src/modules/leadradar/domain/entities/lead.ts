@@ -21,6 +21,8 @@ export type Lead = {
   status: LeadStatus;
   notes: string | null;
   contacted_at: Date | null;
+  last_seen_at: Date | null;
+  multi_chat_sources_json: unknown;
   created_at: Date;
   updated_at: Date;
 };

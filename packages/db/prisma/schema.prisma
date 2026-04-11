@@ -874,6 +874,10 @@ model LeadRadarLead {
   status            LeadRadarLeadStatus @default(new) @map("status")
   notes             String?             @map("notes")
   contactedAt       DateTime?           @map("contacted_at")
+  /// Last activity time for this lead (updated on multi-chat merge).
+  lastSeenAt        DateTime?           @map("last_seen_at")
+  /// Extra chats where the same Telegram user matched (same sender id/username only).
+  multiChatSourcesJson Json             @default("[]") @map("multi_chat_sources_json")
   createdAt         DateTime            @default(now()) @map("created_at")
   updatedAt         DateTime            @updatedAt @map("updated_at")
 
@@ -888,6 +892,7 @@ model LeadRadarLead {
   @@index([telegramAccountId, createdAt(sort: Desc)], map: "leads_telegram_account_id_created_at_desc_idx")
   @@index([telegramAccountId, chatId], map: "leads_telegram_account_id_chat_id_idx")
   @@index([telegramAccountId, username], map: "leads_telegram_account_id_username_idx")
+  @@index([telegramAccountId, telegramUserId, createdAt(sort: Desc)], map: "leads_telegram_account_id_tg_user_created_idx")
   @@map("leads")
 }
 

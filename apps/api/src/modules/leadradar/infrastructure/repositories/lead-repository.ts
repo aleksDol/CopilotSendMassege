@@ -1,6 +1,15 @@
 import type { Lead } from "../../domain/entities/lead.js";
 import type { LeadSettings } from "../../domain/entities/lead-settings.js";
-import type { CreateLeadInput, ExistsByMessageInput, FindLeadByIdInput, FindLeadFiltersInput, UpdateLeadNotesInput, UpdateLeadStatusInput } from "../../types/repository-inputs.js";
+import type {
+  CreateLeadInput,
+  ExistsByMessageInput,
+  FindLeadByIdInput,
+  FindLeadFiltersInput,
+  FindRecentLeadMultiChatInput,
+  MergeMultiChatLeadInput,
+  UpdateLeadNotesInput,
+  UpdateLeadStatusInput
+} from "../../types/repository-inputs.js";
 
 export interface LeadRepository {
   createLead(input: CreateLeadInput): Promise<Lead>;
@@ -18,6 +27,10 @@ export interface LeadRepository {
     telegram_user_id: string;
     since: Date;
   }): Promise<boolean>;
+
+  findRecentLeadForMultiChatMerge(input: FindRecentLeadMultiChatInput): Promise<Lead | null>;
+
+  mergeMultiChatLead(input: MergeMultiChatLeadInput): Promise<Lead>;
 
   // Optional helper for next steps (not used yet)
   _getSettingsForScope?(input: { user_id: string; telegram_account_id: string }): Promise<LeadSettings | null>;

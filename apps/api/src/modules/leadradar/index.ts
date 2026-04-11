@@ -32,7 +32,9 @@ const leadradarModuleImpl: FastifyPluginAsync = async (app) => {
     prisma: app.prisma,
     logger: {
       info: (msg: string) => app.log.info(msg)
-    }
+    },
+    multiChatDedupeWindowHours: app.config.env.LEADRADAR_MULTI_CHAT_DEDUPE_WINDOW_HOURS,
+    multiChatScoreBonus: app.config.env.LEADRADAR_MULTI_CHAT_SCORE_BONUS
   });
 
   const sourcesService = new LeadSourceService({ sourceRepo });

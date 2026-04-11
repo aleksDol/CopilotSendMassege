@@ -34,6 +34,8 @@ export const leadRadarMappers = {
     status: LeadRadarLeadStatus;
     notes: string | null;
     contactedAt: Date | null;
+    lastSeenAt?: Date | null;
+    multiChatSourcesJson?: unknown;
     createdAt: Date;
     updatedAt: Date;
   }): Lead => ({
@@ -57,6 +59,8 @@ export const leadRadarMappers = {
     status: toDomainLeadStatus(row.status),
     notes: row.notes,
     contacted_at: row.contactedAt,
+    last_seen_at: row.lastSeenAt ?? null,
+    multi_chat_sources_json: row.multiChatSourcesJson ?? [],
     created_at: row.createdAt,
     updated_at: row.updatedAt
   }),

@@ -93,6 +93,29 @@ export type ExistsByMessageInput = {
   message_id: string;
 };
 
+/** Same Telegram user only: match by telegram_user_id (exact) OR username (exact, case-insensitive). Never fuzzy. */
+export type FindRecentLeadMultiChatInput = {
+  user_id: string;
+  telegram_account_id: string;
+  /** If set, only this match path is used (priority). */
+  telegram_user_id: string | null;
+  /** Used only when telegram_user_id is null. Normalized (trim, no @, lower case). */
+  username_normalized: string | null;
+  since: Date;
+};
+
+export type MergeMultiChatLeadInput = {
+  lead_id: string;
+  user_id: string;
+  telegram_account_id: string;
+  score_delta: number;
+  /** Current message source chat (may differ from lead.chat_id). */
+  source_chat_id: string;
+  source_type: string | null;
+  related_channel_id: string | null;
+  last_seen_at: Date;
+};
+
 export type ListAccountScopedInput = {
   user_id: string;
   telegram_account_id: string;

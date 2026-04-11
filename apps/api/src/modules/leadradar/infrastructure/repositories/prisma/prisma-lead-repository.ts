@@ -7,6 +7,8 @@ import type {
   ExistsByMessageInput,
   FindLeadByIdInput,
   FindLeadFiltersInput,
+  FindRecentLeadMultiChatInput,
+  MergeMultiChatLeadInput,
   UpdateLeadNotesInput,
   UpdateLeadStatusInput
 } from "../../../types/repository-inputs.js";
@@ -147,7 +149,9 @@ export class PrismaLeadRepository implements LeadRepository {
           leadType: input.lead_type ?? null,
           status: input.status as unknown as never,
           notes: input.notes ?? null,
-          contactedAt: input.contacted_at ?? null
+          contactedAt: input.contacted_at ?? null,
+          lastSeenAt: input.message_date,
+          multiChatSourcesJson: []
         }
       });
 
@@ -380,6 +384,95 @@ export class PrismaLeadRepository implements LeadRepository {
       select: { id: true }
     });
     return Boolean(row?.id);
+  }
+
+  async findRecentLeadForMultiChatMerge(input: FindRecentLeadMultiChatInput): Promise<Lead | null> {
+    const base = {
+      userId: input.user_id,
+      telegramAccountId: input.telegram_account_id,
+      createdAt: { gte: input.since }
+    } as const;
+
+    if (input.telegram_user_id) {
+      const row = await this.prisma.leadRadarLead.findFirst({
+        where: {
+          ...base,
+          telegramUserId: input.telegram_user_id
+        },
+        orderBy: { createdAt: "desc" }
+      });
+      return row ? leadRadarMappers.lead(row) : null;
+    }
+
+    if (input.username_normalized) {
+      const row = await this.prisma.leadRadarLead.findFirst({
+        where: {
+          ...base,
+          username: { equals: input.username_normalized, mode: "insensitive" }
+        },
+        orderBy: { createdAt: "desc" }
+      });
+      return row ? leadRadarMappers.lead(row) : null;
+    }
+
+    return null;
+  }
+
+  async mergeMultiChatLead(input: MergeMultiChatLeadInput): Promise<Lead> {
+    return this.prisma.$transaction(async (tx) => {
+      const current = await tx.leadRadarLead.findFirst({
+        where: {
+          id: input.lead_id,
+          userId: input.user_id,
+          telegramAccountId: input.telegram_account_id
+        }
+      });
+
+      if (!current) {
+        throw new AppError(404, "LEAD_NOT_FOUND", "Lead not found");
+      }
+
+      const raw = current.multiChatSourcesJson;
+      type SourceEntry = {
+        chatId: string;
+        sourceType?: string | null;
+        relatedChannelId?: string | null;
+        mergedAt: string;
+      };
+      const arr: SourceEntry[] = Array.isArray(raw) ? ([...raw] as SourceEntry[]) : [];
+
+      const seen = new Set(arr.map((e) => e.chatId).filter(Boolean));
+      if (input.source_chat_id !== current.chatId && !seen.has(input.source_chat_id)) {
+        arr.push({
+          chatId: input.source_chat_id,
+          sourceType: input.source_type,
+          relatedChannelId: input.related_channel_id,
+          mergedAt: new Date().toISOString()
+        });
+      }
+
+      const updated = await tx.leadRadarLead.update({
+        where: { id: current.id },
+        data: {
+          score: { increment: input.score_delta },
+          lastSeenAt: input.last_seen_at,
+          multiChatSourcesJson: arr as unknown as Prisma.InputJsonValue
+        }
+      });
+
+      await tx.leadRadarEvent.create({
+        data: {
+          leadId: updated.id,
+          eventType: "multi_chat_merged",
+          oldStatus: null,
+          newStatus: null,
+          comment: null,
+          createdBy: null
+        }
+      });
+
+      return leadRadarMappers.lead(updated);
+    });
   }
 }
 
