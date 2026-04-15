@@ -120,7 +120,8 @@ def _is_supported_dialog(entity: Any) -> bool:
     if not settings.enable_tg_group_ingestion:
         return False
     if isinstance(entity, Channel):
-        return bool(getattr(entity, "megagroup", False))
+        # Allow both supergroups and broadcast channels when enabled.
+        return True
     if isinstance(entity, Chat):
         return True
     return False

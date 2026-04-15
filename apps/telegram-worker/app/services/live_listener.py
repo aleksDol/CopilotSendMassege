@@ -102,8 +102,11 @@ def _is_supported_dialog(entity: Any) -> bool:
         return False
     # Group chats: allow when feature flag enabled
     if isinstance(entity, Channel):
-        # Telethon: megagroup=True indicates supergroup; megagroup False = channel
-        return bool(getattr(entity, "megagroup", False))
+        # Telethon:
+        # - megagroup=True  => supergroup (chat-like)
+        # - megagroup=False => broadcast channel
+        # For ingestion we allow both when group ingestion is enabled.
+        return True
     if isinstance(entity, Chat):
         return True
     return False
