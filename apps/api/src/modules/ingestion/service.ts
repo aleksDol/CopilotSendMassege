@@ -643,11 +643,55 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.toLowerCase().includes("hex escape")) {
       app.log.warn({ err }, "[Ingestion] message upsert failed due to rawPayload encoding; retrying without rawPayload");
-      message = await app.prisma.message.upsert({
-        ...upsertArgs,
-        update: { ...upsertArgs.update, rawPayload: undefined },
-        create: { ...upsertArgs.create, rawPayload: undefined }
-      });
+      try {
+        message = await app.prisma.message.upsert({
+          ...upsertArgs,
+          update: { ...upsertArgs.update, rawPayload: undefined },
+          create: { ...upsertArgs.create, rawPayload: undefined }
+        });
+      } catch (err2) {
+        // If it still fails, fall back to a minimal row to avoid breaking ingestion entirely.
+        // We prefer losing optional text/metadata over returning 500 and halting the pipeline.
+        app.log.error({ err: err2 }, "[Ingestion] message upsert failed even without rawPayload; retrying minimal upsert");
+        message = await app.prisma.message.upsert({
+          where: upsertArgs.where,
+          update: {
+            participantId: upsertArgs.update.participantId ?? null,
+            direction: upsertArgs.update.direction,
+            messageType: upsertArgs.update.messageType,
+            sentAt: upsertArgs.update.sentAt,
+            hasAttachment: upsertArgs.update.hasAttachment ?? false,
+            // Drop all optional strings/metadata.
+            text: null,
+            normalizedText: null,
+            replyToExternalMessageId: null,
+            relatedChannelId: null,
+            relatedPostId: null,
+            contextPreview: null,
+            dedupeKey: null,
+            rawPayload: undefined
+          },
+          create: {
+            companyId: upsertArgs.create.companyId,
+            conversationId: upsertArgs.create.conversationId,
+            participantId: upsertArgs.create.participantId ?? null,
+            externalMessageId: upsertArgs.create.externalMessageId,
+            direction: upsertArgs.create.direction,
+            messageType: upsertArgs.create.messageType,
+            sentAt: upsertArgs.create.sentAt,
+            hasAttachment: upsertArgs.create.hasAttachment ?? false,
+            // Drop all optional strings/metadata.
+            text: null,
+            normalizedText: null,
+            replyToExternalMessageId: null,
+            relatedChannelId: null,
+            relatedPostId: null,
+            contextPreview: null,
+            dedupeKey: null,
+            rawPayload: undefined
+          }
+        });
+      }
     } else {
       throw err;
     }
