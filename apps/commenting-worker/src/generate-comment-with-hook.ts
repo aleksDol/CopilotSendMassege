@@ -135,6 +135,7 @@ const buildSystemPrompt = (params: {
 }) =>
   [
     "You generate Telegram comments for channel posts.",
+    "Write the comment in Russian (ru).",
     "Write short, natural comments that feel like a real participant, not an ad.",
     toneInstruction(params.toneMode),
     "Requirements:",
