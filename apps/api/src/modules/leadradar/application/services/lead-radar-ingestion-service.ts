@@ -13,6 +13,7 @@ type LeadRadarFinalAction = "created" | "merged" | "skipped";
 type LeadRadarSkipReason =
   | "disabled"
   | "not_monitored_source"
+  | "before_monitoring_started"
   | "no_positive_match"
   | "negative_match"
   | "below_threshold"
@@ -236,6 +237,42 @@ export class LeadRadarIngestionService {
       return;
     }
     source_monitored = true;
+
+    // 2b) Guardrail: allow chat history ingestion, but only create leads for messages
+    // sent after monitoring started.
+    //
+    // We use source.updated_at so operators can "reset" monitoring start by toggling
+    // the source off/on (Disable/Enable) without deleting it. For newly created sources,
+    // updated_at is equal to created_at.
+    const monitoringStartedAt = source.updated_at ?? source.created_at;
+    if (input.date && monitoringStartedAt && input.date < monitoringStartedAt) {
+      log("[LeadRadar] skipped: before monitoring started");
+      skip_reason = "before_monitoring_started";
+      final_action = "skipped";
+      if (traceEnabled) {
+        log(
+          `[LeadRadar-TRACE] ${JSON.stringify({
+            messageId: input.messageId,
+            leadradar_enabled: true,
+            source_monitored,
+            inbound_message: true,
+            text_message: true,
+            raw_text,
+            normalized_text,
+            monitoring_started_at: monitoringStartedAt?.toISOString?.() ?? String(monitoringStartedAt),
+            message_date: input.date?.toISOString?.() ?? String(input.date),
+            positive_keyword_matches,
+            negative_keyword_matches,
+            score_breakdown,
+            threshold_passed,
+            dedupe_result,
+            final_action,
+            skip_reason
+          })}`
+        );
+      }
+      return;
+    }
 
     // 3) Keyword match (real)
     const match = await this.deps.matchService.match(input);
