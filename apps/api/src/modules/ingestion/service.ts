@@ -479,17 +479,23 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
             );
             // Fall back to a minimal upgrade to keep ingestion idempotent and avoid 500s.
             // We prefer losing optional metadata over breaking the whole pipeline.
-            await app.prisma.message.update({
-              where: { id: existing.id },
-              data: {
-                messageType: desiredType,
-                relatedChannelId,
-                relatedPostId,
-                contextPreview: null,
-                dedupeKey: null,
-                rawPayload: undefined
-              }
-            });
+            try {
+              await app.prisma.message.update({
+                where: { id: existing.id },
+                data: {
+                  messageType: desiredType,
+                  relatedChannelId,
+                  relatedPostId,
+                  contextPreview: null,
+                  dedupeKey: null,
+                  rawPayload: undefined
+                }
+              });
+            } catch (err2) {
+              // If even the minimal upgrade fails, do not break ingestion.
+              // We'll keep the previously ingested row as-is.
+              app.log.error({ err: err2 }, "[Ingestion] minimal message upgrade failed; skipping upgrade");
+            }
           } else {
             throw err;
           }
