@@ -139,13 +139,14 @@ const worker = new Worker<CommentingGenerationJob>(
       return { status: "skipped", reason: "post_message_not_found" };
     }
 
-    if (message.messageType !== MessageType.TEXT) {
-      return { status: "skipped", reason: "message_not_text" };
-    }
-
     const postText = (message.text ?? "").trim();
     if (!postText.length) {
       return { status: "skipped", reason: "message_empty" };
+    }
+    // Allow captioned media posts: API marks messages with attachments as MEDIA,
+    // but they can still have meaningful text (caption) that we want to comment on.
+    if (message.messageType !== MessageType.TEXT && message.messageType !== MessageType.MEDIA) {
+      return { status: "skipped", reason: "message_unsupported_type" };
     }
     if (isLowSignalPost(postText)) {
       return { status: "skipped", reason: "message_low_signal" };

@@ -438,7 +438,7 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
       const relatedPostId = getRawString(payload.rawPayload?.relatedPostId) ?? null;
       const contextPreview =
         getRawPreview(payload.rawPayload?.contextPreview, 240) ??
-        ((payload.text ?? "").slice(0, 240) || null);
+        (sanitizeDbString(payload.text)?.slice(0, 240) || null);
       const dedupeKey =
         getRawString(payload.rawPayload?.dedupeKey) ??
         `${payload.telegramAccountId}:${payload.externalConversationId}:${payload.externalMessageId}`;
@@ -469,7 +469,7 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
     // Previously we returned early, which could permanently leave `conversation_state`
     // stale if the first attempt inserted the message but failed before state update.
     const sentAt = new Date(payload.sentAt);
-    const preview = (payload.text ?? "").slice(0, 240) || null;
+    const preview = sanitizeDbString(payload.text)?.slice(0, 240) || null;
     const currentState = await app.prisma.conversationState.findUnique({
       where: { conversationId: conversation.id },
       select: { lastMessageId: true, lastMessageAt: true }
@@ -512,7 +512,7 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
       await invalidateCacheByPrefix(app, `cache:dashboard:${companyId}:`);
 
       const conversationTitle = conversation.title ?? payload.conversationTitle ?? null;
-      const lastMessagePreview = (payload.text ?? "").slice(0, 240) || null;
+      const lastMessagePreview = sanitizeDbString(payload.text)?.slice(0, 240) || null;
       realtimeHub.publish({
         type: "message_ingested",
         companyId,
