@@ -7,6 +7,29 @@ import type { LeadScoringService } from "./lead-scoring-service.js";
 import { LeadStatus } from "../../domain/enums/lead-status.js";
 import type { LeadRadarMessageInput } from "../../types/ingestion.js";
 import type { PrismaClient } from "@prisma/client";
+import { normalizeLeadRadarText } from "../../lib/text-normalization.js";
+
+type LeadRadarFinalAction = "created" | "merged" | "skipped";
+type LeadRadarSkipReason =
+  | "disabled"
+  | "not_monitored_source"
+  | "no_positive_match"
+  | "negative_match"
+  | "below_threshold"
+  | "duplicate_hard"
+  | "duplicate_soft"
+  | "merged_existing_lead";
+
+const isLeadRadarDebugEnabled = (): boolean => {
+  const v = String(process.env.ENABLE_LEADRADAR_DEBUG ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+};
+
+const shouldTraceMessage = (messageId: string): boolean => {
+  const exact = String(process.env.LEADRADAR_DEBUG_MESSAGE_ID ?? "").trim();
+  if (exact && messageId && exact === messageId) return true;
+  return isLeadRadarDebugEnabled();
+};
 
 const normalizeUsernameForMerge = (u: string | null | undefined): string | null => {
   const t = u?.trim();
@@ -103,7 +126,34 @@ export class LeadRadarIngestionService {
       }
     };
 
-    log(`[LeadRadar-DEBUG] processMessage ENTER userId=${input.userId} telegramAccountId=${input.telegramAccountId} chatId=${input.chatId} text="${(input.text ?? "").slice(0, 80)}"`);
+    const traceEnabled = shouldTraceMessage(input.messageId);
+    const { raw_text, normalized_text } = normalizeLeadRadarText(input.text ?? "");
+
+    let final_action: LeadRadarFinalAction = "skipped";
+    let skip_reason: LeadRadarSkipReason | null = null;
+    let source_monitored = false;
+    let positive_keyword_matches: string[] = [];
+    let negative_keyword_matches: string[] = [];
+    let score_breakdown: Record<string, number> | null = null;
+    let threshold_passed = false;
+    let dedupe_result: "none" | "hard" | "soft" | "merged_existing_lead" = "none";
+
+    if (traceEnabled) {
+      log(
+        `[LeadRadar-TRACE] ${JSON.stringify({
+          phase: "enter",
+          telegramAccountId: input.telegramAccountId,
+          chatId: input.chatId,
+          messageId: input.messageId,
+          raw_text: raw_text.slice(0, 500),
+          normalized_text: normalized_text.slice(0, 500)
+        })}`
+      );
+    }
+
+    log(
+      `[LeadRadar-DEBUG] processMessage ENTER userId=${input.userId} telegramAccountId=${input.telegramAccountId} chatId=${input.chatId} text="${(input.text ?? "").slice(0, 80)}"`
+    );
 
     // 1) Settings check
     const settings =
@@ -120,6 +170,28 @@ export class LeadRadarIngestionService {
 
     if (!settings.is_enabled) {
       log("[LeadRadar] skipped: disabled");
+      skip_reason = "disabled";
+      final_action = "skipped";
+      if (traceEnabled) {
+        log(
+          `[LeadRadar-TRACE] ${JSON.stringify({
+            messageId: input.messageId,
+            leadradar_enabled: false,
+            source_monitored,
+            inbound_message: true,
+            text_message: true,
+            raw_text,
+            normalized_text,
+            positive_keyword_matches,
+            negative_keyword_matches,
+            score_breakdown,
+            threshold_passed,
+            dedupe_result,
+            final_action,
+            skip_reason
+          })}`
+        );
+      }
       return;
     }
 
@@ -139,40 +211,138 @@ export class LeadRadarIngestionService {
 
     if (!source || !source.is_active) {
       log("[LeadRadar] skipped: not a source");
+      skip_reason = "not_monitored_source";
+      final_action = "skipped";
+      if (traceEnabled) {
+        log(
+          `[LeadRadar-TRACE] ${JSON.stringify({
+            messageId: input.messageId,
+            leadradar_enabled: true,
+            source_monitored: false,
+            inbound_message: true,
+            text_message: true,
+            raw_text,
+            normalized_text,
+            positive_keyword_matches,
+            negative_keyword_matches,
+            score_breakdown,
+            threshold_passed,
+            dedupe_result,
+            final_action,
+            skip_reason
+          })}`
+        );
+      }
       return;
     }
+    source_monitored = true;
 
     // 3) Keyword match (real)
     const match = await this.deps.matchService.match(input);
     log(`[LeadRadar-DEBUG] match result: matched=${match.matched} keywords=${JSON.stringify(match.matchedKeywords)}`);
     if (!match.matched) {
+      negative_keyword_matches = match.debug?.negative_keyword_matches ?? [];
+      positive_keyword_matches = match.debug?.positive_keyword_matches ?? [];
       if (match.reason === "negative_keyword") {
         log("[LeadRadar] skipped: negative keyword");
+        skip_reason = "negative_match";
       } else {
         log("[LeadRadar] skipped: no match");
+        skip_reason = "no_positive_match";
+      }
+      final_action = "skipped";
+      if (traceEnabled) {
+        log(
+          `[LeadRadar-TRACE] ${JSON.stringify({
+            messageId: input.messageId,
+            leadradar_enabled: true,
+            source_monitored,
+            inbound_message: true,
+            text_message: true,
+            raw_text,
+            normalized_text: match.debug?.normalized_text ?? normalized_text,
+            positive_keyword_matches: match.debug?.positive_keyword_matches_detailed?.map((x) => x.keyword) ?? [],
+            negative_keyword_matches,
+            score_breakdown,
+            threshold_passed,
+            dedupe_result,
+            final_action,
+            skip_reason
+          })}`
+        );
       }
       return;
     }
     log(`[LeadRadar] matched keywords: ${JSON.stringify(match.matchedKeywords)}`);
+    positive_keyword_matches = match.matchedKeywords;
 
     // 4) Scoring (real)
-    const score = await this.deps.scoringService.score({
+    const scoring = await this.deps.scoringService.score({
       message: input,
       matchedKeywords: match.matchedKeywords,
       categories: match.categories
     });
+    const score = typeof scoring === "number" ? scoring : scoring.score;
+    score_breakdown = typeof scoring === "number" ? null : scoring.breakdown;
     log(`[LeadRadar-DEBUG] score=${score} threshold=${settings.min_score_threshold}`);
 
     // 5) Threshold check
     if (score < settings.min_score_threshold) {
       log("[LeadRadar] skipped: below threshold");
+      threshold_passed = false;
+      skip_reason = "below_threshold";
+      final_action = "skipped";
+      if (traceEnabled) {
+        log(
+          `[LeadRadar-TRACE] ${JSON.stringify({
+            messageId: input.messageId,
+            leadradar_enabled: true,
+            source_monitored,
+            inbound_message: true,
+            text_message: true,
+            raw_text,
+            normalized_text,
+            positive_keyword_matches,
+            negative_keyword_matches,
+            score_breakdown: score_breakdown ?? { total: score },
+            threshold_passed,
+            dedupe_result,
+            final_action,
+            skip_reason
+          })}`
+        );
+      }
       return;
     }
+    threshold_passed = true;
 
     // 6) Deduplication (hard + soft)
     const hardDup = await this.deps.dedupeService.isHardDuplicate({ message: input });
     if (hardDup) {
       log("[LeadRadar] skipped: duplicate");
+      dedupe_result = "hard";
+      skip_reason = "duplicate_hard";
+      final_action = "skipped";
+      if (traceEnabled) {
+        log(
+          `[LeadRadar-TRACE] ${JSON.stringify({
+            messageId: input.messageId,
+            leadradar_enabled: true,
+            source_monitored,
+            inbound_message: true,
+            text_message: true,
+            raw_text,
+            normalized_text,
+            positive_keyword_matches,
+            negative_keyword_matches,
+            score_breakdown: score_breakdown ?? null,
+            threshold_passed,
+            dedupe_result,
+            final_action,
+            skip_reason
+          })}`
+        );
+      }
       return;
     }
 
@@ -182,6 +352,29 @@ export class LeadRadarIngestionService {
     });
     if (softDup) {
       log("[LeadRadar] skipped: soft duplicate");
+      dedupe_result = "soft";
+      skip_reason = "duplicate_soft";
+      final_action = "skipped";
+      if (traceEnabled) {
+        log(
+          `[LeadRadar-TRACE] ${JSON.stringify({
+            messageId: input.messageId,
+            leadradar_enabled: true,
+            source_monitored,
+            inbound_message: true,
+            text_message: true,
+            raw_text,
+            normalized_text,
+            positive_keyword_matches,
+            negative_keyword_matches,
+            score_breakdown: score_breakdown ?? null,
+            threshold_passed,
+            dedupe_result,
+            final_action,
+            skip_reason
+          })}`
+        );
+      }
       return;
     }
 
@@ -211,6 +404,29 @@ export class LeadRadarIngestionService {
         });
         log("[LeadRadar] Lead merged (multi-chat)");
         log("[LeadRadar] message processed");
+        dedupe_result = "merged_existing_lead";
+        skip_reason = "merged_existing_lead";
+        final_action = "merged";
+        if (traceEnabled) {
+          log(
+            `[LeadRadar-TRACE] ${JSON.stringify({
+              messageId: input.messageId,
+              leadradar_enabled: true,
+              source_monitored,
+              inbound_message: true,
+              text_message: true,
+              raw_text,
+              normalized_text,
+              positive_keyword_matches,
+              negative_keyword_matches,
+              score_breakdown: score_breakdown ?? null,
+              threshold_passed,
+              dedupe_result,
+              final_action,
+              skip_reason
+            })}`
+          );
+        }
         return;
       }
     }
@@ -279,6 +495,28 @@ export class LeadRadarIngestionService {
 
     log("[LeadRadar] New lead created");
     log("[LeadRadar] message processed");
+    final_action = "created";
+    skip_reason = null;
+    if (traceEnabled) {
+      log(
+        `[LeadRadar-TRACE] ${JSON.stringify({
+          messageId: input.messageId,
+          leadradar_enabled: true,
+          source_monitored,
+          inbound_message: true,
+          text_message: true,
+          raw_text,
+          normalized_text,
+          positive_keyword_matches,
+          negative_keyword_matches,
+          score_breakdown: score_breakdown ?? null,
+          threshold_passed,
+          dedupe_result,
+          final_action,
+          skip_reason
+        })}`
+      );
+    }
   }
 }
 
