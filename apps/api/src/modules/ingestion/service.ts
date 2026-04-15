@@ -458,17 +458,42 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
         (dedupeKey && existing.dedupeKey !== dedupeKey);
 
       if (needsUpgrade) {
-        await app.prisma.message.update({
-          where: { id: existing.id },
-          data: {
-            messageType: desiredType,
-            relatedChannelId,
-            relatedPostId,
-            contextPreview,
-            dedupeKey,
-            rawPayload: toSafePrismaJson(payload.rawPayload)
+        try {
+          await app.prisma.message.update({
+            where: { id: existing.id },
+            data: {
+              messageType: desiredType,
+              relatedChannelId,
+              relatedPostId,
+              contextPreview,
+              dedupeKey,
+              rawPayload: toSafePrismaJson(payload.rawPayload)
+            }
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.toLowerCase().includes("hex escape")) {
+            app.log.warn(
+              { err },
+              "[Ingestion] message upgrade update failed due to encoding; retrying without optional fields"
+            );
+            // Fall back to a minimal upgrade to keep ingestion idempotent and avoid 500s.
+            // We prefer losing optional metadata over breaking the whole pipeline.
+            await app.prisma.message.update({
+              where: { id: existing.id },
+              data: {
+                messageType: desiredType,
+                relatedChannelId,
+                relatedPostId,
+                contextPreview: null,
+                dedupeKey: null,
+                rawPayload: undefined
+              }
+            });
+          } else {
+            throw err;
           }
-        });
+        }
       }
     }
 
