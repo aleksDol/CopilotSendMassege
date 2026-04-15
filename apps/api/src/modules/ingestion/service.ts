@@ -28,15 +28,25 @@ type MessageEventPayload = {
   hasAttachment?: boolean;
 };
 
-const getRawString = (raw: unknown): string | null => {
+const sanitizeDbString = (raw: unknown): string | null => {
   if (typeof raw !== "string") return null;
-  const value = raw.trim();
+  // Postgres text/jsonb cannot contain NUL bytes; also guard against odd unicode edge-cases.
+  // We prefer lossy sanitization over breaking ingestion.
+  const withoutNul = raw.replaceAll("\u0000", "");
+  return Buffer.from(withoutNul, "utf8").toString("utf8");
+};
+
+const getRawString = (raw: unknown): string | null => {
+  const sanitized = sanitizeDbString(raw);
+  if (sanitized == null) return null;
+  const value = sanitized.trim();
   return value.length ? value : null;
 };
 
 const getRawPreview = (raw: unknown, maxLen: number): string | null => {
-  if (typeof raw !== "string") return null;
-  const v = raw.trim();
+  const sanitized = sanitizeDbString(raw);
+  if (sanitized == null) return null;
+  const v = sanitized.trim();
   if (!v) return null;
   return v.length > maxLen ? v.slice(0, maxLen) : v;
 };
@@ -356,14 +366,14 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
       }
     },
     update: {
-      title: payload.conversationTitle ?? undefined
+      title: sanitizeDbString(payload.conversationTitle) ?? undefined
     },
     create: {
       companyId,
       channelAccountId,
       externalConversationId: payload.externalConversationId,
       conversationType: toConversationType(payload),
-      title: payload.conversationTitle ?? null
+      title: sanitizeDbString(payload.conversationTitle)
     }
   });
 
@@ -586,16 +596,16 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
       participantId: participant.id,
       direction: toMessageDirection(payload.isOutgoing),
       messageType: toMessageType(payload),
-      text: payload.text ?? null,
-      normalizedText: payload.text?.toLowerCase() ?? null,
+      text: sanitizeDbString(payload.text),
+      normalizedText: sanitizeDbString(payload.text)?.toLowerCase() ?? null,
       sentAt: new Date(payload.sentAt),
-      replyToExternalMessageId: payload.replyToExternalMessageId ?? null,
+      replyToExternalMessageId: sanitizeDbString(payload.replyToExternalMessageId),
       hasAttachment: payload.hasAttachment ?? false,
       relatedChannelId: getRawString(payload.rawPayload?.relatedChannelId) ?? null,
       relatedPostId: getRawString(payload.rawPayload?.relatedPostId) ?? null,
       contextPreview:
         getRawPreview(payload.rawPayload?.contextPreview, 240) ??
-        ((payload.text ?? "").slice(0, 240) || null),
+        (sanitizeDbString(payload.text)?.slice(0, 240) || null),
       dedupeKey:
         getRawString(payload.rawPayload?.dedupeKey) ??
         `${payload.telegramAccountId}:${payload.externalConversationId}:${payload.externalMessageId}`,
@@ -606,18 +616,18 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
       conversationId: conversation.id,
       participantId: participant.id,
       externalMessageId: payload.externalMessageId,
-      replyToExternalMessageId: payload.replyToExternalMessageId ?? null,
+      replyToExternalMessageId: sanitizeDbString(payload.replyToExternalMessageId),
       direction: toMessageDirection(payload.isOutgoing),
       messageType: toMessageType(payload),
-      text: payload.text ?? null,
-      normalizedText: payload.text?.toLowerCase() ?? null,
+      text: sanitizeDbString(payload.text),
+      normalizedText: sanitizeDbString(payload.text)?.toLowerCase() ?? null,
       sentAt: new Date(payload.sentAt),
       hasAttachment: payload.hasAttachment ?? false,
       relatedChannelId: getRawString(payload.rawPayload?.relatedChannelId) ?? null,
       relatedPostId: getRawString(payload.rawPayload?.relatedPostId) ?? null,
       contextPreview:
         getRawPreview(payload.rawPayload?.contextPreview, 240) ??
-        ((payload.text ?? "").slice(0, 240) || null),
+        (sanitizeDbString(payload.text)?.slice(0, 240) || null),
       dedupeKey:
         getRawString(payload.rawPayload?.dedupeKey) ??
         `${payload.telegramAccountId}:${payload.externalConversationId}:${payload.externalMessageId}`,
