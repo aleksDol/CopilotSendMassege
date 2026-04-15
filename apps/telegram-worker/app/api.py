@@ -13,6 +13,7 @@ from app.schemas import (
     LogoutRequest,
     ResolveChatByLinkRequest,
     PollLoginQrRequest,
+    SendChannelPostCommentRequest,
     SendMessageRequest,
     StartLoginQrRequest,
     StartLoginRequest,
@@ -33,7 +34,13 @@ from app.services.auth_flow import (
     verify_password,
     verify_password_qr,
 )
-from app.services.sync_service import list_connected_accounts, run_initial_sync, send_message, resolve_public_group_by_link
+from app.services.sync_service import (
+    list_connected_accounts,
+    run_initial_sync,
+    send_channel_post_comment,
+    send_message,
+    resolve_public_group_by_link,
+)
 from app.services.live_listener import LiveListenerManager
 from app.services.safety import safety_service
 from app.telegram_client import log_telegram_proxy_on_startup
@@ -303,6 +310,36 @@ async def internal_send_message(payload: SendMessageRequest) -> dict:
             raise
         except Exception as exc:
             raise WorkerError("TELEGRAM_SEND_FAILED", "Failed to send Telegram message", 500) from exc
+
+
+@app.post("/internal/telegram/send-channel-post-comment", dependencies=[Depends(verify_internal_token)])
+async def internal_send_channel_post_comment(payload: SendChannelPostCommentRequest) -> dict:
+    logger.info(
+        "send-channel-post-comment requested for company=%s channelAccount=%s channel=%s post=%s",
+        payload.company_id,
+        payload.channel_account_id,
+        payload.channel_id,
+        payload.post_id,
+    )
+    async with concurrency_limiter:
+        try:
+            return await safety_service.execute_send(
+                company_id=payload.company_id,
+                channel_account_id=payload.channel_account_id,
+                external_conversation_id=payload.channel_id,
+                send_coro_factory=lambda: send_channel_post_comment(
+                    company_id=payload.company_id,
+                    channel_account_id=payload.channel_account_id,
+                    channel_id=payload.channel_id,
+                    post_id=payload.post_id,
+                    text=payload.text,
+                    crypto=crypto,
+                ),
+            )
+        except WorkerError:
+            raise
+        except Exception as exc:
+            raise WorkerError("TELEGRAM_SEND_COMMENT_FAILED", "Failed to send Telegram channel post comment", 500) from exc
 
 
 @app.post("/internal/telegram/logout", dependencies=[Depends(verify_internal_token)])

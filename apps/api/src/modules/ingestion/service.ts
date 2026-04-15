@@ -9,6 +9,7 @@ import { upsertParticipant } from "../participants/service.js";
 import { ConversationStateService } from "../state/service.js";
 import type { LeadRadarMessageInput } from "../leadradar/types/ingestion.js";
 import { enqueueLeadRadarJob } from "../leadradar/queue/leadradar-queue.js";
+import { enqueueCommentingGenerationJob } from "../commenting/queue/commenting-queue.js";
 
 type MessageEventPayload = {
   telegramAccountId: string;
@@ -110,6 +111,20 @@ const canTriggerLeadRadar = (payload: MessageEventPayload): boolean => {
   }
   return true;
 };
+
+const canQueueCommentCandidate = (payload: MessageEventPayload): boolean => {
+  if (toConversationType(payload) !== "CHANNEL") {
+    return false;
+  }
+
+  const text = typeof payload.text === "string" ? payload.text.trim() : "";
+  return text.length > 0;
+};
+
+const toCommentCandidateSource = (payload: MessageEventPayload): { channelId: string; postId: string } => ({
+  channelId: getRawString(payload.rawPayload?.relatedChannelId) ?? payload.externalConversationId,
+  postId: getRawString(payload.rawPayload?.relatedPostId) ?? payload.externalMessageId
+});
 
 const toLeadRadarInput = (params: {
   userId: string;
@@ -537,6 +552,22 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
       }
     }
 
+    if (canQueueCommentCandidate(payload)) {
+      const source = toCommentCandidateSource(payload);
+      void enqueueCommentingGenerationJob(app.config.env, {
+        telegramAccountId: telegramAccount.id,
+        channelId: source.channelId,
+        postId: source.postId
+      }).then(
+        ({ jobId, deduped }) =>
+          app.log.info(
+            { jobId, deduped, telegramAccountId: telegramAccount.id, channelId: source.channelId, postId: source.postId },
+            "[Commenting] generation job enqueued"
+          ),
+        (err: unknown) => app.log.warn({ err }, "[Commenting] failed to enqueue generation job")
+      );
+    }
+
     return {
       ok: true,
       conversationId: conversation.id,
@@ -683,6 +714,22 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
         });
       }
     }
+  }
+
+  if (canQueueCommentCandidate(payload)) {
+    const source = toCommentCandidateSource(payload);
+    void enqueueCommentingGenerationJob(app.config.env, {
+      telegramAccountId: telegramAccount.id,
+      channelId: source.channelId,
+      postId: source.postId
+    }).then(
+      ({ jobId, deduped }) =>
+        app.log.info(
+          { jobId, deduped, telegramAccountId: telegramAccount.id, channelId: source.channelId, postId: source.postId },
+          "[Commenting] generation job enqueued"
+        ),
+      (err: unknown) => app.log.warn({ err }, "[Commenting] failed to enqueue generation job")
+    );
   }
 
   return {

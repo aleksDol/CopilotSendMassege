@@ -212,6 +212,12 @@ enum TaskSource {
   AI
 }
 
+enum CommentCandidateStatus {
+  new
+  published
+  ignored
+}
+
 enum KnowledgeKind {
   FAQ
   PRODUCT
@@ -309,6 +315,7 @@ model User {
   leadRadarNegativeKeywords LeadRadarNegativeKeyword[]
   leadRadarLeads            LeadRadarLead[]
   leadRadarSettings         LeadRadarSettings[]
+  commentCandidates         CommentCandidate[]
 
   @@index([companyId])
   @@index([companyId, role])
@@ -441,6 +448,7 @@ model TelegramAccount {
   leadRadarNegativeKeywords LeadRadarNegativeKeyword[]
   leadRadarLeads            LeadRadarLead[]
   leadRadarSettings         LeadRadarSettings[]
+  commentCandidates         CommentCandidate[]
 
   @@index([telegramUserId])
   @@index([loginStatus])
@@ -717,6 +725,27 @@ model AiRun {
   @@index([companyId, createdAt(sort: Desc)])
   @@index([conversationId, createdAt(sort: Desc)])
   @@index([messageId])
+}
+
+model CommentCandidate {
+  id                String                 @id @default(uuid()) @db.Uuid
+  userId            String                 @db.Uuid
+  telegramAccountId String                 @db.Uuid
+  channelId         String
+  postId            String
+  postText          String
+  aiComment         String?
+  status            CommentCandidateStatus @default(new)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  publishedAt       DateTime?
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  telegramAccount TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Restrict)
+
+  @@unique([telegramAccountId, channelId, postId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([telegramAccountId, status, createdAt(sort: Desc)])
 }
 
 /// =========================

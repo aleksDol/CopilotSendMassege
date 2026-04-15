@@ -340,3 +340,19 @@ export type LeadRadarSettingsResponse = {
   contextAfterCount: number;
   dedupeWindowHours: number;
 };
+
+export type CommentCandidateStatus = "new" | "published" | "ignored";
+
+export type CommentCandidate = {
+  id: string;
+  userId: string;
+  telegramAccountId: string;
+  channelId: string;
+  postId: string;
+  postText: string;
+  aiComment: string | null;
+  status: CommentCandidateStatus;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string | null;
+};

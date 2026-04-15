@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   CircleHelp,
   MessageCircle,
+  MessageSquareText,
   CheckSquare,
   Radar,
   BookOpen,
@@ -26,6 +27,7 @@ const navItems = [
   { href: "/getting-started", label: "Начало работы", icon: CircleHelp },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/chats", label: "Chats", icon: MessageCircle },
+  { href: "/commenting", label: "Commenting", icon: MessageSquareText },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/leadradar", label: "LeadRadar", icon: Radar }
 ];

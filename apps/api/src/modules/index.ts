@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import authRoutes from "./auth/routes.js";
 import aiRoutes from "./ai/routes.js";
+import commentingRoutes from "./commenting/routes.js";
 import companyRoutes from "./companies/routes.js";
 import conversationRoutes from "./conversations/routes.js";
 import dashboardRoutes from "./dashboard/routes.js";
@@ -26,6 +27,7 @@ const apiModules: FastifyPluginAsync = async (app) => {
   await app.register(followUpRoutes);
   await app.register(authRoutes);
   await app.register(aiRoutes);
+  await app.register(commentingRoutes);
   await app.register(telegramRoutes);
   await app.register(conversationRoutes);
   await app.register(messageRoutes);

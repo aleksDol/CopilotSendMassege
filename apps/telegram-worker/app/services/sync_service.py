@@ -756,6 +756,151 @@ async def send_message(
             await client.disconnect()
 
 
+async def send_channel_post_comment(
+    *,
+    company_id: str,
+    channel_account_id: str,
+    channel_id: str,
+    post_id: str,
+    text: str,
+    crypto: SessionCrypto,
+) -> dict[str, Any]:
+    channel_peer = _parse_peer_id(channel_id)
+    try:
+        post_id_int = int(post_id)
+    except ValueError as exc:
+        raise WorkerError("INVALID_POST_ID", "Post id must be a number", 400) from exc
+
+    message_text = (text or "").strip()
+    if not message_text:
+        raise WorkerError("EMPTY_COMMENT_TEXT", "Comment text is required", 400)
+
+    async with get_connection() as conn:
+        account = await _load_connected_account(conn, company_id, channel_account_id)
+        session = crypto.decrypt(account["sessionDataEncrypted"])
+
+        client = create_client(session)
+
+        try:
+            await client.connect()
+
+            if not await client.is_user_authorized():
+                await mark_error_by_channel(
+                    company_id,
+                    channel_account_id,
+                    "Telegram session expired, reconnect required",
+                    "RECONNECT_REQUIRED",
+                )
+                raise WorkerError("RECONNECT_REQUIRED", "Telegram session expired, reconnect required", 400)
+
+            me = await client.get_me()
+
+            try:
+                channel_entity = await client.get_entity(channel_peer)
+            except Exception as exc:
+                raise WorkerError("CHANNEL_NOT_FOUND", "Channel not found or inaccessible", 404) from exc
+
+            if not isinstance(channel_entity, Channel):
+                raise WorkerError("INVALID_CHANNEL", "Provided channel id does not resolve to a channel", 400)
+
+            try:
+                discussion = await client(GetDiscussionMessageRequest(peer=channel_entity, msg_id=post_id_int))
+            except Exception as exc:
+                raise WorkerError("DISCUSSION_NOT_FOUND", "Could not resolve linked discussion for this post", 404) from exc
+
+            discussion_messages = getattr(discussion, "messages", None) or []
+            discussion_chat = None
+            discussion_msg_id = None
+            for dm in discussion_messages:
+                peer = getattr(dm, "peer_id", None)
+                if peer is not None:
+                    discussion_chat = peer
+                    discussion_msg_id = getattr(dm, "id", None)
+                    if isinstance(discussion_msg_id, int) and discussion_msg_id != post_id_int:
+                        break
+
+            if discussion_chat is None or not isinstance(discussion_msg_id, int):
+                raise WorkerError("DISCUSSION_NOT_FOUND", "Linked discussion message not found", 404)
+
+            try:
+                discussion_entity = await client.get_entity(discussion_chat)
+            except Exception as exc:
+                raise WorkerError("DISCUSSION_CHAT_NOT_FOUND", "Linked discussion chat not accessible", 404) from exc
+
+            sent = await client.send_message(
+                entity=discussion_entity,
+                message=message_text,
+                reply_to=discussion_msg_id,
+            )
+
+            discussion_peer_id = str(get_peer_id(discussion_entity))
+            related_channel_id = str(get_peer_id(channel_entity))
+            event = {
+                "telegramAccountId": str(account["telegramAccountId"]),
+                "externalConversationId": discussion_peer_id,
+                "externalMessageId": str(sent.id),
+                "senderExternalId": str(me.id),
+                "senderType": "self",
+                "senderFullName": " ".join(part for part in [me.first_name, me.last_name] if part).strip() or None,
+                "senderUsername": me.username,
+                "text": sent.message,
+                "sentAt": sent.date.isoformat(),
+                "isOutgoing": True,
+                "replyToExternalMessageId": str(discussion_msg_id),
+                "rawPayload": {
+                    "id": sent.id,
+                    "out": True,
+                    "senderId": me.id,
+                    "dialogType": "channel_comment",
+                    "chatType": "channel_comments",
+                    "relatedChannelId": related_channel_id,
+                    "relatedPostId": str(post_id_int),
+                    "contextPreview": None,
+                    "dedupeKey": f'{account["telegramAccountId"]}:{related_channel_id}:{post_id_int}:{sent.id}',
+                    "hasMedia": bool(getattr(sent, "media", None)),
+                },
+                "conversationTitle": getattr(discussion_entity, "title", None),
+                "hasAttachment": bool(getattr(sent, "media", None)),
+            }
+
+            async def _ingest() -> None:
+                try:
+                    await push_message_event(event, timeout_s=20.0)
+                except Exception as exc:
+                    logger.warning(
+                        "push_message_event failed after send comment channelAccount=%s channel=%s post=%s msgId=%s err=%s",
+                        channel_account_id,
+                        channel_id,
+                        post_id,
+                        str(sent.id),
+                        exc,
+                    )
+
+            asyncio.create_task(_ingest())
+
+            now = _now()
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    '''
+                    UPDATE "TelegramAccount"
+                    SET "lastEventAt" = %s, "updatedAt" = %s
+                    WHERE "id" = %s
+                    ''',
+                    (now, now, account["telegramAccountId"]),
+                )
+
+            return {
+                "status": "sent",
+                "details": {
+                    "externalMessageId": str(sent.id),
+                    "discussionConversationId": discussion_peer_id,
+                    "replyToPostId": str(post_id_int),
+                },
+            }
+        finally:
+            await client.disconnect()
+
+
 def _normalize_public_chat_link(raw: str) -> str:
     s = (raw or "").strip()
     if not s:

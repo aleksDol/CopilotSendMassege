@@ -132,6 +132,31 @@ importers:
         specifier: ^5.8.2
         version: 5.9.3
 
+  apps/commenting-worker:
+    dependencies:
+      '@prisma/client':
+        specifier: ^6.19.2
+        version: 6.19.2(prisma@6.19.2(typescript@5.9.3))(typescript@5.9.3)
+      '@repo/ai-core':
+        specifier: workspace:*
+        version: link:../../packages/ai-core
+      bullmq:
+        specifier: ^5.16.0
+        version: 5.71.0
+      ioredis:
+        specifier: ^5.4.1
+        version: 5.10.0
+    devDependencies:
+      '@repo/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      tsx:
+        specifier: ^4.19.3
+        version: 4.21.0
+      typescript:
+        specifier: ^5.8.2
+        version: 5.9.3
+
   apps/leadradar-worker:
     dependencies:
       '@prisma/client':

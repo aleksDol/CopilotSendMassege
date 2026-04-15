@@ -48,6 +48,14 @@ class SendMessageRequest(BaseModel):
     text: str
 
 
+class SendChannelPostCommentRequest(BaseModel):
+    company_id: str = Field(alias="companyId")
+    channel_account_id: str = Field(alias="channelAccountId")
+    channel_id: str = Field(alias="channelId")
+    post_id: str = Field(alias="postId")
+    text: str
+
+
 class LogoutRequest(BaseModel):
     company_id: str = Field(alias="companyId")
     channel_account_id: str = Field(alias="channelAccountId")
