@@ -6,6 +6,7 @@ from typing import Any
 
 import psycopg
 from telethon import events
+from telethon.tl.functions.channels import GetFullChannelRequest
 from telethon.tl.types import Channel, Chat, InputUser, User
 from telethon.tl.functions.users import GetUsersRequest
 
@@ -20,6 +21,27 @@ logger = logging.getLogger("telegram-worker.live-listener")
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+async def _resolve_linked_chat_id(client: Any, chat: Any) -> str | None:
+    """
+    Telegram "comments enabled" for a broadcast channel is represented as a linked discussion chat id.
+    Telethon often exposes it only on the full channel info (GetFullChannelRequest).
+    """
+    try:
+        if isinstance(chat, Channel):
+            try:
+                full = await client(GetFullChannelRequest(chat))
+                full_chat = getattr(full, "full_chat", None)
+                linked = getattr(full_chat, "linked_chat_id", None)
+                if linked:
+                    return str(linked)
+            except Exception:
+                linked = getattr(chat, "linked_chat_id", None)
+                return str(linked) if linked else None
+    except Exception:
+        pass
+    return None
 
 
 async def _resolve_sender_display(client: Any, event: events.NewMessage.Event, me: User) -> tuple[str | None, str | None]:
@@ -288,7 +310,7 @@ async def _run_account_listener(account: ConnectedAccount, crypto: SessionCrypto
                             "peerUsername": getattr(chat, "username", None),
                             # For channels, Telethon exposes the linked discussion group id (comments enabled) as linked_chat_id.
                             # When missing, the channel does not support comments.
-                            "linkedChatId": str(getattr(chat, "linked_chat_id", "")) or None,
+                            "linkedChatId": await _resolve_linked_chat_id(client, chat),
                             "peerIsBot": bool(getattr(chat, "bot", False)),
                             "isServiceDialog": bool(getattr(chat, "support", False) or getattr(chat, "is_self", False)),
                             "hasMedia": has_attachment,

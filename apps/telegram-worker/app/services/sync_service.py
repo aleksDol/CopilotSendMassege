@@ -7,6 +7,7 @@ import asyncio
 import psycopg
 from urllib.parse import urlparse
 from telethon.errors import FloodWaitError, RPCError, ServerError, TimedOutError
+from telethon.tl.functions.channels import GetFullChannelRequest
 from telethon.tl.types import Channel, Chat, InputUser, User
 from telethon.tl.functions.users import GetUsersRequest
 from telethon.tl.functions.messages import GetDiscussionMessageRequest
@@ -30,6 +31,28 @@ class SyncResult:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+async def _resolve_linked_chat_id(client: Any, entity: Any) -> str | None:
+    """
+    Telegram "comments enabled" for a broadcast channel is represented as a linked discussion chat id.
+    Telethon often exposes it only on the *full* channel info (GetFullChannelRequest), not on the dialog entity.
+    """
+    try:
+        if isinstance(entity, Channel):
+            try:
+                full = await client(GetFullChannelRequest(entity))
+                full_chat = getattr(full, "full_chat", None)
+                linked = getattr(full_chat, "linked_chat_id", None)
+                if linked:
+                    return str(linked)
+            except Exception:
+                # Fallback to best-effort attribute (may be missing on partial entities).
+                linked = getattr(entity, "linked_chat_id", None)
+                return str(linked) if linked else None
+    except Exception:
+        pass
+    return None
 
 
 async def _resolve_sync_message_sender(
@@ -242,6 +265,7 @@ async def run_initial_sync(
 
                 result.dialogs_synced += 1
                 conversation_type = _resolve_conversation_type(entity)
+                linked_chat_id = await _resolve_linked_chat_id(client, entity)
 
                 async for message in client.iter_messages(dialog.id, limit=messages_cap):
                     sender_id = message.sender_id
@@ -279,7 +303,7 @@ async def run_initial_sync(
                             "peerUsername": getattr(entity, "username", None),
                             # For channels, Telethon exposes the linked discussion group id (comments enabled) as linked_chat_id.
                             # When missing, the channel does not support comments.
-                            "linkedChatId": str(getattr(entity, "linked_chat_id", "")) or None,
+                            "linkedChatId": linked_chat_id,
                             "peerIsBot": bool(getattr(entity, "bot", False)),
                             "isServiceDialog": bool(getattr(entity, "support", False) or getattr(entity, "is_self", False)),
                             "hasMedia": bool(getattr(message, "media", None)),
