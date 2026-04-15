@@ -127,6 +127,13 @@ const canQueueCommentCandidate = (payload: MessageEventPayload): boolean => {
     return false;
   }
 
+  // We can only publish comments when the channel has a linked discussion chat (Telegram "comments enabled").
+  // telegram-worker provides this as rawPayload.linkedChatId for channel dialogs.
+  const linkedChatId = getRawString(payload.rawPayload?.linkedChatId);
+  if (!linkedChatId) {
+    return false;
+  }
+
   const text = typeof payload.text === "string" ? payload.text.trim() : "";
   return text.length > 0;
 };

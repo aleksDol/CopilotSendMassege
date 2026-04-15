@@ -32,6 +32,19 @@ const statusLabel = (status: CommentCandidate["status"]) => {
   return "Ignored";
 };
 
+const toTelegramChannelInternalId = (channelId: string) => {
+  const m = channelId.trim().match(/^-100(\d+)$/);
+  return m?.[1] ?? null;
+};
+
+const toTelegramPostUrl = (channelId: string, postId: string) => {
+  const internalId = toTelegramChannelInternalId(channelId);
+  const post = postId.trim();
+  if (!internalId || !post) return null;
+  // Works for private channels/supergroups where you have access.
+  return `https://t.me/c/${internalId}/${encodeURIComponent(post)}`;
+};
+
 export default function CommentingPage() {
   const { token, company, user } = useAuth();
   const queryClient = useQueryClient();
@@ -161,7 +174,25 @@ export default function CommentingPage() {
                 }`}
               >
                 <div className="mb-1 flex items-center justify-between gap-2">
-                  <div className="truncate text-xs text-muted-foreground">Channel: {item.channelId}</div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {(() => {
+                      const url = toTelegramPostUrl(item.channelId, item.postId);
+                      return url ? (
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline underline-offset-2 hover:text-foreground"
+                          onClick={(e) => e.stopPropagation()}
+                          title="Open post in Telegram"
+                        >
+                          Open in Telegram
+                        </a>
+                      ) : (
+                        <>Channel: {item.channelId}</>
+                      );
+                    })()}
+                  </div>
                   <Badge variant={statusBadgeVariant(item.status)}>{statusLabel(item.status)}</Badge>
                 </div>
                 <div className="text-sm">{preview(item.postText)}</div>
@@ -174,7 +205,30 @@ export default function CommentingPage() {
           <div className="border-b border-border px-4 py-3 text-sm font-semibold">Post</div>
           <div className="max-h-[70vh] overflow-y-auto p-4">
             {selectedCandidate ? (
-              <div className="whitespace-pre-wrap text-sm leading-6 text-foreground">{selectedCandidate.postText}</div>
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  {(() => {
+                    const url = toTelegramPostUrl(selectedCandidate.channelId, selectedCandidate.postId);
+                    return url ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(url, "_blank", "noreferrer")}
+                      >
+                        Open post in Telegram
+                      </Button>
+                    ) : null;
+                  })()}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigator.clipboard?.writeText(selectedCandidate.channelId).catch(() => {})}
+                  >
+                    Copy channel ID
+                  </Button>
+                </div>
+                <div className="whitespace-pre-wrap text-sm leading-6 text-foreground">{selectedCandidate.postText}</div>
+              </div>
             ) : (
               <div className="text-sm text-muted-foreground">Select a candidate.</div>
             )}

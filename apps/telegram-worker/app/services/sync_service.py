@@ -277,6 +277,9 @@ async def run_initial_sync(
                             ).strip()
                             or None,
                             "peerUsername": getattr(entity, "username", None),
+                            # For channels, Telethon exposes the linked discussion group id (comments enabled) as linked_chat_id.
+                            # When missing, the channel does not support comments.
+                            "linkedChatId": str(getattr(entity, "linked_chat_id", "")) or None,
                             "peerIsBot": bool(getattr(entity, "bot", False)),
                             "isServiceDialog": bool(getattr(entity, "support", False) or getattr(entity, "is_self", False)),
                             "hasMedia": bool(getattr(message, "media", None)),

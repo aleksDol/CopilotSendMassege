@@ -286,6 +286,9 @@ async def _run_account_listener(account: ConnectedAccount, crypto: SessionCrypto
                             ).strip()
                             or None,
                             "peerUsername": getattr(chat, "username", None),
+                            # For channels, Telethon exposes the linked discussion group id (comments enabled) as linked_chat_id.
+                            # When missing, the channel does not support comments.
+                            "linkedChatId": str(getattr(chat, "linked_chat_id", "")) or None,
                             "peerIsBot": bool(getattr(chat, "bot", False)),
                             "isServiceDialog": bool(getattr(chat, "support", False) or getattr(chat, "is_self", False)),
                             "hasMedia": has_attachment,
