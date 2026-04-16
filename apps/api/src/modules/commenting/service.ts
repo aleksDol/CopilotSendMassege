@@ -73,7 +73,7 @@ export const listCommentCandidates = async (
       },
       ...(excludedChannelIds.length ? { channelId: { notIn: excludedChannelIds } } : {}),
       ...(params.status ? { status: mapStatus(params.status) } : {}),
-      ...(params.onlyNew === false ? {} : { createdAt: { gt: state.lastSeenAt } })
+      ...(params.onlyNew ? { createdAt: { gt: state.lastSeenAt } } : {})
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: params.limit

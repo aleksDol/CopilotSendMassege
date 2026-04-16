@@ -57,8 +57,7 @@ export default function CommentingPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionInfo, setActionInfo] = useState<string | null>(null);
   const [excludeChannelId, setExcludeChannelId] = useState("");
-  const [showAll, setShowAll] = useState(false);
-  const [markedSeenOnce, setMarkedSeenOnce] = useState(false);
+  const [onlyNew, setOnlyNew] = useState(false);
 
   const stateQuery = useQuery({
     queryKey: ["commenting-state", scope],
@@ -67,25 +66,15 @@ export default function CommentingPage() {
   });
 
   const candidatesQuery = useQuery({
-    queryKey: ["commenting-candidates", scope, showAll],
-    queryFn: () => commentingApi.listCandidates(token ?? "", { limit: 100, onlyNew: !showAll }),
+    queryKey: ["commenting-candidates", scope, onlyNew],
+    queryFn: () => commentingApi.listCandidates(token ?? "", { limit: 100, onlyNew }),
     enabled: Boolean(token)
   });
 
   const candidates = candidatesQuery.data?.items ?? [];
 
-  useEffect(() => {
-    if (!token) return;
-    if (markedSeenOnce) return;
-    if (!candidatesQuery.isSuccess) return;
-    // Mark as seen once per page load so subsequent opens show only new items.
-    commentingApi
-      .markSeen(token)
-      .then(() => setMarkedSeenOnce(true))
-      .catch(() => {
-        // best-effort
-      });
-  }, [token, candidatesQuery.isSuccess, markedSeenOnce]);
+  // IMPORTANT: do not auto-mark as seen on load.
+  // It can hide existing candidates after any UI action (e.g. exclusions update).
 
   useEffect(() => {
     if (selectedId && candidates.some((item) => item.id === selectedId)) return;
@@ -189,7 +178,9 @@ export default function CommentingPage() {
       setExcludeChannelId("");
       await Promise.allSettled([
         queryClient.invalidateQueries({ queryKey: ["commenting-state", scope] }),
-        queryClient.invalidateQueries({ queryKey: ["commenting-candidates", scope] })
+        queryClient.invalidateQueries({ queryKey: ["commenting-candidates", scope] }),
+        queryClient.invalidateQueries({ queryKey: ["commenting-candidates", scope, false] }),
+        queryClient.invalidateQueries({ queryKey: ["commenting-candidates", scope, true] })
       ]);
     },
     onError: (error) => {
@@ -203,7 +194,9 @@ export default function CommentingPage() {
     onSuccess: async () => {
       await Promise.allSettled([
         queryClient.invalidateQueries({ queryKey: ["commenting-state", scope] }),
-        queryClient.invalidateQueries({ queryKey: ["commenting-candidates", scope] })
+        queryClient.invalidateQueries({ queryKey: ["commenting-candidates", scope] }),
+        queryClient.invalidateQueries({ queryKey: ["commenting-candidates", scope, false] }),
+        queryClient.invalidateQueries({ queryKey: ["commenting-candidates", scope, true] })
       ]);
     },
     onError: (error) => {
@@ -219,11 +212,11 @@ export default function CommentingPage() {
   if (!candidates.length) {
     return (
       <EmptyState
-        title={showAll ? "No comment candidates yet" : "Нет новых постов"}
+        title={onlyNew ? "Нет новых постов" : "No comment candidates yet"}
         description={
-          showAll
-            ? "When Telegram channel posts are ingested, AI comment candidates will appear here."
-            : "Новые кандидаты появятся, когда в отслеживаемых каналах выйдут свежие посты."
+          onlyNew
+            ? "Новые кандидаты появятся, когда в отслеживаемых каналах выйдут свежие посты."
+            : "When Telegram channel posts are ingested, AI comment candidates will appear here."
         }
       />
     );
@@ -242,14 +235,22 @@ export default function CommentingPage() {
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
-              checked={showAll}
+              checked={onlyNew}
               onChange={(e) => {
-                setShowAll(e.target.checked);
-                setMarkedSeenOnce(false);
+                setOnlyNew(e.target.checked);
               }}
             />
-            Показывать все (включая старые)
+            Только новые (после последнего “просмотрено”)
           </label>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => commentingApi.markSeen(token ?? "").then(() => queryClient.invalidateQueries({ queryKey: ["commenting-state", scope] }))}
+            disabled={!token}
+          >
+            Отметить как просмотренное
+          </Button>
 
           <div className="text-sm font-medium">Минус‑список каналов</div>
           <div className="flex flex-wrap gap-2">
@@ -285,7 +286,7 @@ export default function CommentingPage() {
 
           {stateQuery.data?.lastSeenAt ? (
             <div className="text-xs text-muted-foreground">
-              Только новые: показываем кандидаты после{" "}
+              Последнее “просмотрено”:{" "}
               {new Date(stateQuery.data.lastSeenAt).toLocaleString()}
             </div>
           ) : null}

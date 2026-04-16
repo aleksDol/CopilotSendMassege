@@ -8,7 +8,7 @@ export const listCommentCandidatesQuerySchema = z.object({
   onlyNew: z
     .union([z.literal("true"), z.literal("false")])
     .optional()
-    .transform((v) => (v === undefined ? true : v === "true"))
+    .transform((v) => (v === undefined ? false : v === "true"))
 });
 
 export const commentCandidateIdParamsSchema = z.object({
