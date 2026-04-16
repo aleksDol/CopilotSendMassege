@@ -680,10 +680,21 @@ async def send_message(
             try:
                 input_entity = await client.get_input_entity(peer)
             except (ValueError, TypeError):
-                # Entity not in cache (e.g. after session restart). Load dialogs so the peer gets cached.
+                # Entity not in cache (e.g. after session restart). Try to resolve via network first,
+                # then fall back to loading more dialogs so the peer gets cached.
                 try:
-                    await client.get_dialogs(limit=100)
-                    input_entity = await client.get_input_entity(peer)
+                    resolved = await client.get_entity(peer)
+                    input_entity = await client.get_input_entity(resolved)
+                except Exception:
+                    try:
+                        await client.get_dialogs(limit=500)
+                        input_entity = await client.get_input_entity(peer)
+                    except (ValueError, TypeError) as e:
+                        raise WorkerError(
+                            "INVALID_CONVERSATION_ID",
+                            f"Could not resolve conversation: {e!s}",
+                            400,
+                        ) from e
                 except (ValueError, TypeError) as e:
                     raise WorkerError(
                         "INVALID_CONVERSATION_ID",
