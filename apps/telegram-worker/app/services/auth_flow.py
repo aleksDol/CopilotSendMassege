@@ -534,6 +534,7 @@ class WorkerError(Exception):
     code: str
     message: str
     status_code: int = 400
+    details: Any | None = None
 
 
 def _now() -> datetime:

@@ -165,6 +165,14 @@ export default function CommentingPage() {
         setActionError(
           "Нельзя отправить комментарий: подключённый Telegram-аккаунт не состоит в группе обсуждений (discussion group) этого канала. Вступите в группу обсуждений под этим аккаунтом (или добавьте его), затем повторите отправку."
         );
+      } else if (error instanceof ApiError && (error.code === "NEW_CONVERSATION_RATE_LIMIT" || error.code === "SEND_RATE_LIMIT_PER_MINUTE" || error.code === "SEND_RATE_LIMIT_PER_5_MINUTES" || error.code === "TELEGRAM_LIMITED" || error.code === "TELEGRAM_THROTTLED" || error.code === "SAFETY_MODE_ACTIVE")) {
+        const retryAfterSeconds =
+          typeof (error.details as any)?.retryAfterSeconds === "number" ? (error.details as any).retryAfterSeconds : null;
+        setActionError(
+          retryAfterSeconds
+            ? `Telegram ограничил отправку. Подождите ${Math.max(1, Math.round(retryAfterSeconds))} сек. и повторите.`
+            : "Telegram ограничил отправку. Подождите немного и повторите."
+        );
       } else {
         setActionError(error instanceof Error ? error.message : "Failed to publish candidate");
       }

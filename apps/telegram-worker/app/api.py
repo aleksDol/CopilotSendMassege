@@ -66,7 +66,13 @@ async def worker_error_handler(_request, exc: WorkerError):
     logger.error("WorkerError: %s - %s", exc.code, exc.message)
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": {"code": exc.code, "message": exc.message}},
+        content={
+            "error": {
+                "code": exc.code,
+                "message": exc.message,
+                **({"details": exc.details} if getattr(exc, "details", None) is not None else {}),
+            }
+        },
     )
 
 
@@ -323,18 +329,15 @@ async def internal_send_channel_post_comment(payload: SendChannelPostCommentRequ
     )
     async with concurrency_limiter:
         try:
-            return await safety_service.execute_send(
+            # Comment sends are safety-checked inside `send_channel_post_comment`
+            # using the linked discussion chat id (not the channel id).
+            return await send_channel_post_comment(
                 company_id=payload.company_id,
                 channel_account_id=payload.channel_account_id,
-                external_conversation_id=payload.channel_id,
-                send_coro_factory=lambda: send_channel_post_comment(
-                    company_id=payload.company_id,
-                    channel_account_id=payload.channel_account_id,
-                    channel_id=payload.channel_id,
-                    post_id=payload.post_id,
-                    text=payload.text,
-                    crypto=crypto,
-                ),
+                channel_id=payload.channel_id,
+                post_id=payload.post_id,
+                text=payload.text,
+                crypto=crypto,
             )
         except WorkerError:
             raise

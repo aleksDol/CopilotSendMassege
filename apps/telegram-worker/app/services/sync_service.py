@@ -18,6 +18,7 @@ from app.crypto import SessionCrypto
 from app.db import get_connection
 from app.internal_api_client import list_channel_comment_sources, push_message_event
 from app.services.auth_flow import WorkerError, mark_error_by_channel
+from app.services.safety import safety_service
 from app.telegram_client import create_client
 
 
@@ -854,75 +855,108 @@ async def send_channel_post_comment(
                 discussion_entity = await client.get_entity(discussion_chat)
             except Exception as exc:
                 raise WorkerError("DISCUSSION_CHAT_NOT_FOUND", "Linked discussion chat not accessible", 404) from exc
-            try:
-                sent = await client.send_message(
-                    entity=discussion_entity,
-                    message=message_text,
-                    reply_to=discussion_msg_id,
-                )
-            except RPCError as exc:
-                # Telegram channel comments are authored in the linked discussion group.
-                # If the connected account is not a member (or cannot write there),
-                # Telegram rejects the send with an RPC error. Provide an actionable error code.
-                msg = str(exc or "").lower()
-                if (
-                    "join the discussion group" in msg
-                    or "you join the discussion group" in msg
-                    or "user_not_participant" in msg
-                    or "chat_write_forbidden" in msg
-                    or "write forbidden" in msg
-                ):
-                    raise WorkerError(
-                        "DISCUSSION_JOIN_REQUIRED",
-                        "Join the linked discussion group before commenting (the connected Telegram account must be a member and have permission to write).",
-                        403,
-                    ) from exc
-                raise
-
             discussion_peer_id = str(get_peer_id(discussion_entity))
-            related_channel_id = str(get_peer_id(channel_entity))
-            event = {
-                "telegramAccountId": str(account["telegramAccountId"]),
-                "externalConversationId": discussion_peer_id,
-                "externalMessageId": str(sent.id),
-                "senderExternalId": str(me.id),
-                "senderType": "self",
-                "senderFullName": " ".join(part for part in [me.first_name, me.last_name] if part).strip() or None,
-                "senderUsername": me.username,
-                "text": sent.message,
-                "sentAt": sent.date.isoformat(),
-                "isOutgoing": True,
-                "replyToExternalMessageId": str(discussion_msg_id),
-                "rawPayload": {
-                    "id": sent.id,
-                    "out": True,
-                    "senderId": me.id,
-                    "dialogType": "channel_comment",
-                    "chatType": "channel_comments",
-                    "relatedChannelId": related_channel_id,
-                    "relatedPostId": str(post_id_int),
-                    "contextPreview": None,
-                    "dedupeKey": f'{account["telegramAccountId"]}:{related_channel_id}:{post_id_int}:{sent.id}',
-                    "hasMedia": bool(getattr(sent, "media", None)),
-                },
-                "conversationTitle": getattr(discussion_entity, "title", None),
-                "hasAttachment": bool(getattr(sent, "media", None)),
-            }
 
-            async def _ingest() -> None:
+            async def _send() -> dict[str, Any]:
                 try:
-                    await push_message_event(event, timeout_s=20.0)
-                except Exception as exc:
-                    logger.warning(
-                        "push_message_event failed after send comment channelAccount=%s channel=%s post=%s msgId=%s err=%s",
-                        channel_account_id,
-                        channel_id,
-                        post_id,
-                        str(sent.id),
-                        exc,
+                    sent_local = await client.send_message(
+                        entity=discussion_entity,
+                        message=message_text,
+                        reply_to=discussion_msg_id,
                     )
+                except FloodWaitError as exc:
+                    raise WorkerError(
+                        "TELEGRAM_LIMITED",
+                        f"Telegram rate limited. Retry in {max(1, int(exc.seconds))} seconds.",
+                        429,
+                        details={"retryAfterSeconds": max(1, int(exc.seconds))},
+                    ) from exc
+                except RPCError as exc:
+                    # Telegram channel comments are authored in the linked discussion group.
+                    # If the connected account is not a member (or cannot write there),
+                    # Telegram rejects the send with an RPC error. Provide an actionable error code.
+                    msg = str(exc or "").lower()
+                    if (
+                        "join the discussion group" in msg
+                        or "you join the discussion group" in msg
+                        or "user_not_participant" in msg
+                        or "chat_write_forbidden" in msg
+                        or "write forbidden" in msg
+                    ):
+                        raise WorkerError(
+                            "DISCUSSION_JOIN_REQUIRED",
+                            "Join the linked discussion group before commenting (the connected Telegram account must be a member and have permission to write).",
+                            403,
+                        ) from exc
+                    if "too many new outgoing conversations" in msg or "peer_flood" in msg:
+                        raise WorkerError(
+                            "NEW_CONVERSATION_RATE_LIMIT",
+                            "Too many new outgoing conversations in a short period. Please slow down.",
+                            429,
+                            details={"retryAfterSeconds": 3600},
+                        ) from exc
+                    raise
 
-            asyncio.create_task(_ingest())
+                related_channel_id_local = str(get_peer_id(channel_entity))
+                event_local = {
+                    "telegramAccountId": str(account["telegramAccountId"]),
+                    "externalConversationId": discussion_peer_id,
+                    "externalMessageId": str(sent_local.id),
+                    "senderExternalId": str(me.id),
+                    "senderType": "self",
+                    "senderFullName": " ".join(part for part in [me.first_name, me.last_name] if part).strip() or None,
+                    "senderUsername": me.username,
+                    "text": sent_local.message,
+                    "sentAt": sent_local.date.isoformat(),
+                    "isOutgoing": True,
+                    "replyToExternalMessageId": str(discussion_msg_id),
+                    "rawPayload": {
+                        "id": sent_local.id,
+                        "out": True,
+                        "senderId": me.id,
+                        "dialogType": "channel_comment",
+                        "chatType": "channel_comments",
+                        "relatedChannelId": related_channel_id_local,
+                        "relatedPostId": str(post_id_int),
+                        "contextPreview": None,
+                        "dedupeKey": f'{account["telegramAccountId"]}:{related_channel_id_local}:{post_id_int}:{sent_local.id}',
+                        "hasMedia": bool(getattr(sent_local, "media", None)),
+                    },
+                    "conversationTitle": getattr(discussion_entity, "title", None),
+                    "hasAttachment": bool(getattr(sent_local, "media", None)),
+                }
+
+                async def _ingest() -> None:
+                    try:
+                        await push_message_event(event_local, timeout_s=20.0)
+                    except Exception as exc:
+                        logger.warning(
+                            "push_message_event failed after send comment channelAccount=%s channel=%s post=%s msgId=%s err=%s",
+                            channel_account_id,
+                            channel_id,
+                            post_id,
+                            str(sent_local.id),
+                            exc,
+                        )
+
+                asyncio.create_task(_ingest())
+
+                return {
+                    "status": "sent",
+                    "details": {
+                        "externalMessageId": str(sent_local.id),
+                        "discussionConversationId": discussion_peer_id,
+                        "replyToPostId": str(post_id_int),
+                    },
+                }
+
+            # Safety/rate limit should be keyed by the discussion chat (where the comment is actually sent).
+            response = await safety_service.execute_send(
+                company_id=company_id,
+                channel_account_id=channel_account_id,
+                external_conversation_id=discussion_peer_id,
+                send_coro_factory=_send,
+            )
 
             now = _now()
             async with conn.cursor() as cur:
@@ -934,15 +968,7 @@ async def send_channel_post_comment(
                     ''',
                     (now, now, account["telegramAccountId"]),
                 )
-
-            return {
-                "status": "sent",
-                "details": {
-                    "externalMessageId": str(sent.id),
-                    "discussionConversationId": discussion_peer_id,
-                    "replyToPostId": str(post_id_int),
-                },
-            }
+            return response
         finally:
             await client.disconnect()
 

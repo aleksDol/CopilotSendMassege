@@ -158,19 +158,40 @@ class TelegramSafetyService:
             per_minute = sum(1 for ts in state.send_timestamps if ts >= now - timedelta(minutes=1))
             per_five_minutes = len(state.send_timestamps)
             if per_minute >= max(1, settings.telegram_max_sends_per_minute):
-                raise WorkerError("SEND_RATE_LIMIT_PER_MINUTE", "Send rate limit reached. Try again shortly.", 429)
+                # Wait until the oldest send in the 1-minute window expires.
+                window = now - timedelta(minutes=1)
+                oldest = min((ts for ts in state.send_timestamps if ts >= window), default=now)
+                retry_after = max(1, 60 - int((now - oldest).total_seconds()))
+                raise WorkerError(
+                    "SEND_RATE_LIMIT_PER_MINUTE",
+                    "Send rate limit reached. Try again shortly.",
+                    429,
+                    details={"retryAfterSeconds": retry_after},
+                )
             if per_five_minutes >= max(1, settings.telegram_max_sends_per_5_minutes):
-                raise WorkerError("SEND_RATE_LIMIT_PER_5_MINUTES", "Send limit reached for recent window. Try later.", 429)
+                window = now - timedelta(minutes=5)
+                oldest = min((ts for ts in state.send_timestamps if ts >= window), default=now)
+                retry_after = max(1, 300 - int((now - oldest).total_seconds()))
+                raise WorkerError(
+                    "SEND_RATE_LIMIT_PER_5_MINUTES",
+                    "Send limit reached for recent window. Try later.",
+                    429,
+                    details={"retryAfterSeconds": retry_after},
+                )
 
             # Conservative cap only for outbound-first/new dialogue behavior.
             has_outbound_history = await _has_outbound_history(channel_account_id, external_conversation_id)
             if not has_outbound_history:
                 state.new_conversation_timestamps.append(now)
             if len(state.new_conversation_timestamps) > max(1, settings.telegram_max_new_conversations_per_hour):
+                window = now - timedelta(hours=1)
+                oldest = min((ts for ts in state.new_conversation_timestamps if ts >= window), default=now)
+                retry_after = max(60, 3600 - int((now - oldest).total_seconds()))
                 raise WorkerError(
                     "NEW_CONVERSATION_RATE_LIMIT",
                     "Too many new outgoing conversations in a short period. Please slow down.",
                     429,
+                    details={"retryAfterSeconds": retry_after},
                 )
 
             if state.last_send_at:
@@ -242,7 +263,18 @@ class TelegramSafetyService:
                         )
                         raise WorkerError("RECONNECT_REQUIRED", "Telegram session expired, reconnect required", 400) from exc
                     if category == "throttling":
-                        raise WorkerError("TELEGRAM_THROTTLED", "Telegram temporary send restriction. Try later.", 429) from exc
+                        if isinstance(exc, FloodWaitError):
+                            raise WorkerError(
+                                "TELEGRAM_LIMITED",
+                                f"Telegram rate limited. Retry in {max(1, int(exc.seconds))} seconds.",
+                                429,
+                                details={"retryAfterSeconds": max(1, int(exc.seconds))},
+                            ) from exc
+                        raise WorkerError(
+                            "TELEGRAM_THROTTLED",
+                            "Telegram temporary send restriction. Try later.",
+                            429,
+                        ) from exc
                     if category == "transient":
                         raise WorkerError("TELEGRAM_TRANSIENT_ERROR", "Temporary Telegram send issue. Retry shortly.", 503) from exc
                     raise WorkerError("TELEGRAM_SEND_FAILED", f"Telegram send failed: {exc!s}", 500) from exc
