@@ -316,6 +316,8 @@ model User {
   leadRadarLeads            LeadRadarLead[]
   leadRadarSettings         LeadRadarSettings[]
   commentCandidates         CommentCandidate[]
+  commentingState           CommentingUserState?
+  commentingChannelExclusions CommentingChannelExclusion[]
 
   @@index([companyId])
   @@index([companyId, role])
