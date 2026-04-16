@@ -114,13 +114,20 @@ export default function CommentingPage() {
 
   const applyCandidateToCache = (next: CommentCandidate) => {
     queryClient.setQueryData<{ item: CommentCandidate }>(["commenting-candidate", scope, next.id], { item: next });
-    queryClient.setQueryData<{ items: CommentCandidate[] } | undefined>(["commenting-candidates", scope], (prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        items: prev.items.map((item) => (item.id === next.id ? next : item))
-      };
-    });
+    const updateListCache = (key: unknown[]) => {
+      queryClient.setQueryData<
+        { items: CommentCandidate[]; lastSeenAt?: string; excludedChannelIds?: string[] } | undefined
+      >(key, (prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          items: prev.items.map((item) => (item.id === next.id ? next : item))
+        };
+      });
+    };
+
+    updateListCache(["commenting-candidates", scope, false]);
+    updateListCache(["commenting-candidates", scope, true]);
   };
 
   const updateMutation = useMutation({
@@ -156,6 +163,13 @@ export default function CommentingPage() {
       applyCandidateToCache(item);
       setActionInfo(alreadyPublished ? "Already published." : "Candidate published.");
       setActionError(null);
+      // Ensure list + selected item are in sync with backend after publish.
+      void Promise.allSettled([
+        queryClient.invalidateQueries({ queryKey: ["commenting-candidate", scope, item.id] }),
+        queryClient.invalidateQueries({ queryKey: ["commenting-candidates", scope] }),
+        queryClient.invalidateQueries({ queryKey: ["commenting-candidates", scope, false] }),
+        queryClient.invalidateQueries({ queryKey: ["commenting-candidates", scope, true] })
+      ]);
     },
     onError: (error) => {
       if (error instanceof ApiError && error.code === "DISCUSSION_JOIN_REQUIRED") {
