@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { commentingApi, type CommentCandidate } from "@/lib/api";
 import { useAuth } from "@/lib/auth/context";
+import { ApiError } from "@/lib/api/errors";
 
 const baseScopeKey = (companyId: string | undefined, userId: string | undefined) =>
   `${companyId ?? ""}:${userId ?? ""}`;
@@ -55,14 +56,36 @@ export default function CommentingPage() {
   const [draftComment, setDraftComment] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionInfo, setActionInfo] = useState<string | null>(null);
+  const [excludeChannelId, setExcludeChannelId] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  const [markedSeenOnce, setMarkedSeenOnce] = useState(false);
+
+  const stateQuery = useQuery({
+    queryKey: ["commenting-state", scope],
+    queryFn: () => commentingApi.getState(token ?? ""),
+    enabled: Boolean(token)
+  });
 
   const candidatesQuery = useQuery({
-    queryKey: ["commenting-candidates", scope],
-    queryFn: () => commentingApi.listCandidates(token ?? "", { limit: 100 }),
+    queryKey: ["commenting-candidates", scope, showAll],
+    queryFn: () => commentingApi.listCandidates(token ?? "", { limit: 100, onlyNew: !showAll }),
     enabled: Boolean(token)
   });
 
   const candidates = candidatesQuery.data?.items ?? [];
+
+  useEffect(() => {
+    if (!token) return;
+    if (markedSeenOnce) return;
+    if (!candidatesQuery.isSuccess) return;
+    // Mark as seen once per page load so subsequent opens show only new items.
+    commentingApi
+      .markSeen(token)
+      .then(() => setMarkedSeenOnce(true))
+      .catch(() => {
+        // best-effort
+      });
+  }, [token, candidatesQuery.isSuccess, markedSeenOnce]);
 
   useEffect(() => {
     if (selectedId && candidates.some((item) => item.id === selectedId)) return;
@@ -135,7 +158,42 @@ export default function CommentingPage() {
       setActionError(null);
     },
     onError: (error) => {
-      setActionError(error instanceof Error ? error.message : "Failed to publish candidate");
+      if (error instanceof ApiError && error.code === "DISCUSSION_JOIN_REQUIRED") {
+        setActionError(
+          "Нельзя отправить комментарий: подключённый Telegram-аккаунт не состоит в группе обсуждений (discussion group) этого канала. Вступите в группу обсуждений под этим аккаунтом (или добавьте его), затем повторите отправку."
+        );
+      } else {
+        setActionError(error instanceof Error ? error.message : "Failed to publish candidate");
+      }
+      setActionInfo(null);
+    }
+  });
+
+  const addExclusionMutation = useMutation({
+    mutationFn: (channelId: string) => commentingApi.addExclusion(token ?? "", channelId),
+    onSuccess: async () => {
+      setExcludeChannelId("");
+      await Promise.allSettled([
+        queryClient.invalidateQueries({ queryKey: ["commenting-state", scope] }),
+        queryClient.invalidateQueries({ queryKey: ["commenting-candidates", scope] })
+      ]);
+    },
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : "Failed to add exclusion");
+      setActionInfo(null);
+    }
+  });
+
+  const removeExclusionMutation = useMutation({
+    mutationFn: (channelId: string) => commentingApi.removeExclusion(token ?? "", channelId),
+    onSuccess: async () => {
+      await Promise.allSettled([
+        queryClient.invalidateQueries({ queryKey: ["commenting-state", scope] }),
+        queryClient.invalidateQueries({ queryKey: ["commenting-candidates", scope] })
+      ]);
+    },
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : "Failed to remove exclusion");
       setActionInfo(null);
     }
   });
@@ -147,8 +205,12 @@ export default function CommentingPage() {
   if (!candidates.length) {
     return (
       <EmptyState
-        title="No comment candidates yet"
-        description="When Telegram channel posts are ingested, AI comment candidates will appear here."
+        title={showAll ? "No comment candidates yet" : "Нет новых постов"}
+        description={
+          showAll
+            ? "When Telegram channel posts are ingested, AI comment candidates will appear here."
+            : "Новые кандидаты появятся, когда в отслеживаемых каналах выйдут свежие посты."
+        }
       />
     );
   }
@@ -159,6 +221,62 @@ export default function CommentingPage() {
         <h1 className="text-2xl font-semibold">Commenting</h1>
         <p className="text-sm text-muted-foreground">Browse channel posts, edit AI suggestions, and publish comments.</p>
       </div>
+
+      <Card>
+        <div className="border-b border-border px-4 py-3 text-sm font-semibold">Фильтры</div>
+        <div className="space-y-3 p-4">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={showAll}
+              onChange={(e) => {
+                setShowAll(e.target.checked);
+                setMarkedSeenOnce(false);
+              }}
+            />
+            Показывать все (включая старые)
+          </label>
+
+          <div className="text-sm font-medium">Минус‑список каналов</div>
+          <div className="flex flex-wrap gap-2">
+            <input
+              value={excludeChannelId}
+              onChange={(e) => setExcludeChannelId(e.target.value)}
+              placeholder="Напр. -1001234567890"
+              className="h-9 w-[260px] rounded-md border border-border bg-background px-3 text-sm"
+            />
+            <Button
+              variant="outline"
+              onClick={() => addExclusionMutation.mutate(excludeChannelId)}
+              disabled={!excludeChannelId.trim().length || addExclusionMutation.isPending}
+            >
+              {addExclusionMutation.isPending ? "Добавляю..." : "Добавить"}
+            </Button>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {(stateQuery.data?.exclusions ?? []).map((e) => (
+              <Button
+                key={e.channelId}
+                variant="outline"
+                size="sm"
+                onClick={() => removeExclusionMutation.mutate(e.channelId)}
+                disabled={removeExclusionMutation.isPending}
+                title="Удалить из минус-списка"
+              >
+                {e.channelId} ×
+              </Button>
+            ))}
+          </div>
+
+          {stateQuery.data?.lastSeenAt ? (
+            <div className="text-xs text-muted-foreground">
+              Только новые: показываем кандидаты после{" "}
+              {new Date(stateQuery.data.lastSeenAt).toLocaleString()}
+            </div>
+          ) : null}
+        </div>
+      </Card>
 
       <div className="grid min-h-[70vh] grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)_380px]">
         <Card className="min-h-0 overflow-hidden">

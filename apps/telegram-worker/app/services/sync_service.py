@@ -854,12 +854,30 @@ async def send_channel_post_comment(
                 discussion_entity = await client.get_entity(discussion_chat)
             except Exception as exc:
                 raise WorkerError("DISCUSSION_CHAT_NOT_FOUND", "Linked discussion chat not accessible", 404) from exc
-
-            sent = await client.send_message(
-                entity=discussion_entity,
-                message=message_text,
-                reply_to=discussion_msg_id,
-            )
+            try:
+                sent = await client.send_message(
+                    entity=discussion_entity,
+                    message=message_text,
+                    reply_to=discussion_msg_id,
+                )
+            except RPCError as exc:
+                # Telegram channel comments are authored in the linked discussion group.
+                # If the connected account is not a member (or cannot write there),
+                # Telegram rejects the send with an RPC error. Provide an actionable error code.
+                msg = str(exc or "").lower()
+                if (
+                    "join the discussion group" in msg
+                    or "you join the discussion group" in msg
+                    or "user_not_participant" in msg
+                    or "chat_write_forbidden" in msg
+                    or "write forbidden" in msg
+                ):
+                    raise WorkerError(
+                        "DISCUSSION_JOIN_REQUIRED",
+                        "Join the linked discussion group before commenting (the connected Telegram account must be a member and have permission to write).",
+                        403,
+                    ) from exc
+                raise
 
             discussion_peer_id = str(get_peer_id(discussion_entity))
             related_channel_id = str(get_peer_id(channel_entity))

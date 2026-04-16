@@ -44,10 +44,26 @@ export const listCommentCandidates = async (
   app: FastifyInstance,
   params: {
     companyId: string;
+    userId: string;
     limit: number;
     status?: "new" | "published" | "ignored";
+    onlyNew?: boolean;
   }
 ) => {
+  const [state, exclusions] = await Promise.all([
+    app.prisma.commentingUserState.upsert({
+      where: { userId: params.userId },
+      update: {},
+      create: { userId: params.userId, lastSeenAt: new Date(0) },
+      select: { lastSeenAt: true }
+    }),
+    app.prisma.commentingChannelExclusion.findMany({
+      where: { userId: params.userId },
+      select: { channelId: true }
+    })
+  ]);
+
+  const excludedChannelIds = exclusions.map((x) => x.channelId);
   const candidates = await app.prisma.commentCandidate.findMany({
     where: {
       telegramAccount: {
@@ -55,14 +71,18 @@ export const listCommentCandidates = async (
           companyId: params.companyId
         }
       },
-      ...(params.status ? { status: mapStatus(params.status) } : {})
+      ...(excludedChannelIds.length ? { channelId: { notIn: excludedChannelIds } } : {}),
+      ...(params.status ? { status: mapStatus(params.status) } : {}),
+      ...(params.onlyNew === false ? {} : { createdAt: { gt: state.lastSeenAt } })
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: params.limit
   });
 
   return {
-    items: candidates.map(mapCandidate)
+    items: candidates.map(mapCandidate),
+    lastSeenAt: state.lastSeenAt.toISOString(),
+    excludedChannelIds
   };
 };
 
@@ -306,4 +326,81 @@ export const publishCommentCandidate = async (
     );
     throw error;
   }
+};
+
+export const getCommentingState = async (
+  app: FastifyInstance,
+  params: { userId: string }
+) => {
+  const state = await app.prisma.commentingUserState.upsert({
+    where: { userId: params.userId },
+    update: {},
+    create: { userId: params.userId, lastSeenAt: new Date(0) },
+    select: { lastSeenAt: true }
+  });
+  const exclusions = await app.prisma.commentingChannelExclusion.findMany({
+    where: { userId: params.userId },
+    orderBy: [{ createdAt: "desc" }, { channelId: "asc" }],
+    select: { channelId: true, createdAt: true }
+  });
+
+  return {
+    lastSeenAt: state.lastSeenAt.toISOString(),
+    exclusions: exclusions.map((e) => ({ channelId: e.channelId, createdAt: e.createdAt.toISOString() }))
+  };
+};
+
+export const upsertCommentingState = async (
+  app: FastifyInstance,
+  params: { userId: string; lastSeenAt?: Date }
+) => {
+  const next = params.lastSeenAt ?? new Date();
+  const state = await app.prisma.commentingUserState.upsert({
+    where: { userId: params.userId },
+    update: { lastSeenAt: next },
+    create: { userId: params.userId, lastSeenAt: next },
+    select: { lastSeenAt: true }
+  });
+  return { lastSeenAt: state.lastSeenAt.toISOString() };
+};
+
+export const listChannelExclusions = async (
+  app: FastifyInstance,
+  params: { userId: string }
+) => {
+  const exclusions = await app.prisma.commentingChannelExclusion.findMany({
+    where: { userId: params.userId },
+    orderBy: [{ createdAt: "desc" }, { channelId: "asc" }],
+    select: { channelId: true, createdAt: true }
+  });
+  return { items: exclusions.map((e) => ({ channelId: e.channelId, createdAt: e.createdAt.toISOString() })) };
+};
+
+export const addChannelExclusion = async (
+  app: FastifyInstance,
+  params: { userId: string; channelId: string }
+) => {
+  const normalized = params.channelId.trim();
+  if (!normalized.length) {
+    throw new AppError(400, "CHANNEL_ID_REQUIRED", "channelId is required");
+  }
+
+  await app.prisma.commentingChannelExclusion.upsert({
+    where: { userId_channelId: { userId: params.userId, channelId: normalized } },
+    update: {},
+    create: { userId: params.userId, channelId: normalized }
+  });
+
+  return listChannelExclusions(app, { userId: params.userId });
+};
+
+export const removeChannelExclusion = async (
+  app: FastifyInstance,
+  params: { userId: string; channelId: string }
+) => {
+  const normalized = params.channelId.trim();
+  await app.prisma.commentingChannelExclusion.deleteMany({
+    where: { userId: params.userId, channelId: normalized }
+  });
+  return listChannelExclusions(app, { userId: params.userId });
 };

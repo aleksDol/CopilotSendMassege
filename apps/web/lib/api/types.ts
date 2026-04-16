@@ -356,3 +356,13 @@ export type CommentCandidate = {
   updatedAt: string;
   publishedAt: string | null;
 };
+
+export type CommentingChannelExclusionItem = {
+  channelId: string;
+  createdAt: string;
+};
+
+export type CommentingState = {
+  lastSeenAt: string;
+  exclusions: CommentingChannelExclusionItem[];
+};

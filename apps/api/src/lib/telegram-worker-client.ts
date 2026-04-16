@@ -16,17 +16,21 @@ type ResolveChatSuccess = {
   username?: string | null;
 };
 
-const normalizeWorkerError = async (response: Response): Promise<string> => {
+const normalizeWorkerError = async (
+  response: Response
+): Promise<{ code?: string; message: string; details?: unknown }> => {
   try {
-    const body = (await response.json()) as { error?: { message?: string } };
+    const body = (await response.json()) as {
+      error?: { code?: string; message?: string; details?: unknown };
+    };
     if (body?.error?.message) {
-      return body.error.message;
+      return { code: body.error.code, message: body.error.message, details: body.error.details };
     }
   } catch {
     // noop
   }
 
-  return `Telegram worker returned HTTP ${response.status}`;
+  return { message: `Telegram worker returned HTTP ${response.status}` };
 };
 
 export class TelegramWorkerClient {
@@ -58,9 +62,15 @@ export class TelegramWorkerClient {
       });
 
       if (!response.ok) {
-        const message = await normalizeWorkerError(response);
-
-        throw new AppError(502, "TELEGRAM_WORKER_ERROR", message);
+        const err = await normalizeWorkerError(response);
+        // If worker returned a structured WorkerError, preserve its http status + code
+        // so UI can render actionable instructions (e.g. join discussion group).
+        throw new AppError(
+          response.status,
+          err.code ?? "TELEGRAM_WORKER_ERROR",
+          err.message,
+          err.details
+        );
       }
 
       return (await response.json()) as WorkerSuccess;

@@ -2,15 +2,22 @@ import type { FastifyPluginAsync } from "fastify";
 import { getCompanyScope } from "../../lib/request-context.js";
 import { parseWithSchema } from "../../lib/validation.js";
 import {
+  channelIdParamSchema,
   commentCandidateIdParamsSchema,
+  addChannelExclusionBodySchema,
   listCommentCandidatesQuerySchema,
+  upsertCommentingStateBodySchema,
   updateCommentCandidateBodySchema
 } from "./schemas.js";
 import {
+  addChannelExclusion,
   getCommentCandidate,
+  getCommentingState,
   ignoreCommentCandidate,
   listCommentCandidates,
   publishCommentCandidate,
+  removeChannelExclusion,
+  upsertCommentingState,
   updateCommentCandidate
 } from "./service.js";
 
@@ -21,9 +28,39 @@ const commentingRoutes: FastifyPluginAsync = async (app) => {
 
     return listCommentCandidates(app, {
       companyId: scope.companyId,
+      userId: scope.userId,
       status: query.status,
-      limit: query.limit
+      limit: query.limit,
+      onlyNew: query.onlyNew
     });
+  });
+
+  app.get("/commenting/state", { preHandler: [app.authenticate] }, async (request) => {
+    const scope = getCompanyScope(request);
+    return getCommentingState(app, { userId: scope.userId });
+  });
+
+  app.post("/commenting/state", { preHandler: [app.authenticate] }, async (request) => {
+    const scope = getCompanyScope(request);
+    const body = parseWithSchema(upsertCommentingStateBodySchema, request.body);
+    return upsertCommentingState(app, { userId: scope.userId, lastSeenAt: body.lastSeenAt });
+  });
+
+  app.get("/commenting/exclusions", { preHandler: [app.authenticate] }, async (request) => {
+    const scope = getCompanyScope(request);
+    return getCommentingState(app, { userId: scope.userId });
+  });
+
+  app.post("/commenting/exclusions", { preHandler: [app.authenticate] }, async (request) => {
+    const scope = getCompanyScope(request);
+    const body = parseWithSchema(addChannelExclusionBodySchema, request.body);
+    return addChannelExclusion(app, { userId: scope.userId, channelId: body.channelId });
+  });
+
+  app.delete("/commenting/exclusions/:channelId", { preHandler: [app.authenticate] }, async (request) => {
+    const scope = getCompanyScope(request);
+    const params = parseWithSchema(channelIdParamSchema, request.params);
+    return removeChannelExclusion(app, { userId: scope.userId, channelId: params.channelId });
   });
 
   app.get("/commenting/:id", { preHandler: [app.authenticate] }, async (request) => {

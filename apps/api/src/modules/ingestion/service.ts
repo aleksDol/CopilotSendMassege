@@ -143,6 +143,18 @@ const toCommentCandidateSource = (payload: MessageEventPayload): { channelId: st
   postId: getRawString(payload.rawPayload?.relatedPostId) ?? payload.externalMessageId
 });
 
+const isCommentingChannelExcluded = async (params: {
+  app: FastifyInstance;
+  userId: string;
+  channelId: string;
+}): Promise<boolean> => {
+  const row = await params.app.prisma.commentingChannelExclusion.findUnique({
+    where: { userId_channelId: { userId: params.userId, channelId: params.channelId } },
+    select: { id: true }
+  });
+  return Boolean(row);
+};
+
 const toLeadRadarInput = (params: {
   userId: string;
   telegramAccountId: string;
@@ -602,6 +614,21 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
 
     if (canQueueCommentCandidate(payload)) {
       const source = toCommentCandidateSource(payload);
+      const userId = telegramAccount.channelAccount.createdByUserId;
+      if (typeof userId === "string" && userId.length) {
+        const excluded = await isCommentingChannelExcluded({ app, userId, channelId: source.channelId });
+        if (excluded) {
+          app.log.info(
+            { telegramAccountId: telegramAccount.id, channelId: source.channelId, postId: source.postId },
+            "[Commenting] skipped generation (channel excluded)"
+          );
+          return {
+            ok: true,
+            conversationId: conversation.id,
+            messageId: existing.id
+          };
+        }
+      }
       void enqueueCommentingGenerationJob(app.config.env, {
         telegramAccountId: telegramAccount.id,
         channelId: source.channelId,
@@ -810,6 +837,21 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
 
   if (canQueueCommentCandidate(payload)) {
     const source = toCommentCandidateSource(payload);
+    const userId = telegramAccount.channelAccount.createdByUserId;
+    if (typeof userId === "string" && userId.length) {
+      const excluded = await isCommentingChannelExcluded({ app, userId, channelId: source.channelId });
+      if (excluded) {
+        app.log.info(
+          { telegramAccountId: telegramAccount.id, channelId: source.channelId, postId: source.postId },
+          "[Commenting] skipped generation (channel excluded)"
+        );
+        return {
+          ok: true,
+          conversationId: conversation.id,
+          messageId: message.id
+        };
+      }
+    }
     void enqueueCommentingGenerationJob(app.config.env, {
       telegramAccountId: telegramAccount.id,
       channelId: source.channelId,

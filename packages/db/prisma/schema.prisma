@@ -749,6 +749,35 @@ model CommentCandidate {
 }
 
 /// =========================
+/// Commenting user preferences
+/// =========================
+model CommentingUserState {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId])
+  @@index([userId])
+}
+
+model CommentingChannelExclusion {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  channelId String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channelId])
+  @@index([userId])
+  @@index([channelId])
+}
+
+/// =========================
 /// Tasks
 /// =========================
 model Task {
