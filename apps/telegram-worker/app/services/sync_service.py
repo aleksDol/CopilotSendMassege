@@ -50,7 +50,20 @@ _LINKED_CHAT_CACHE_TTL_S: float = 3600.0
 _LINKED_CHAT_RPC_TIMEOUT_S: float = 3.0
 
 
+def _format_linked_channel_id(raw_id: Any) -> str | None:
+    """Convert raw channel id (no -100 prefix, as stored on Telethon entities) into the bot-API
+    style id used across the rest of the system."""
+    try:
+        return str(get_peer_id(PeerChannel(int(raw_id))))
+    except Exception:
+        return None
+
+
 async def _resolve_linked_chat_id(client: Any, entity: Any) -> str | None:
+    """
+    Returns the bot-style id of the other side of a channel↔discussion-group link (or None).
+    See live_listener._resolve_linked_chat_id for full rationale — same caching / timeout policy.
+    """
     if not isinstance(entity, Channel):
         return None
 
@@ -65,7 +78,7 @@ async def _resolve_linked_chat_id(client: Any, entity: Any) -> str | None:
 
     entity_linked = getattr(entity, "linked_chat_id", None)
     if entity_linked:
-        value: str | None = str(entity_linked)
+        value: str | None = _format_linked_channel_id(entity_linked)
         _LINKED_CHAT_CACHE[entity_id] = (value, now)
         return value
 
@@ -75,7 +88,7 @@ async def _resolve_linked_chat_id(client: Any, entity: Any) -> str | None:
         full_chat = getattr(full, "full_chat", None)
         linked = getattr(full_chat, "linked_chat_id", None)
         if linked:
-            value = str(linked)
+            value = _format_linked_channel_id(linked)
     except Exception:
         value = None
 
@@ -151,34 +164,14 @@ def _resolve_conversation_type(entity: Any) -> str:
     return "direct"
 
 
-def _detect_channel_comment(message: Any, entity: Any) -> tuple[str | None, str | None]:
-    """
-    Same semantics as live_listener._detect_channel_comment: detect channel-comment metadata from
-    the message.reply_to header rather than the entity.linked_chat_id field. Duplicated here
-    intentionally — the two services should share a type helper later, but for now the helper is
-    tiny and keeping it local avoids cross-module coupling of import paths.
-    """
+def _extract_channel_post_id(message: Any) -> str | None:
+    """For a message in a channel's discussion group, return the channel post id (thread root),
+    or None if the message is not a reply under a post."""
     reply_to = getattr(message, "reply_to", None)
     if reply_to is None:
-        return (None, None)
-
-    peer = getattr(reply_to, "reply_to_peer_id", None)
-    if not isinstance(peer, PeerChannel):
-        return (None, None)
-
-    try:
-        related_channel_id = str(get_peer_id(peer))
-    except Exception:
-        return (None, None)
-
-    entity_external_id = str(getattr(entity, "id", "") or "")
-    if entity_external_id and related_channel_id.lstrip("-").endswith(entity_external_id):
-        return (None, None)
-
+        return None
     top_id = getattr(reply_to, "reply_to_top_id", None) or getattr(reply_to, "reply_to_msg_id", None)
-    related_post_id = str(top_id) if top_id is not None else None
-
-    return (related_channel_id, related_post_id)
+    return str(top_id) if top_id is not None else None
 
 
 def _is_supported_private_human_dialog(entity: Any) -> bool:
@@ -349,15 +342,19 @@ async def _sync_messages_for_dialog(
             "hasAttachment": bool(getattr(message, "media", None)),
         }
 
-        related_channel_id, related_post_id = _detect_channel_comment(message, entity)
-        if related_channel_id:
+        # Channel-comment detection: mirror of live_listener logic. A message authored in a
+        # megagroup that is the linked discussion group of a broadcast channel is, by definition,
+        # a channel-comment stream entry (see live_listener for the full rationale on why the
+        # `msg.reply_to.reply_to_peer_id` check was wrong).
+        if conversation_type == "group" and linked_chat_id:
+            related_post_id = _extract_channel_post_id(message)
             payload["rawPayload"]["dialogType"] = "channel_comment"
             payload["rawPayload"]["chatType"] = "channel_comments"
-            payload["rawPayload"]["relatedChannelId"] = related_channel_id
+            payload["rawPayload"]["relatedChannelId"] = linked_chat_id
             payload["rawPayload"]["relatedPostId"] = related_post_id
             payload["rawPayload"]["contextPreview"] = None
             payload["rawPayload"]["dedupeKey"] = (
-                f'{payload["telegramAccountId"]}:{related_channel_id}:{related_post_id}:{payload["externalMessageId"]}'
+                f'{payload["telegramAccountId"]}:{linked_chat_id}:{related_post_id}:{payload["externalMessageId"]}'
             )
         if sender_full_name:
             payload["senderFullName"] = sender_full_name

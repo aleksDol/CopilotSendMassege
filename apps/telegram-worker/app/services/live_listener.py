@@ -40,10 +40,27 @@ _LINKED_CHAT_CACHE_TTL_S: float = 3600.0
 _LINKED_CHAT_RPC_TIMEOUT_S: float = 2.0
 
 
+def _format_linked_channel_id(raw_id: Any) -> str | None:
+    """
+    Convert a raw Telegram channel id (as stored on entity.linked_chat_id / full_chat.linked_chat_id)
+    into the bot-API style id we use everywhere else (-100<n>). Returns None on failure.
+    """
+    try:
+        return str(get_peer_id(PeerChannel(int(raw_id))))
+    except Exception:
+        return None
+
+
 async def _resolve_linked_chat_id(client: Any, chat: Any) -> str | None:
     """
-    Returns the linked discussion chat id for a broadcast channel (comments-enabled), or None.
-    Safe to call on the hot path — never blocks long and never propagates exceptions.
+    Returns the bot-style id (e.g. "-1001495210829") of the OTHER side of a channel↔discussion-group
+    link, or None.
+
+    - Called on a broadcast Channel: returns the linked discussion group id.
+    - Called on a megagroup that IS a discussion group: returns the id of the broadcast channel it
+      discusses (entity.linked_chat_id is filled for both directions once the entity is hydrated).
+
+    Safe on the hot path: bounded timeout, caches result (including None) per chat.id.
     """
     if not isinstance(chat, Channel):
         return None
@@ -57,11 +74,12 @@ async def _resolve_linked_chat_id(client: Any, chat: Any) -> str | None:
     if cached is not None and (now - cached[1]) < _LINKED_CHAT_CACHE_TTL_S:
         return cached[0]
 
-    # Fast path: Telethon usually populates linked_chat_id on the entity from the dialogs list
-    # (and on Channel objects delivered by update events). No network call needed.
+    # Fast path: Telethon usually populates linked_chat_id on the entity once it has been
+    # hydrated from dialogs / get_entity. Partial entities from update events may leave it None,
+    # in which case we fall through to the GetFullChannelRequest path.
     entity_linked = getattr(chat, "linked_chat_id", None)
     if entity_linked:
-        value: str | None = str(entity_linked)
+        value: str | None = _format_linked_channel_id(entity_linked)
         _LINKED_CHAT_CACHE[chat_id] = (value, now)
         return value
 
@@ -74,7 +92,7 @@ async def _resolve_linked_chat_id(client: Any, chat: Any) -> str | None:
         full_chat = getattr(full, "full_chat", None)
         linked = getattr(full_chat, "linked_chat_id", None)
         if linked:
-            value = str(linked)
+            value = _format_linked_channel_id(linked)
     except Exception:
         value = None
 
@@ -141,47 +159,21 @@ def _resolve_conversation_type(entity: Any) -> str:
     return "direct"
 
 
-def _detect_channel_comment(msg: Any, chat: Any) -> tuple[str | None, str | None]:
+def _extract_channel_post_id(msg: Any) -> str | None:
     """
-    Detect whether `msg` is a comment posted in a channel's linked discussion group.
+    For a message inside a discussion group linked to a channel: return the channel post id
+    (i.e. the thread root the comment belongs to), or None if the message is a free-form post
+    in the group rather than a reply under a channel post.
 
-    Returns (related_channel_id, related_post_id) — both as bot-style string ids (e.g.
-    "-1001495210829" for channels) — or (None, None) if it is not a channel comment.
-
-    Rationale: Telethon only exposes `linked_chat_id` on the broadcast Channel entity (points
-    FROM the channel TO its discussion group). The discussion group entity itself does NOT
-    carry a back-reference, so the old "use chat.linked_chat_id" path silently produced None
-    for every incoming comment — leading to LeadRadar sources registered at the channel level
-    never matching live comments. The correct signal is `message.reply_to.reply_to_peer_id`,
-    which Telegram fills for comments with the originating channel, plus `reply_to_top_id`
-    (the post id in that channel).
+    Telegram fills `reply_to.reply_to_top_id` for threaded replies (comments under a post).
+    `reply_to_msg_id` is a softer fallback — for a first-level comment both fields are usually
+    equal; we prefer `top_id` because it always points to the thread root.
     """
     reply_to = getattr(msg, "reply_to", None)
     if reply_to is None:
-        return (None, None)
-
-    peer = getattr(reply_to, "reply_to_peer_id", None)
-    if not isinstance(peer, PeerChannel):
-        return (None, None)
-
-    # `get_peer_id` converts PeerChannel(channel_id=N) → -100N to match the bot-API style ids
-    # we already use across the system (rawPayload.peerExternalId / externalConversationId / DB).
-    try:
-        related_channel_id = str(get_peer_id(peer))
-    except Exception:
-        return (None, None)
-
-    chat_external_id = str(getattr(chat, "id", "") or "")
-    # A reply_to_peer_id that matches the current chat is a normal in-chat reply, not a comment.
-    if chat_external_id and related_channel_id.lstrip("-").endswith(chat_external_id):
-        return (None, None)
-
-    # `reply_to_top_id` is the top-level thread root — i.e. the channel post id for comments.
-    # Fall back to reply_to_msg_id only if top_id is missing (older clients / edge cases).
+        return None
     top_id = getattr(reply_to, "reply_to_top_id", None) or getattr(reply_to, "reply_to_msg_id", None)
-    related_post_id = str(top_id) if top_id is not None else None
-
-    return (related_channel_id, related_post_id)
+    return str(top_id) if top_id is not None else None
 
 
 def _is_supported_private_human_dialog(entity: Any) -> bool:
@@ -328,6 +320,12 @@ async def _run_account_listener(account: ConnectedAccount, crypto: SessionCrypto
                     if not external_conversation_id or external_conversation_id == "None":
                         return
 
+                    # Resolve the linked channel/discussion id ONCE and reuse it for both the
+                    # rawPayload.linkedChatId hint and the channel-comment detection below.
+                    # For a discussion group this returns the broadcast channel id (bot-style,
+                    # i.e. "-100…"), and for a broadcast channel it returns the linked group id.
+                    linked_channel_id = await _resolve_linked_chat_id(client, chat)
+
                     payload = {
                         "telegramAccountId": account.telegram_account_id,
                         "externalConversationId": external_conversation_id,
@@ -354,9 +352,7 @@ async def _run_account_listener(account: ConnectedAccount, crypto: SessionCrypto
                             ).strip()
                             or None,
                             "peerUsername": getattr(chat, "username", None),
-                            # For channels, Telethon exposes the linked discussion group id (comments enabled) as linked_chat_id.
-                            # When missing, the channel does not support comments.
-                            "linkedChatId": await _resolve_linked_chat_id(client, chat),
+                            "linkedChatId": linked_channel_id,
                             "peerIsBot": bool(getattr(chat, "bot", False)),
                             "isServiceDialog": bool(getattr(chat, "support", False) or getattr(chat, "is_self", False)),
                             "hasMedia": has_attachment,
@@ -365,18 +361,23 @@ async def _run_account_listener(account: ConnectedAccount, crypto: SessionCrypto
                         "hasAttachment": has_attachment,
                     }
 
-                    # Telegram channel comments: authored in the linked discussion group (megagroup)
-                    # and tied back to a channel via msg.reply_to.reply_to_peer_id (NOT via
-                    # chat.linked_chat_id — that field only exists on the broadcast Channel entity).
-                    related_channel_id, related_post_id = _detect_channel_comment(msg, chat)
-                    if related_channel_id:
+                    # Channel-comment detection:
+                    # A message authored in a megagroup that IS the linked discussion group of a
+                    # broadcast channel is, by definition, a channel-comment stream entry. That is
+                    # true even when `msg.reply_to` is empty (free-form messages in the discussion
+                    # group still "belong to" the channel from the operator's perspective). The
+                    # earlier `reply_to_peer_id` check was wrong: Telegram only fills that field
+                    # for cross-peer replies, so 99% of real comments came through as plain groups
+                    # and LeadRadar sources registered at the channel level never matched.
+                    if conversation_type == "group" and linked_channel_id:
+                        related_post_id = _extract_channel_post_id(msg)
                         payload["rawPayload"]["dialogType"] = "channel_comment"
                         payload["rawPayload"]["chatType"] = "channel_comments"
-                        payload["rawPayload"]["relatedChannelId"] = related_channel_id
+                        payload["rawPayload"]["relatedChannelId"] = linked_channel_id
                         payload["rawPayload"]["relatedPostId"] = related_post_id
                         payload["rawPayload"]["contextPreview"] = None
                         payload["rawPayload"]["dedupeKey"] = (
-                            f'{account.telegram_account_id}:{related_channel_id}:{related_post_id}:{payload["externalMessageId"]}'
+                            f'{account.telegram_account_id}:{linked_channel_id}:{related_post_id}:{payload["externalMessageId"]}'
                         )
 
                     if settings.telegram_live_listener_log_events:
