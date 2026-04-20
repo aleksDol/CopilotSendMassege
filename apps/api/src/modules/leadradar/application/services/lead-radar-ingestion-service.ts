@@ -15,6 +15,7 @@ type LeadRadarSkipReason =
   | "not_monitored_source"
   | "before_monitoring_started"
   | "no_positive_match"
+  | "no_positive_match_on_current_message"
   | "negative_match"
   | "below_threshold"
   | "duplicate_hard"
@@ -138,6 +139,8 @@ export class LeadRadarIngestionService {
     let score_breakdown: Record<string, number> | null = null;
     let threshold_passed = false;
     let dedupe_result: "none" | "hard" | "soft" | "merged_existing_lead" = "none";
+    let history_messages_loaded_count = 0;
+    let lead_created_from_message_id: string | null = null;
 
     if (traceEnabled) {
       log(
@@ -153,7 +156,7 @@ export class LeadRadarIngestionService {
     }
 
     log(
-      `[LeadRadar-DEBUG] processMessage ENTER userId=${input.userId} telegramAccountId=${input.telegramAccountId} chatId=${input.chatId} text="${(input.text ?? "").slice(0, 80)}"`
+      `[LeadRadar-DEBUG] processMessage ENTER userId=${input.userId} telegramAccountId=${input.telegramAccountId} chatId=${input.chatId} messageId=${input.messageId} text="${(input.text ?? "").slice(0, 80)}"`
     );
 
     // 1) Settings check
@@ -285,7 +288,9 @@ export class LeadRadarIngestionService {
         skip_reason = "negative_match";
       } else {
         log("[LeadRadar] skipped: no match");
-        skip_reason = "no_positive_match";
+        // Guardrail: LeadRadar decisions must be based only on the currently processed message.
+        // Even if the sender had historical matches, we must not create/update a lead for this message.
+        skip_reason = "no_positive_match_on_current_message";
       }
       final_action = "skipped";
       if (traceEnabled) {
@@ -300,6 +305,8 @@ export class LeadRadarIngestionService {
             normalized_text: match.debug?.normalized_text ?? normalized_text,
             positive_keyword_matches: match.debug?.positive_keyword_matches_detailed?.map((x) => x.keyword) ?? [],
             negative_keyword_matches,
+            history_messages_loaded_count,
+            lead_created_from_message_id,
             score_breakdown,
             threshold_passed,
             dedupe_result,
@@ -488,6 +495,7 @@ export class LeadRadarIngestionService {
         if (maxAfter > 0) {
           contextAfter = await this.getMessagesAfter({ limit: maxAfter });
         }
+        history_messages_loaded_count = contextBefore.length + contextAfter.length;
         log(`[LeadRadar] context loaded: ${contextBefore.length} before, ${contextAfter.length} after`);
       } catch {
         log("[LeadRadar] context skipped");
@@ -497,6 +505,7 @@ export class LeadRadarIngestionService {
     }
 
     // 7) Save lead
+    lead_created_from_message_id = input.messageId;
     await this.deps.leadRepo.createLead({
       user_id: input.userId,
       telegram_account_id: input.telegramAccountId,
@@ -531,6 +540,7 @@ export class LeadRadarIngestionService {
     });
 
     log("[LeadRadar] New lead created");
+    log(`[LeadRadar-DEBUG] lead_created_from_message_id=${lead_created_from_message_id}`);
     log("[LeadRadar] message processed");
     final_action = "created";
     skip_reason = null;
@@ -546,6 +556,8 @@ export class LeadRadarIngestionService {
           normalized_text,
           positive_keyword_matches,
           negative_keyword_matches,
+          history_messages_loaded_count,
+          lead_created_from_message_id,
           score_breakdown: score_breakdown ?? null,
           threshold_passed,
           dedupe_result,
