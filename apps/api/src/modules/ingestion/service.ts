@@ -118,6 +118,14 @@ const canTriggerLeadRadar = (
   if (payload.senderType !== "user") {
     return false;
   }
+  // Broadcast channel *posts* (feed). `channel_comments` sources use the same telegramChatId as the
+  // channel; without this guard LeadRadar runs on post bodies while real comments live in the
+  // linked discussion (different conversation + message ids).
+  const dialogType =
+    typeof payload.rawPayload?.dialogType === "string" ? payload.rawPayload.dialogType.trim().toLowerCase() : "";
+  if (dialogType === "channel") {
+    return false;
+  }
   const fromPayload = typeof payload.text === "string" ? payload.text.trim() : "";
   const fromFallback = typeof opts?.fallbackText === "string" ? opts.fallbackText.trim() : "";
   const text = fromPayload.length > 0 ? fromPayload : fromFallback;
