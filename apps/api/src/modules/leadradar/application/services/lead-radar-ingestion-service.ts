@@ -271,8 +271,21 @@ export class LeadRadarIngestionService {
     // Small tolerance window to avoid edge cases where the source gets enabled/updated
     // and the user sends a message immediately: Telegram timestamps and DB timestamps
     // can differ by a few seconds.
-    const monitoringToleranceMs = 10_000; // 10s
+    const monitoringToleranceMs = 60_000; // 60s (was 10s — too tight vs UI saves / skew)
+    const nowMs = Date.now();
+    const messageMs = input.date?.getTime?.();
+    const recentLiveWindowMs = 15 * 60 * 1000; // 15 min — treat as live traffic, not backfill
+    const isLikelyLiveMessage =
+      typeof messageMs === "number" &&
+      Number.isFinite(messageMs) &&
+      messageMs <= nowMs + 120_000 && // allow small "future" skew
+      nowMs - messageMs < recentLiveWindowMs;
+
+    // Backfill / history: skip if message predates "monitoring start" (updated_at toggle reset).
+    // Live traffic: bypass this gate so a new comment is not rejected right after saving the source
+    // or when the queue processes a fresh message seconds after updated_at moved.
     if (
+      !isLikelyLiveMessage &&
       input.date &&
       monitoringStartedAt &&
       input.date.getTime() + monitoringToleranceMs < new Date(monitoringStartedAt as any).getTime()
