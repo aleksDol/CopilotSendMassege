@@ -118,6 +118,18 @@ const canTriggerLeadRadar = (
   if (payload.senderType !== "user") {
     return false;
   }
+  // Historical backfill guard. telegram-worker's _sync_messages_for_dialog reads dialog history
+  // via iter_messages and pushes every past message through the same ingestion endpoint as the
+  // live listener. We still want those messages saved to DB + published to realtime (so chats/
+  // history hydrate correctly), but they MUST NOT trigger LeadRadar — otherwise the queue gets
+  // flooded with thousands of old messages that are later correctly skipped by the
+  // "before monitoring started" guard, starving fresh live messages.
+  //
+  // Only sync_service._sync_messages_for_dialog sets this flag. The live listener and outgoing
+  // send paths do NOT set it, so real-time traffic keeps triggering LeadRadar as before.
+  if (payload.rawPayload?.isHistorical === true) {
+    return false;
+  }
   // Broadcast channel *posts* (feed). `channel_comments` sources use the same telegramChatId as the
   // channel; without this guard LeadRadar runs on post bodies while real comments live in the
   // linked discussion (different conversation + message ids).

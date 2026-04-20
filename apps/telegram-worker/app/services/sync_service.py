@@ -286,6 +286,12 @@ async def _sync_messages_for_dialog(
                 "peerIsBot": bool(getattr(entity, "bot", False)),
                 "isServiceDialog": bool(getattr(entity, "support", False) or getattr(entity, "is_self", False)),
                 "hasMedia": bool(getattr(message, "media", None)),
+                # Backfill marker. Set ONLY in _sync_messages_for_dialog (history pull).
+                # API uses this to skip LeadRadar enqueue for historical messages, while still
+                # saving them to DB and publishing realtime events. Do not set this flag in
+                # live_listener or outgoing send paths — they must keep triggering LeadRadar.
+                "isHistorical": True,
+                "ingestionSource": "sync_backfill",
             },
             "conversationTitle": dialog_title,
             "hasAttachment": bool(getattr(message, "media", None)),
