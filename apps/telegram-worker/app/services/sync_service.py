@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -39,26 +40,47 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# See live_listener._LINKED_CHAT_CACHE for rationale. Sync path calls this once per dialog rather
+# than once per message, but repeated backfills (and the fact that sync shares the Telethon client
+# with the live listener) still make GetFullChannelRequest flood waits painful: a sleep inside the
+# Telethon client blocks the whole update pipeline, not just sync. We keep a shared-shape TTL cache
+# here as well and bound the RPC with a short timeout.
+_LINKED_CHAT_CACHE: dict[int, tuple[str | None, float]] = {}
+_LINKED_CHAT_CACHE_TTL_S: float = 3600.0
+_LINKED_CHAT_RPC_TIMEOUT_S: float = 3.0
+
+
 async def _resolve_linked_chat_id(client: Any, entity: Any) -> str | None:
-    """
-    Telegram "comments enabled" for a broadcast channel is represented as a linked discussion chat id.
-    Telethon often exposes it only on the *full* channel info (GetFullChannelRequest), not on the dialog entity.
-    """
+    if not isinstance(entity, Channel):
+        return None
+
+    entity_id = getattr(entity, "id", None)
+    if entity_id is None:
+        return None
+
+    now = time.monotonic()
+    cached = _LINKED_CHAT_CACHE.get(entity_id)
+    if cached is not None and (now - cached[1]) < _LINKED_CHAT_CACHE_TTL_S:
+        return cached[0]
+
+    entity_linked = getattr(entity, "linked_chat_id", None)
+    if entity_linked:
+        value: str | None = str(entity_linked)
+        _LINKED_CHAT_CACHE[entity_id] = (value, now)
+        return value
+
+    value = None
     try:
-        if isinstance(entity, Channel):
-            try:
-                full = await client(GetFullChannelRequest(entity))
-                full_chat = getattr(full, "full_chat", None)
-                linked = getattr(full_chat, "linked_chat_id", None)
-                if linked:
-                    return str(linked)
-            except Exception:
-                # Fallback to best-effort attribute (may be missing on partial entities).
-                linked = getattr(entity, "linked_chat_id", None)
-                return str(linked) if linked else None
+        full = await asyncio.wait_for(client(GetFullChannelRequest(entity)), timeout=_LINKED_CHAT_RPC_TIMEOUT_S)
+        full_chat = getattr(full, "full_chat", None)
+        linked = getattr(full_chat, "linked_chat_id", None)
+        if linked:
+            value = str(linked)
     except Exception:
-        pass
-    return None
+        value = None
+
+    _LINKED_CHAT_CACHE[entity_id] = (value, now)
+    return value
 
 
 async def _resolve_sync_message_sender(

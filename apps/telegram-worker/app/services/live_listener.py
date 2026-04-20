@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -19,29 +20,61 @@ from app.telegram_client import create_client, telegram_proxy_log_context
 logger = logging.getLogger("telegram-worker.live-listener")
 
 
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
+# Cache of resolved linked_chat_id per chat.id (value, monotonic timestamp).
+# Rationale: previously every incoming group/channel message invoked GetFullChannelRequest here.
+# Telegram routinely throttles that call with a 5-30s flood wait, and Telethon `await`s the sleep
+# INSIDE the update handler — which stalls the entire update pipeline for the Telegram client.
+# Observed impact: listener goes silent for minutes while sleeps stack up, and genuinely new
+# messages (including the operator's own comments that would trigger LeadRadar) are dropped
+# until the process is restarted. One resolution per chat per hour is more than enough, since
+# a channel's linked discussion chat almost never changes.
+_LINKED_CHAT_CACHE: dict[int, tuple[str | None, float]] = {}
+_LINKED_CHAT_CACHE_TTL_S: float = 3600.0
+# Hard cap for the API call itself. On timeout / any error we cache None and move on; the
+# listener must never block longer than this on a single message.
+_LINKED_CHAT_RPC_TIMEOUT_S: float = 2.0
 
 
 async def _resolve_linked_chat_id(client: Any, chat: Any) -> str | None:
     """
-    Telegram "comments enabled" for a broadcast channel is represented as a linked discussion chat id.
-    Telethon often exposes it only on the full channel info (GetFullChannelRequest).
+    Returns the linked discussion chat id for a broadcast channel (comments-enabled), or None.
+    Safe to call on the hot path — never blocks long and never propagates exceptions.
     """
+    if not isinstance(chat, Channel):
+        return None
+
+    chat_id = getattr(chat, "id", None)
+    if chat_id is None:
+        return None
+
+    now = time.monotonic()
+    cached = _LINKED_CHAT_CACHE.get(chat_id)
+    if cached is not None and (now - cached[1]) < _LINKED_CHAT_CACHE_TTL_S:
+        return cached[0]
+
+    # Fast path: Telethon usually populates linked_chat_id on the entity from the dialogs list
+    # (and on Channel objects delivered by update events). No network call needed.
+    entity_linked = getattr(chat, "linked_chat_id", None)
+    if entity_linked:
+        value: str | None = str(entity_linked)
+        _LINKED_CHAT_CACHE[chat_id] = (value, now)
+        return value
+
+    # Slow path: one bounded GetFullChannelRequest attempt. We do NOT want Telethon to internally
+    # sleep on a flood wait here — we cap the whole call with asyncio.wait_for and cache the
+    # result (including None) so subsequent messages from this chat take the cache hit.
+    value = None
     try:
-        if isinstance(chat, Channel):
-            try:
-                full = await client(GetFullChannelRequest(chat))
-                full_chat = getattr(full, "full_chat", None)
-                linked = getattr(full_chat, "linked_chat_id", None)
-                if linked:
-                    return str(linked)
-            except Exception:
-                linked = getattr(chat, "linked_chat_id", None)
-                return str(linked) if linked else None
+        full = await asyncio.wait_for(client(GetFullChannelRequest(chat)), timeout=_LINKED_CHAT_RPC_TIMEOUT_S)
+        full_chat = getattr(full, "full_chat", None)
+        linked = getattr(full_chat, "linked_chat_id", None)
+        if linked:
+            value = str(linked)
     except Exception:
-        pass
-    return None
+        value = None
+
+    _LINKED_CHAT_CACHE[chat_id] = (value, now)
+    return value
 
 
 async def _resolve_sender_display(client: Any, event: events.NewMessage.Event, me: User) -> tuple[str | None, str | None]:
