@@ -9,7 +9,7 @@ import psycopg
 from urllib.parse import urlparse
 from telethon.errors import FloodWaitError, RPCError, ServerError, TimedOutError
 from telethon.tl.functions.channels import GetFullChannelRequest
-from telethon.tl.types import Channel, Chat, InputUser, User
+from telethon.tl.types import Channel, Chat, InputUser, PeerChannel, User
 from telethon.tl.functions.users import GetUsersRequest
 from telethon.tl.functions.messages import GetDiscussionMessageRequest
 from telethon.utils import get_peer_id
@@ -149,6 +149,36 @@ def _resolve_conversation_type(entity: Any) -> str:
     if isinstance(entity, Chat):
         return "group"
     return "direct"
+
+
+def _detect_channel_comment(message: Any, entity: Any) -> tuple[str | None, str | None]:
+    """
+    Same semantics as live_listener._detect_channel_comment: detect channel-comment metadata from
+    the message.reply_to header rather than the entity.linked_chat_id field. Duplicated here
+    intentionally — the two services should share a type helper later, but for now the helper is
+    tiny and keeping it local avoids cross-module coupling of import paths.
+    """
+    reply_to = getattr(message, "reply_to", None)
+    if reply_to is None:
+        return (None, None)
+
+    peer = getattr(reply_to, "reply_to_peer_id", None)
+    if not isinstance(peer, PeerChannel):
+        return (None, None)
+
+    try:
+        related_channel_id = str(get_peer_id(peer))
+    except Exception:
+        return (None, None)
+
+    entity_external_id = str(getattr(entity, "id", "") or "")
+    if entity_external_id and related_channel_id.lstrip("-").endswith(entity_external_id):
+        return (None, None)
+
+    top_id = getattr(reply_to, "reply_to_top_id", None) or getattr(reply_to, "reply_to_msg_id", None)
+    related_post_id = str(top_id) if top_id is not None else None
+
+    return (related_channel_id, related_post_id)
 
 
 def _is_supported_private_human_dialog(entity: Any) -> bool:
@@ -319,16 +349,15 @@ async def _sync_messages_for_dialog(
             "hasAttachment": bool(getattr(message, "media", None)),
         }
 
-        linked_channel_id = getattr(entity, "linked_chat_id", None)
-        if conversation_type == "group" and linked_channel_id:
+        related_channel_id, related_post_id = _detect_channel_comment(message, entity)
+        if related_channel_id:
             payload["rawPayload"]["dialogType"] = "channel_comment"
-            payload["rawPayload"]["relatedChannelId"] = str(linked_channel_id)
-            payload["rawPayload"]["relatedPostId"] = (
-                str(message.reply_to.reply_to_msg_id) if message.reply_to else None
-            )
+            payload["rawPayload"]["chatType"] = "channel_comments"
+            payload["rawPayload"]["relatedChannelId"] = related_channel_id
+            payload["rawPayload"]["relatedPostId"] = related_post_id
             payload["rawPayload"]["contextPreview"] = None
             payload["rawPayload"]["dedupeKey"] = (
-                f'{payload["telegramAccountId"]}:{linked_channel_id}:{payload["rawPayload"]["relatedPostId"]}:{payload["externalMessageId"]}'
+                f'{payload["telegramAccountId"]}:{related_channel_id}:{related_post_id}:{payload["externalMessageId"]}'
             )
         if sender_full_name:
             payload["senderFullName"] = sender_full_name

@@ -205,12 +205,14 @@ export class LeadRadarIngestionService {
     // linked channel id. Some groups carry `relatedChannelId` even when the operator registered only
     // the group as a LeadRadar source; the old "channel id only" lookup skipped those as
     // "not a source". Discussion groups that only register the channel still work via fallback.
+    //
+    // Channel comments arrive from the linked discussion group but carry `chatType="channel_comments"`
+    // (not "GROUP"). The old `chatType === "GROUP"` gate blocked that path, so operators who added
+    // only the channel as a LeadRadar source would silently lose all comment leads. We now fall back
+    // to `relatedChannelId` whenever it is present and differs from the chat id — this is safe
+    // because a legitimate private/bot dialog never carries `relatedChannelId` in the first place.
     const sourceCandidates: string[] = [input.chatId];
-    if (
-      input.chatType === "GROUP" &&
-      input.relatedChannelId &&
-      input.relatedChannelId !== input.chatId
-    ) {
+    if (input.relatedChannelId && input.relatedChannelId !== input.chatId) {
       sourceCandidates.push(input.relatedChannelId);
     }
 

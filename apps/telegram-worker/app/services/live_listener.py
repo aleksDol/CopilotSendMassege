@@ -8,8 +8,9 @@ from typing import Any
 import psycopg
 from telethon import events
 from telethon.tl.functions.channels import GetFullChannelRequest
-from telethon.tl.types import Channel, Chat, InputUser, User
+from telethon.tl.types import Channel, Chat, InputUser, PeerChannel, User
 from telethon.tl.functions.users import GetUsersRequest
+from telethon.utils import get_peer_id
 
 from app.config import settings
 from app.crypto import SessionCrypto
@@ -138,6 +139,49 @@ def _resolve_conversation_type(entity: Any) -> str:
     if isinstance(entity, Chat):
         return "group"
     return "direct"
+
+
+def _detect_channel_comment(msg: Any, chat: Any) -> tuple[str | None, str | None]:
+    """
+    Detect whether `msg` is a comment posted in a channel's linked discussion group.
+
+    Returns (related_channel_id, related_post_id) — both as bot-style string ids (e.g.
+    "-1001495210829" for channels) — or (None, None) if it is not a channel comment.
+
+    Rationale: Telethon only exposes `linked_chat_id` on the broadcast Channel entity (points
+    FROM the channel TO its discussion group). The discussion group entity itself does NOT
+    carry a back-reference, so the old "use chat.linked_chat_id" path silently produced None
+    for every incoming comment — leading to LeadRadar sources registered at the channel level
+    never matching live comments. The correct signal is `message.reply_to.reply_to_peer_id`,
+    which Telegram fills for comments with the originating channel, plus `reply_to_top_id`
+    (the post id in that channel).
+    """
+    reply_to = getattr(msg, "reply_to", None)
+    if reply_to is None:
+        return (None, None)
+
+    peer = getattr(reply_to, "reply_to_peer_id", None)
+    if not isinstance(peer, PeerChannel):
+        return (None, None)
+
+    # `get_peer_id` converts PeerChannel(channel_id=N) → -100N to match the bot-API style ids
+    # we already use across the system (rawPayload.peerExternalId / externalConversationId / DB).
+    try:
+        related_channel_id = str(get_peer_id(peer))
+    except Exception:
+        return (None, None)
+
+    chat_external_id = str(getattr(chat, "id", "") or "")
+    # A reply_to_peer_id that matches the current chat is a normal in-chat reply, not a comment.
+    if chat_external_id and related_channel_id.lstrip("-").endswith(chat_external_id):
+        return (None, None)
+
+    # `reply_to_top_id` is the top-level thread root — i.e. the channel post id for comments.
+    # Fall back to reply_to_msg_id only if top_id is missing (older clients / edge cases).
+    top_id = getattr(reply_to, "reply_to_top_id", None) or getattr(reply_to, "reply_to_msg_id", None)
+    related_post_id = str(top_id) if top_id is not None else None
+
+    return (related_channel_id, related_post_id)
 
 
 def _is_supported_private_human_dialog(entity: Any) -> bool:
@@ -321,19 +365,18 @@ async def _run_account_listener(account: ConnectedAccount, crypto: SessionCrypto
                         "hasAttachment": has_attachment,
                     }
 
-                    # Telegram channel comments:
-                    # Messages are authored in the linked discussion group (megagroup) and can be tied back to a channel.
-                    linked_channel_id = getattr(chat, "linked_chat_id", None)
-                    if conversation_type == "group" and linked_channel_id:
+                    # Telegram channel comments: authored in the linked discussion group (megagroup)
+                    # and tied back to a channel via msg.reply_to.reply_to_peer_id (NOT via
+                    # chat.linked_chat_id — that field only exists on the broadcast Channel entity).
+                    related_channel_id, related_post_id = _detect_channel_comment(msg, chat)
+                    if related_channel_id:
                         payload["rawPayload"]["dialogType"] = "channel_comment"
                         payload["rawPayload"]["chatType"] = "channel_comments"
-                        payload["rawPayload"]["relatedChannelId"] = str(linked_channel_id)
-                        payload["rawPayload"]["relatedPostId"] = (
-                            str(msg.reply_to.reply_to_msg_id) if getattr(msg, "reply_to", None) else None
-                        )
+                        payload["rawPayload"]["relatedChannelId"] = related_channel_id
+                        payload["rawPayload"]["relatedPostId"] = related_post_id
                         payload["rawPayload"]["contextPreview"] = None
                         payload["rawPayload"]["dedupeKey"] = (
-                            f'{account.telegram_account_id}:{linked_channel_id}:{payload["rawPayload"]["relatedPostId"]}:{payload["externalMessageId"]}'
+                            f'{account.telegram_account_id}:{related_channel_id}:{related_post_id}:{payload["externalMessageId"]}'
                         )
 
                     if settings.telegram_live_listener_log_events:
