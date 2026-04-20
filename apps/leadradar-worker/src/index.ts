@@ -182,17 +182,16 @@ const worker = new Worker<LeadRadarProcessMessageJob>(
       return { status: "skipped", reason: "message_not_found" };
     }
 
-    // Safety net: if ingestion enqueued a wrong externalMessageId for this event (rare but harmful),
-    // `sentAt` will not match the DB row. In that case, do NOT create leads from a stale message.
+    // Observability only: job payload `sentAt` can legitimately differ from the DB row (TZ/format/updates).
+    // The message row is already resolved by (conversationId, externalMessageId); do not skip processing.
     if (payload.sentAt) {
       const sentAtMs = Date.parse(payload.sentAt);
       if (!Number.isNaN(sentAtMs)) {
         const dbMs = message.sentAt?.getTime?.();
         if (typeof dbMs === "number") {
           const driftMs = Math.abs(dbMs - sentAtMs);
-          // Use a conservative threshold to avoid false positives on clock skew / minor ingestion delays.
-          if (driftMs > 2 * 60 * 1000) {
-            log("warn", "LeadRadar messageId/sentAt mismatch (skipping)", {
+          if (driftMs > 5 * 60 * 1000) {
+            log("warn", "LeadRadar payload sentAt differs from DB (continuing; DB row is authoritative)", {
               jobId: job.id,
               telegramAccountId,
               chatId,
@@ -201,7 +200,6 @@ const worker = new Worker<LeadRadarProcessMessageJob>(
               dbSentAt: message.sentAt.toISOString(),
               driftMs
             });
-            return { status: "skipped", reason: "message_mismatch_by_sentAt" };
           }
         }
       }
