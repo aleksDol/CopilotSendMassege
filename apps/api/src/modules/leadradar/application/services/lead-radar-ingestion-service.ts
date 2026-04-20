@@ -248,7 +248,15 @@ export class LeadRadarIngestionService {
     // the source off/on (Disable/Enable) without deleting it. For newly created sources,
     // updated_at is equal to created_at.
     const monitoringStartedAt = source.updated_at ?? source.created_at;
-    if (input.date && monitoringStartedAt && input.date < monitoringStartedAt) {
+    // Small tolerance window to avoid edge cases where the source gets enabled/updated
+    // and the user sends a message immediately: Telegram timestamps and DB timestamps
+    // can differ by a few seconds.
+    const monitoringToleranceMs = 10_000; // 10s
+    if (
+      input.date &&
+      monitoringStartedAt &&
+      input.date.getTime() + monitoringToleranceMs < new Date(monitoringStartedAt as any).getTime()
+    ) {
       log("[LeadRadar] skipped: before monitoring started");
       skip_reason = "before_monitoring_started";
       final_action = "skipped";
@@ -264,6 +272,7 @@ export class LeadRadarIngestionService {
             normalized_text,
             monitoring_started_at: monitoringStartedAt?.toISOString?.() ?? String(monitoringStartedAt),
             message_date: input.date?.toISOString?.() ?? String(input.date),
+            monitoring_tolerance_ms: monitoringToleranceMs,
             positive_keyword_matches,
             negative_keyword_matches,
             score_breakdown,
