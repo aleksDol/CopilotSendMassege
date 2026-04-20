@@ -46,8 +46,27 @@ def _now() -> datetime:
 # Telethon client blocks the whole update pipeline, not just sync. We keep a shared-shape TTL cache
 # here as well and bound the RPC with a short timeout.
 _LINKED_CHAT_CACHE: dict[int, tuple[str | None, float]] = {}
-_LINKED_CHAT_CACHE_TTL_S: float = 3600.0
+# See live_listener for full rationale on asymmetric TTL: flood-wait or partial-entity misses
+# must NOT persist for the full hour, otherwise one unlucky first call disables channel-comment
+# detection for the rest of the sync cycle.
+_LINKED_CHAT_CACHE_POS_TTL_S: float = 3600.0
+_LINKED_CHAT_CACHE_NEG_TTL_S: float = 60.0
 _LINKED_CHAT_RPC_TIMEOUT_S: float = 3.0
+
+
+def _cache_linked_chat(chat_id: int, value: str | None, now: float) -> None:
+    _LINKED_CHAT_CACHE[chat_id] = (value, now)
+
+
+def _linked_chat_cache_get(chat_id: int, now: float) -> tuple[bool, str | None]:
+    entry = _LINKED_CHAT_CACHE.get(chat_id)
+    if entry is None:
+        return (False, None)
+    value, ts = entry
+    ttl = _LINKED_CHAT_CACHE_POS_TTL_S if value is not None else _LINKED_CHAT_CACHE_NEG_TTL_S
+    if (now - ts) >= ttl:
+        return (False, None)
+    return (True, value)
 
 
 def _format_linked_channel_id(raw_id: Any) -> str | None:
@@ -72,15 +91,28 @@ async def _resolve_linked_chat_id(client: Any, entity: Any) -> str | None:
         return None
 
     now = time.monotonic()
-    cached = _LINKED_CHAT_CACHE.get(entity_id)
-    if cached is not None and (now - cached[1]) < _LINKED_CHAT_CACHE_TTL_S:
-        return cached[0]
+    is_fresh, cached_value = _linked_chat_cache_get(entity_id, now)
+    if is_fresh:
+        return cached_value
 
     entity_linked = getattr(entity, "linked_chat_id", None)
     if entity_linked:
         value: str | None = _format_linked_channel_id(entity_linked)
-        _LINKED_CHAT_CACHE[entity_id] = (value, now)
+        _cache_linked_chat(entity_id, value, now)
         return value
+
+    # Medium path: GetChannelsRequest via client.get_entity — usually returns a Channel whose
+    # linked_chat_id is already populated and is much less prone to flood waits than the full
+    # path below.
+    try:
+        resolved = await asyncio.wait_for(client.get_entity(entity), timeout=_LINKED_CHAT_RPC_TIMEOUT_S)
+        resolved_linked = getattr(resolved, "linked_chat_id", None)
+        if resolved_linked:
+            value = _format_linked_channel_id(resolved_linked)
+            _cache_linked_chat(entity_id, value, now)
+            return value
+    except Exception:
+        pass
 
     value = None
     try:
@@ -92,7 +124,7 @@ async def _resolve_linked_chat_id(client: Any, entity: Any) -> str | None:
     except Exception:
         value = None
 
-    _LINKED_CHAT_CACHE[entity_id] = (value, now)
+    _cache_linked_chat(entity_id, value, now)
     return value
 
 

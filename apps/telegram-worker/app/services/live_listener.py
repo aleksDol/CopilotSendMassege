@@ -34,10 +34,33 @@ def _now() -> datetime:
 # until the process is restarted. One resolution per chat per hour is more than enough, since
 # a channel's linked discussion chat almost never changes.
 _LINKED_CHAT_CACHE: dict[int, tuple[str | None, float]] = {}
-_LINKED_CHAT_CACHE_TTL_S: float = 3600.0
+# Positive results (we know the linked channel id) are stable and safe to cache for a long time —
+# a channel's linked discussion chat almost never changes. Negative results, however, are usually
+# transient (flood wait on GetFullChannelRequest, update event with a non-hydrated entity, …) and
+# MUST expire fast, otherwise one unlucky first-call failure silently disables channel-comment
+# detection for an entire hour. Observed exactly this: 1 successful detection followed by 14
+# misses for the same chat in a 2-minute window.
+_LINKED_CHAT_CACHE_POS_TTL_S: float = 3600.0
+_LINKED_CHAT_CACHE_NEG_TTL_S: float = 60.0
 # Hard cap for the API call itself. On timeout / any error we cache None and move on; the
 # listener must never block longer than this on a single message.
 _LINKED_CHAT_RPC_TIMEOUT_S: float = 2.0
+
+
+def _cache_linked_chat(chat_id: int, value: str | None, now: float) -> None:
+    _LINKED_CHAT_CACHE[chat_id] = (value, now)
+
+
+def _linked_chat_cache_get(chat_id: int, now: float) -> tuple[bool, str | None]:
+    """Returns (is_fresh, value). is_fresh=False means caller must recompute."""
+    entry = _LINKED_CHAT_CACHE.get(chat_id)
+    if entry is None:
+        return (False, None)
+    value, ts = entry
+    ttl = _LINKED_CHAT_CACHE_POS_TTL_S if value is not None else _LINKED_CHAT_CACHE_NEG_TTL_S
+    if (now - ts) >= ttl:
+        return (False, None)
+    return (True, value)
 
 
 def _format_linked_channel_id(raw_id: Any) -> str | None:
@@ -70,22 +93,36 @@ async def _resolve_linked_chat_id(client: Any, chat: Any) -> str | None:
         return None
 
     now = time.monotonic()
-    cached = _LINKED_CHAT_CACHE.get(chat_id)
-    if cached is not None and (now - cached[1]) < _LINKED_CHAT_CACHE_TTL_S:
-        return cached[0]
+    is_fresh, cached_value = _linked_chat_cache_get(chat_id, now)
+    if is_fresh:
+        return cached_value
 
     # Fast path: Telethon usually populates linked_chat_id on the entity once it has been
-    # hydrated from dialogs / get_entity. Partial entities from update events may leave it None,
-    # in which case we fall through to the GetFullChannelRequest path.
+    # hydrated from dialogs / get_entity. Partial entities from update events may leave it None.
     entity_linked = getattr(chat, "linked_chat_id", None)
     if entity_linked:
         value: str | None = _format_linked_channel_id(entity_linked)
-        _LINKED_CHAT_CACHE[chat_id] = (value, now)
+        _cache_linked_chat(chat_id, value, now)
         return value
 
-    # Slow path: one bounded GetFullChannelRequest attempt. We do NOT want Telethon to internally
-    # sleep on a flood wait here — we cap the whole call with asyncio.wait_for and cache the
-    # result (including None) so subsequent messages from this chat take the cache hit.
+    # Medium path: ask Telethon to fully resolve the entity. `get_entity` uses GetChannelsRequest
+    # under the hood, which returns the `linked_chat_id` field on the Channel constructor directly
+    # (no GetFullChannelRequest needed) and rarely hits flood waits. This is much more reliable
+    # than jumping straight to the slow path when the update event gave us a minimal entity.
+    try:
+        resolved = await asyncio.wait_for(client.get_entity(chat), timeout=_LINKED_CHAT_RPC_TIMEOUT_S)
+        resolved_linked = getattr(resolved, "linked_chat_id", None)
+        if resolved_linked:
+            value = _format_linked_channel_id(resolved_linked)
+            _cache_linked_chat(chat_id, value, now)
+            return value
+    except Exception:
+        pass
+
+    # Slow path: one bounded GetFullChannelRequest attempt as a last resort. We cap the whole
+    # call with asyncio.wait_for so a flood wait cannot stall the update pipeline; the negative
+    # result is cached briefly (NEG_TTL) so the next message retries instead of being blocked
+    # for the full positive TTL.
     value = None
     try:
         full = await asyncio.wait_for(client(GetFullChannelRequest(chat)), timeout=_LINKED_CHAT_RPC_TIMEOUT_S)
@@ -96,7 +133,7 @@ async def _resolve_linked_chat_id(client: Any, chat: Any) -> str | None:
     except Exception:
         value = None
 
-    _LINKED_CHAT_CACHE[chat_id] = (value, now)
+    _cache_linked_chat(chat_id, value, now)
     return value
 
 
