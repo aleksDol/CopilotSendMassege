@@ -108,14 +108,19 @@ const toMessageType = (payload: MessageEventPayload): MessageType => {
   return MessageType.OTHER;
 };
 
-const canTriggerLeadRadar = (payload: MessageEventPayload): boolean => {
+const canTriggerLeadRadar = (
+  payload: MessageEventPayload,
+  opts?: { fallbackText?: string | null }
+): boolean => {
   if (payload.isOutgoing) {
     return false;
   }
   if (payload.senderType !== "user") {
     return false;
   }
-  const text = typeof payload.text === "string" ? payload.text.trim() : "";
+  const fromPayload = typeof payload.text === "string" ? payload.text.trim() : "";
+  const fromFallback = typeof opts?.fallbackText === "string" ? opts.fallbackText.trim() : "";
+  const text = fromPayload.length > 0 ? fromPayload : fromFallback;
   if (!text.length) {
     return false;
   }
@@ -438,6 +443,7 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
     select: {
       id: true,
       messageType: true,
+      text: true,
       relatedChannelId: true,
       relatedPostId: true,
       contextPreview: true,
@@ -584,7 +590,7 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
     // LeadRadar trigger (async).
     // IMPORTANT: keep ingestion response fast; never await LeadRadar processing here.
     // Default rollout: ENABLE_LEADRADAR_QUEUE=false keeps legacy in-process behavior (if enabled).
-    if (app.config.env.ENABLE_LEADRADAR && canTriggerLeadRadar(payload)) {
+    if (app.config.env.ENABLE_LEADRADAR && canTriggerLeadRadar(payload, { fallbackText: existing.text })) {
       if (app.config.env.ENABLE_LEADRADAR_QUEUE) {
         const jobPayload = toLeadRadarJobPayload({ telegramAccountId: telegramAccount.id, payload });
         void enqueueLeadRadarJob(app.config.env, jobPayload).then(
@@ -809,7 +815,7 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
   await maybeMarkLeadReplied(app, { telegramAccountId: telegramAccount.id, payload });
 
   // LeadRadar trigger (async).
-  if (app.config.env.ENABLE_LEADRADAR && canTriggerLeadRadar(payload)) {
+  if (app.config.env.ENABLE_LEADRADAR && canTriggerLeadRadar(payload, { fallbackText: message.text })) {
     if (app.config.env.ENABLE_LEADRADAR_QUEUE) {
       const jobPayload = toLeadRadarJobPayload({ telegramAccountId: telegramAccount.id, payload });
       void enqueueLeadRadarJob(app.config.env, jobPayload).then(
