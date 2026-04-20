@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { LeadRadarIngestionService } from "./lead-radar-ingestion-service.js";
 import type { LeadRadarMessageInput } from "../../types/ingestion.js";
+import type { FindSourceByTelegramChatIdInput } from "../../types/repository-inputs.js";
+import type { LeadSource } from "../../domain/entities/lead-source.js";
 
 function baseMessage(overrides: Partial<LeadRadarMessageInput> = {}): LeadRadarMessageInput {
   return {
@@ -24,9 +26,22 @@ function baseMessage(overrides: Partial<LeadRadarMessageInput> = {}): LeadRadarM
   };
 }
 
+const defaultActiveSource = (): LeadSource => ({
+  id: "src1",
+  user_id: "u1",
+  telegram_account_id: "ta1",
+  telegram_chat_id: "chat1",
+  chat_title: null,
+  chat_type: "direct",
+  is_active: true,
+  created_at: new Date("2026-04-01T00:00:00.000Z"),
+  updated_at: new Date("2026-04-01T00:00:00.000Z")
+});
+
 function makeService(params?: {
   match?: (input: LeadRadarMessageInput) => Promise<any>;
   score?: (args: any) => Promise<any>;
+  findByTelegramChatId?: (input: FindSourceByTelegramChatIdInput) => Promise<LeadSource | null>;
 }) {
   const calls: { createLead: any[] } = { createLead: [] };
 
@@ -44,16 +59,7 @@ function makeService(params?: {
       }
     } as any,
     sourceRepo: {
-      findByTelegramChatId: async () => ({
-        id: "src1",
-        user_id: "u1",
-        telegram_account_id: "ta1",
-        telegram_chat_id: "chat1",
-        is_active: true,
-        chat_type: "direct",
-        created_at: new Date("2026-04-01T00:00:00.000Z"),
-        updated_at: new Date("2026-04-01T00:00:00.000Z")
-      })
+      findByTelegramChatId: params?.findByTelegramChatId ?? (async () => defaultActiveSource())
     } as any,
     settingsRepo: {
       getSettings: async () => ({
@@ -147,5 +153,64 @@ test("Case 3: A has match, B has match -> both evaluated as current messages (2 
   assert.equal(calls.createLead[0].message_text, "KEY one");
   assert.equal(calls.createLead[1].message_id, "B");
   assert.equal(calls.createLead[1].message_text, "KEY two");
+});
+
+test("Case 4: GROUP with relatedChannelId resolves active source registered on group chat id (not only channel)", async () => {
+  const lookupOrder: string[] = [];
+  const { service, calls } = makeService({
+    findByTelegramChatId: async ({ telegram_chat_id }) => {
+      lookupOrder.push(telegram_chat_id);
+      if (telegram_chat_id === "-100GROUP") {
+        return {
+          ...defaultActiveSource(),
+          telegram_chat_id: "-100GROUP",
+          chat_type: "group"
+        };
+      }
+      return null;
+    }
+  });
+
+  await service.processMessage(
+    baseMessage({
+      chatType: "GROUP",
+      chatId: "-100GROUP",
+      relatedChannelId: "-100CHAN",
+      text: "KEY group"
+    })
+  );
+
+  assert.deepEqual(lookupOrder, ["-100GROUP"]);
+  assert.equal(calls.createLead.length, 1);
+});
+
+test("Case 5: GROUP falls back to linked channel id when group has no source (discussion-style)", async () => {
+  const lookupOrder: string[] = [];
+  const { service, calls } = makeService({
+    findByTelegramChatId: async ({ telegram_chat_id }) => {
+      lookupOrder.push(telegram_chat_id);
+      if (telegram_chat_id === "-100GROUP") return null;
+      if (telegram_chat_id === "-100CHAN") {
+        return {
+          ...defaultActiveSource(),
+          telegram_chat_id: "-100CHAN",
+          chat_type: "channel"
+        };
+      }
+      return null;
+    }
+  });
+
+  await service.processMessage(
+    baseMessage({
+      chatType: "GROUP",
+      chatId: "-100GROUP",
+      relatedChannelId: "-100CHAN",
+      text: "KEY channel"
+    })
+  );
+
+  assert.deepEqual(lookupOrder, ["-100GROUP", "-100CHAN"]);
+  assert.equal(calls.createLead.length, 1);
 });
 

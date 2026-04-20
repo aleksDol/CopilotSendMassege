@@ -6,6 +6,7 @@ import type { LeadMatchService } from "./lead-match-service.js";
 import type { LeadScoringService } from "./lead-scoring-service.js";
 import { LeadStatus } from "../../domain/enums/lead-status.js";
 import type { LeadRadarMessageInput } from "../../types/ingestion.js";
+import type { LeadSource } from "../../domain/entities/lead-source.js";
 import type { PrismaClient } from "@prisma/client";
 import { normalizeLeadRadarText } from "../../lib/text-normalization.js";
 
@@ -200,17 +201,36 @@ export class LeadRadarIngestionService {
     }
 
     // 2) Source check
-    const sourceChatId =
-      input.chatType === "GROUP" && input.relatedChannelId ? input.relatedChannelId : input.chatId;
+    // Prefer the chat where the message was received (group/supergroup), then fall back to the
+    // linked channel id. Some groups carry `relatedChannelId` even when the operator registered only
+    // the group as a LeadRadar source; the old "channel id only" lookup skipped those as
+    // "not a source". Discussion groups that only register the channel still work via fallback.
+    const sourceCandidates: string[] = [input.chatId];
+    if (
+      input.chatType === "GROUP" &&
+      input.relatedChannelId &&
+      input.relatedChannelId !== input.chatId
+    ) {
+      sourceCandidates.push(input.relatedChannelId);
+    }
 
-    const source = await this.deps.sourceRepo.findByTelegramChatId({
-      user_id: input.userId,
-      telegram_account_id: input.telegramAccountId,
-      telegram_chat_id: sourceChatId
-    });
+    let source: LeadSource | null = null;
+    let sourceChatIdUsed = input.chatId;
+    for (const telegram_chat_id of sourceCandidates) {
+      const row = await this.deps.sourceRepo.findByTelegramChatId({
+        user_id: input.userId,
+        telegram_account_id: input.telegramAccountId,
+        telegram_chat_id
+      });
+      sourceChatIdUsed = telegram_chat_id;
+      if (row?.is_active) {
+        source = row;
+        break;
+      }
+    }
 
     log(
-      `[LeadRadar-DEBUG] source lookup chatId=${sourceChatId} found=${!!source} active=${source?.is_active ?? "N/A"}`
+      `[LeadRadar-DEBUG] source lookup candidates=${JSON.stringify(sourceCandidates)} usedChatId=${sourceChatIdUsed} foundActive=${!!source}`
     );
 
     if (!source || !source.is_active) {
@@ -444,13 +464,13 @@ export class LeadRadarIngestionService {
         username_normalized: senderExternalId ? null : usernameKey,
         since
       });
-      if (existing && existing.chat_id !== sourceChatId) {
+      if (existing && existing.chat_id !== source.telegram_chat_id) {
         await this.deps.leadRepo.mergeMultiChatLead({
           lead_id: existing.id,
           user_id: input.userId,
           telegram_account_id: input.telegramAccountId,
           score_delta: this.deps.multiChatScoreBonus,
-          source_chat_id: sourceChatId,
+          source_chat_id: source.telegram_chat_id,
           source_type: source.chat_type ?? input.sourceType ?? null,
           related_channel_id: input.relatedChannelId ?? null,
           last_seen_at: input.date
@@ -521,7 +541,7 @@ export class LeadRadarIngestionService {
       telegram_user_id: input.senderId,
       username: input.senderUsername,
       display_name: input.senderDisplayName,
-      chat_id: sourceChatId,
+      chat_id: source.telegram_chat_id,
       chat_title: input.chatTitle ?? null,
       source_type: source.chat_type ?? input.sourceType ?? null,
       related_post_id: input.relatedPostId ?? null,
