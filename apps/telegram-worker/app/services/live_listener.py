@@ -20,6 +20,10 @@ from app.telegram_client import create_client, telegram_proxy_log_context
 logger = logging.getLogger("telegram-worker.live-listener")
 
 
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 # Cache of resolved linked_chat_id per chat.id (value, monotonic timestamp).
 # Rationale: previously every incoming group/channel message invoked GetFullChannelRequest here.
 # Telegram routinely throttles that call with a 5-30s flood wait, and Telethon `await`s the sleep
