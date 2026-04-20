@@ -15,11 +15,18 @@ export class LeadScoringService {
     const text = normalizeLeadRadarText(input.message.text ?? "").normalized_text;
 
     const breakdown: Record<string, number> = {
+      keyword_match: 0,
       intent: 0,
       service: 0,
       length: 0,
       too_short: 0
     };
+
+    // +2 if we already have a positive keyword match.
+    // Matching is the primary signal; intent/service heuristics are secondary.
+    if (input.matchedKeywords.length > 0) {
+      breakdown.keyword_match = 2;
+    }
 
     // +3 intent
     if (INTENT_PHRASES.some((p) => text.includes(p))) {
