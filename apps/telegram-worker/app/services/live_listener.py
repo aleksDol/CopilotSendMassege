@@ -13,7 +13,7 @@ from telethon.tl.functions.users import GetUsersRequest
 from app.config import settings
 from app.crypto import SessionCrypto
 from app.db import get_connection
-from app.internal_api_client import push_message_event
+from app.internal_api_client import push_message_event_with_retry
 from app.telegram_client import create_client, telegram_proxy_log_context
 
 logger = logging.getLogger("telegram-worker.live-listener")
@@ -194,41 +194,6 @@ async def _mark_last_event(telegram_account_id: str) -> None:
         return
 
 
-async def _push_with_retry(
-    telegram_account_id: str,
-    payload: dict[str, Any],
-    *,
-    attempts: int = 4,
-    base_delay_s: float = 0.4,
-) -> None:
-    """
-    Deliver message event to API reliably.
-    We retry on transient failures (network / 5xx) and log final failure loudly.
-    """
-    delay = base_delay_s
-    last_exc: Exception | None = None
-    for i in range(attempts):
-        try:
-            await push_message_event(payload, timeout_s=20.0)
-            return
-        except Exception as exc:
-            last_exc = exc
-            is_last = i == attempts - 1
-            if is_last:
-                logger.warning(
-                    "listener ingestion push failed telegramAccountId=%s externalConversationId=%s externalMessageId=%s err=%s",
-                    telegram_account_id,
-                    payload.get("externalConversationId"),
-                    payload.get("externalMessageId"),
-                    exc,
-                )
-                return
-            await asyncio.sleep(delay)
-            delay = min(5.0, delay * 2.0)
-    if last_exc:
-        logger.warning("listener ingestion push failed telegramAccountId=%s err=%s", telegram_account_id, last_exc)
-
-
 async def _run_account_listener(account: ConnectedAccount, crypto: SessionCrypto, stop: asyncio.Event) -> None:
     session = crypto.decrypt(account.session_data_encrypted)
     reconnect_backoff = 1.0
@@ -343,7 +308,7 @@ async def _run_account_listener(account: ConnectedAccount, crypto: SessionCrypto
                             sender_external_id,
                         )
 
-                    await _push_with_retry(account.telegram_account_id, payload)
+                    await push_message_event_with_retry(payload, timeout_s=20.0)
                     await _mark_last_event(account.telegram_account_id)
                 except Exception as exc:
                     logger.warning("listener handler error telegramAccountId=%s err=%s", account.telegram_account_id, exc)

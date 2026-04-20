@@ -16,7 +16,12 @@ from telethon.utils import get_peer_id
 from app.config import settings
 from app.crypto import SessionCrypto
 from app.db import get_connection
-from app.internal_api_client import list_channel_comment_sources, push_message_event
+from app.internal_api_client import (
+    list_channel_comment_sources,
+    list_leadradar_sync_priority_sources,
+    push_message_event,
+    push_message_event_with_retry,
+)
 from app.services.auth_flow import WorkerError, mark_error_by_channel
 from app.services.safety import safety_service
 from app.telegram_client import create_client
@@ -229,6 +234,91 @@ async def _set_sync_markers(
         )
 
 
+async def _sync_messages_for_dialog(
+    client: Any,
+    me: User,
+    account: dict[str, Any],
+    entity: Any,
+    dialog_id: int,
+    dialog_title: str | None,
+    messages_cap: int,
+) -> int:
+    """
+    Read recent messages for a dialog and push to the API. Returns count of successfully delivered events.
+    """
+    conversation_type = _resolve_conversation_type(entity)
+    linked_chat_id = await _resolve_linked_chat_id(client, entity)
+    pushed = 0
+
+    async for message in client.iter_messages(dialog_id, limit=messages_cap):
+        sender_id = message.sender_id
+        is_outgoing = bool(getattr(message, "out", False))
+
+        sender_external_id = str(sender_id if sender_id is not None else me.id)
+        sender_type = "self" if is_outgoing else "user"
+        sender_full_name, sender_username = await _resolve_sync_message_sender(client, message, me, entity)
+
+        text = message.message if getattr(message, "message", None) else None
+
+        payload: dict[str, Any] = {
+            "telegramAccountId": str(account["telegramAccountId"]),
+            "externalConversationId": str(dialog_id),
+            "externalMessageId": str(message.id),
+            "senderExternalId": sender_external_id,
+            "senderType": sender_type,
+            "text": text,
+            "sentAt": message.date.isoformat(),
+            "isOutgoing": is_outgoing,
+            "replyToExternalMessageId": str(message.reply_to.reply_to_msg_id) if message.reply_to else None,
+            "rawPayload": {
+                "id": message.id,
+                "out": is_outgoing,
+                "senderId": sender_id,
+                "dialogType": conversation_type,
+                "peerIsHuman": True,
+                "peerExternalId": str(getattr(entity, "id", "")),
+                "peerFullName": " ".join(
+                    part for part in [getattr(entity, "first_name", None), getattr(entity, "last_name", None)] if part
+                ).strip()
+                or None,
+                "peerUsername": getattr(entity, "username", None),
+                "linkedChatId": linked_chat_id,
+                "peerIsBot": bool(getattr(entity, "bot", False)),
+                "isServiceDialog": bool(getattr(entity, "support", False) or getattr(entity, "is_self", False)),
+                "hasMedia": bool(getattr(message, "media", None)),
+            },
+            "conversationTitle": dialog_title,
+            "hasAttachment": bool(getattr(message, "media", None)),
+        }
+
+        linked_channel_id = getattr(entity, "linked_chat_id", None)
+        if conversation_type == "group" and linked_channel_id:
+            payload["rawPayload"]["dialogType"] = "channel_comment"
+            payload["rawPayload"]["relatedChannelId"] = str(linked_channel_id)
+            payload["rawPayload"]["relatedPostId"] = (
+                str(message.reply_to.reply_to_msg_id) if message.reply_to else None
+            )
+            payload["rawPayload"]["contextPreview"] = None
+            payload["rawPayload"]["dedupeKey"] = (
+                f'{payload["telegramAccountId"]}:{linked_channel_id}:{payload["rawPayload"]["relatedPostId"]}:{payload["externalMessageId"]}'
+            )
+        if sender_full_name:
+            payload["senderFullName"] = sender_full_name
+        if sender_username:
+            payload["senderUsername"] = sender_username
+
+        if await push_message_event_with_retry(payload, timeout_s=20.0):
+            pushed += 1
+        else:
+            logger.warning(
+                "auto-sync push_message_event failed dialog=%s msgId=%s",
+                dialog_id,
+                message.id,
+            )
+
+    return pushed
+
+
 async def run_initial_sync(
     company_id: str,
     channel_account_id: str,
@@ -259,82 +349,82 @@ async def run_initial_sync(
 
             me = await client.get_me()
 
+            synced_peer_ids: set[str] = set()
+
             async for dialog in client.iter_dialogs(limit=dialogs_cap):
                 entity = dialog.entity
                 if not _is_supported_dialog(entity):
                     continue
 
                 result.dialogs_synced += 1
-                conversation_type = _resolve_conversation_type(entity)
-                linked_chat_id = await _resolve_linked_chat_id(client, entity)
+                synced_peer_ids.add(str(dialog.id))
+                n = await _sync_messages_for_dialog(
+                    client,
+                    me,
+                    account,
+                    entity,
+                    dialog.id,
+                    dialog.title,
+                    messages_cap,
+                )
+                result.messages_synced += n
 
-                async for message in client.iter_messages(dialog.id, limit=messages_cap):
-                    sender_id = message.sender_id
-                    is_outgoing = bool(getattr(message, "out", False))
+            # LeadRadar: always pull recent messages for monitored chats, even if they are outside iter_dialogs(limit).
+            try:
+                priority_sources = await list_leadradar_sync_priority_sources(
+                    telegram_account_id=str(account["telegramAccountId"])
+                )
+            except WorkerError as exc:
+                logger.warning(
+                    "sync-priority sources fetch failed telegramAccountId=%s code=%s message=%s",
+                    account["telegramAccountId"],
+                    exc.code,
+                    exc.message,
+                )
+                priority_sources = []
+            except Exception as exc:
+                logger.warning("sync-priority sources fetch failed: %s", exc)
+                priority_sources = []
 
-                    sender_external_id = str(sender_id if sender_id is not None else me.id)
-                    sender_type = "self" if is_outgoing else "user"
-                    sender_full_name, sender_username = await _resolve_sync_message_sender(
-                        client, message, me, entity
+            seen_priority: set[str] = set()
+            for row in priority_sources:
+                cid_raw = (row.get("telegramChatId") if isinstance(row, dict) else None) or ""
+                cid = str(cid_raw).strip()
+                if not cid or cid in seen_priority:
+                    continue
+                seen_priority.add(cid)
+                try:
+                    peer_int = int(cid)
+                except ValueError:
+                    logger.warning("sync-priority invalid telegramChatId=%s", cid_raw)
+                    continue
+                try:
+                    entity = await client.get_entity(peer_int)
+                except Exception as exc:
+                    logger.warning("sync-priority get_entity failed chatId=%s err=%s", cid, exc)
+                    continue
+                if not _is_supported_dialog(entity):
+                    continue
+                peer_id = get_peer_id(entity)
+                if str(peer_id) in synced_peer_ids:
+                    continue
+                result.dialogs_synced += 1
+                title = getattr(entity, "title", None)
+                if isinstance(entity, User):
+                    title = (
+                        " ".join(part for part in [entity.first_name, entity.last_name] if part).strip()
+                        or (entity.username or str(entity.id))
                     )
-
-                    text = message.message if getattr(message, "message", None) else None
-
-                    payload: dict[str, Any] = {
-                        "telegramAccountId": str(account["telegramAccountId"]),
-                        "externalConversationId": str(dialog.id),
-                        "externalMessageId": str(message.id),
-                        "senderExternalId": sender_external_id,
-                        "senderType": sender_type,
-                        "text": text,
-                        "sentAt": message.date.isoformat(),
-                        "isOutgoing": is_outgoing,
-                        "replyToExternalMessageId": str(message.reply_to.reply_to_msg_id) if message.reply_to else None,
-                        "rawPayload": {
-                            "id": message.id,
-                            "out": is_outgoing,
-                            "senderId": sender_id,
-                            "dialogType": conversation_type,
-                            "peerIsHuman": True,
-                            "peerExternalId": str(getattr(entity, "id", "")),
-                            "peerFullName": " ".join(
-                                part for part in [getattr(entity, "first_name", None), getattr(entity, "last_name", None)] if part
-                            ).strip()
-                            or None,
-                            "peerUsername": getattr(entity, "username", None),
-                            # For channels, Telethon exposes the linked discussion group id (comments enabled) as linked_chat_id.
-                            # When missing, the channel does not support comments.
-                            "linkedChatId": linked_chat_id,
-                            "peerIsBot": bool(getattr(entity, "bot", False)),
-                            "isServiceDialog": bool(getattr(entity, "support", False) or getattr(entity, "is_self", False)),
-                            "hasMedia": bool(getattr(message, "media", None)),
-                        },
-                        "conversationTitle": dialog.title,
-                        "hasAttachment": bool(getattr(message, "media", None)),
-                    }
-
-                    # Telegram channel comments (linked discussion group -> channel).
-                    linked_channel_id = getattr(entity, "linked_chat_id", None)
-                    if conversation_type == "group" and linked_channel_id:
-                        payload["rawPayload"]["dialogType"] = "channel_comment"
-                        payload["rawPayload"]["relatedChannelId"] = str(linked_channel_id)
-                        payload["rawPayload"]["relatedPostId"] = (
-                            str(message.reply_to.reply_to_msg_id) if message.reply_to else None
-                        )
-                        payload["rawPayload"]["contextPreview"] = None
-                        payload["rawPayload"]["dedupeKey"] = (
-                            f'{payload["telegramAccountId"]}:{linked_channel_id}:{payload["rawPayload"]["relatedPostId"]}:{payload["externalMessageId"]}'
-                        )
-                    if sender_full_name:
-                        payload["senderFullName"] = sender_full_name
-                    if sender_username:
-                        payload["senderUsername"] = sender_username
-
-                    try:
-                        await push_message_event(payload, timeout_s=20.0)
-                        result.messages_synced += 1
-                    except Exception as exc:
-                        logger.warning("auto-sync push_message_event failed dialog=%s msgId=%s error=%s", dialog.id, message.id, exc)
+                n = await _sync_messages_for_dialog(
+                    client,
+                    me,
+                    account,
+                    entity,
+                    peer_id,
+                    title,
+                    messages_cap,
+                )
+                result.messages_synced += n
 
             # LeadRadar channel comments ingestion (optional, source-driven).
             try:

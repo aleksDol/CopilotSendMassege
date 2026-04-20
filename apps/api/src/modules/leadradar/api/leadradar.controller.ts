@@ -59,6 +59,35 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     return { items: rows };
   });
 
+  /**
+   * Internal: telegram-worker auto-sync iterates only the first N dialogs (TELEGRAM_AUTO_SYNC_DIALOG_LIMIT).
+   * Monitored LeadRadar chats below that cutoff would miss messages if the live listener also failed.
+   * This endpoint lists active sources (except channel_comments — separate ingestion) so the worker
+   * can explicitly pull recent messages for those peers every sync cycle.
+   */
+  app.get("/internal/leadradar/sources/sync-priority", async (request) => {
+    ensureInternalToken(
+      typeof request.headers["x-internal-token"] === "string" ? request.headers["x-internal-token"] : undefined,
+      app.config.env.INTERNAL_API_TOKEN
+    );
+
+    const telegramAccountId = (request.query as any)?.telegramAccountId;
+    if (typeof telegramAccountId !== "string" || !telegramAccountId.length) {
+      throw new AppError(400, "BAD_REQUEST", "telegramAccountId is required");
+    }
+
+    const rows = await app.prisma.leadRadarSource.findMany({
+      where: {
+        telegramAccountId,
+        isActive: true,
+        NOT: { chatType: "channel_comments" }
+      },
+      select: { id: true, telegramChatId: true, chatTitle: true, chatType: true }
+    });
+
+    return { items: rows };
+  });
+
   app.get("/api/leadradar", async () => {
     return {
       ok: true,
