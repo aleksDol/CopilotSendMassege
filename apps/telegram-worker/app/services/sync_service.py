@@ -490,7 +490,7 @@ async def _ingest_channel_comments_for_sources(
     - push each comment through existing /internal/telegram/events/message ingestion
     """
     for src in sources:
-        channel_peer_id = str(src.get("telegramChatId") or "")
+        channel_peer_id = str(src.get("telegramChatId") or "").strip()
         source_id = str(src.get("id") or "")
         if not channel_peer_id or not source_id:
             logger.warning("channel_comments skipping source: missing peer_id or source_id src=%s", src)
@@ -581,13 +581,22 @@ async def _ingest_channel_comments_for_sources(
                 discussion_msg_id = None
                 for dm in discussion_messages:
                     peer = getattr(dm, "peer_id", None)
-                    # For discussion root we expect a PeerChannel/PeerChat peer_id (not the channel post peer).
                     if peer is not None:
-                        discussion_chat = peer
-                        discussion_root = dm
-                        discussion_msg_id = getattr(dm, "id", None)
-                        # Prefer messages that are not the original channel post id.
-                        if isinstance(discussion_msg_id, int) and discussion_msg_id != post_id:
+                        mid = getattr(dm, "id", None)
+                        # Prefer the copy that lives in the discussion group (id often differs from channel post id).
+                        if isinstance(mid, int) and mid != post_id:
+                            discussion_chat = peer
+                            discussion_root = dm
+                            discussion_msg_id = mid
+                            break
+                # Fallback: use any message with a peer (some Telegram builds only return one row).
+                if discussion_chat is None:
+                    for dm in discussion_messages:
+                        peer = getattr(dm, "peer_id", None)
+                        if peer is not None:
+                            discussion_chat = peer
+                            discussion_root = dm
+                            discussion_msg_id = getattr(dm, "id", None)
                             break
                 if discussion_chat is None or not isinstance(discussion_msg_id, int):
                     logger.info("channel_comments postId=%s discussion_chat/msg_id invalid, skipping", post_id)

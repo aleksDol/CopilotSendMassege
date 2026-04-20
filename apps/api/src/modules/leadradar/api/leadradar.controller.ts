@@ -51,7 +51,8 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       where: {
         telegramAccountId,
         isActive: true,
-        chatType: "channel_comments"
+        // Case-insensitive: older rows or manual inserts may differ in casing.
+        chatType: { equals: "channel_comments", mode: "insensitive" }
       },
       select: { id: true, telegramChatId: true, chatTitle: true, chatType: true }
     });
