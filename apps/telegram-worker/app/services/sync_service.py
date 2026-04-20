@@ -474,33 +474,6 @@ async def _get_last_processed_post_id(
         return 0
 
 
-async def _is_post_already_processed(
-    *, conn: psycopg.AsyncConnection, source_id: str, related_channel_id: str, related_post_id: int
-) -> bool:
-    """
-    No new tables: consider a post processed if we already saved at least one comment for it
-    (dedupe_key prefix exists) OR any message row exists for (channel, post) with this sourceId.
-    """
-    prefix = f"{source_id}:{related_post_id}:"
-    async with conn.cursor() as cur:
-        await cur.execute(
-            """
-            SELECT 1
-            FROM "Message" m
-            WHERE m."related_channel_id" = %s
-              AND m."related_post_id" = %s
-              AND (
-                m."dedupe_key" LIKE %s
-                OR (m."rawPayload"->>'sourceId') = %s
-              )
-            LIMIT 1
-            """,
-            (related_channel_id, str(related_post_id), prefix + "%", source_id),
-        )
-        row = await cur.fetchone()
-    return bool(row)
-
-
 async def _ingest_channel_comments_for_sources(
     *,
     conn: psycopg.AsyncConnection,
@@ -534,8 +507,10 @@ async def _ingest_channel_comments_for_sources(
         comments_saved = 0
         comments_skipped = 0
 
-        # Fetch a small window of newest posts; filter by last_post_id.
-        # NOTE: channel message ids are monotonically increasing per channel.
+        # New channel posts only: id > last_post_id (newest-first iter until we hit last_post_id).
+        # Plus always merge the single latest post: catches extra comments on the current head post
+        # before a newer channel post exists (last_post_id can already equal that post id).
+        NEW_POSTS_FETCH_LIMIT = 50
         try:
             resolved_id = int(channel_peer_id) if channel_peer_id.lstrip("-").isdigit() else channel_peer_id
             logger.info("channel_comments resolving entity peerId=%s resolvedId=%s", channel_peer_id, resolved_id)
@@ -545,46 +520,48 @@ async def _ingest_channel_comments_for_sources(
             logger.warning("channel_comments get_entity FAILED peerId=%s error=%s", channel_peer_id, exc, exc_info=True)
             continue
 
-        # Only channels are expected here.
-        posts: list[Any] = []
+        posts_by_id: dict[int, Any] = {}
         try:
-            async for m in client.iter_messages(channel_entity, limit=20):
+            async for m in client.iter_messages(channel_entity, limit=NEW_POSTS_FETCH_LIMIT):
                 mid = getattr(m, "id", None)
                 if not isinstance(mid, int):
                     continue
                 if mid <= last_post_id:
                     break
-                posts.append(m)
-            logger.info("channel_comments fetched %s posts from channel %s (last_post_id=%s)", len(posts), channel_peer_id, last_post_id)
+                posts_by_id[mid] = m
         except Exception as exc:
-            logger.warning("channel_comments iter_messages FAILED channel=%s error=%s", channel_peer_id, exc, exc_info=True)
+            logger.warning("channel_comments iter_messages(new posts) FAILED channel=%s error=%s", channel_peer_id, exc, exc_info=True)
             continue
+
+        try:
+            async for m in client.iter_messages(channel_entity, limit=1):
+                mid = getattr(m, "id", None)
+                if isinstance(mid, int):
+                    posts_by_id[mid] = m
+                break
+        except Exception as exc:
+            logger.warning("channel_comments iter_messages(head post) FAILED channel=%s error=%s", channel_peer_id, exc, exc_info=True)
+
+        posts = [posts_by_id[k] for k in sorted(posts_by_id.keys())]
+        logger.info(
+            "channel_comments posts to scan=%s (new_since=%s) channel=%s last_post_id=%s",
+            len(posts),
+            len([k for k in posts_by_id if k > last_post_id]),
+            channel_peer_id,
+            last_post_id,
+        )
 
         posts_found = len(posts)
 
-        # Process from oldest to newest to keep ordering stable.
-        for post in reversed(posts):
+        # Oldest post first.
+        for post in posts:
             post_id = getattr(post, "id", None)
-            if not isinstance(post_id, int) or post_id <= last_post_id:
+            if not isinstance(post_id, int):
                 continue
             if post_id in processed_posts_this_run:
                 posts_skipped_already += 1
                 continue
             processed_posts_this_run.add(post_id)
-
-            # Do not process the same post repeatedly across sync runs.
-            try:
-                if await _is_post_already_processed(
-                    conn=conn,
-                    source_id=source_id,
-                    related_channel_id=channel_peer_id,
-                    related_post_id=post_id,
-                ):
-                    posts_skipped_already += 1
-                    continue
-            except Exception:
-                # Best-effort: if this check fails, continue ingestion.
-                pass
 
             post_text = getattr(post, "message", None) or ""
             context_preview = (post_text or "").strip()[:240] or None
@@ -684,17 +661,10 @@ async def _ingest_channel_comments_for_sources(
                         "hasAttachment": bool(getattr(c, "media", None)),
                     }
 
-                    try:
-                        await push_message_event(payload, timeout_s=20.0)
+                    if await push_message_event_with_retry(payload, timeout_s=20.0):
                         count += 1
                         comments_saved += 1
-                    except Exception as exc:
-                        logger.warning(
-                            "channel_comments push_message_event FAILED postId=%s commentId=%s error=%s",
-                            post_id,
-                            getattr(c, "id", "?"),
-                            exc,
-                        )
+                    else:
                         comments_skipped += 1
             except Exception as exc:
                 logger.warning(
