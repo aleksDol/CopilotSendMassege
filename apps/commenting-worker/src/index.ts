@@ -388,6 +388,10 @@ const worker = new Worker<CommentingGenerationJob | CommentingAutoPublishJob>(
       }
     });
 
+    if (!telegramAccount) {
+      return { status: "skipped", reason: "telegram_account_not_found" };
+    }
+
     const userId = telegramAccount.channelAccount.createdByUserId;
     if (!userId) {
       return { status: "skipped", reason: "user_id_missing" };
