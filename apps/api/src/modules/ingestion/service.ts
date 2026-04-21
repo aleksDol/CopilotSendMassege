@@ -654,6 +654,36 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
             messageId: existing.id
           };
         }
+
+        // Prevent "backfill" candidates for channels first seen by Commenting.
+        // If the user recently started monitoring a channel and ingestion is replaying older posts,
+        // we should not generate candidates for historical content.
+        const COMMENTING_CHANNEL_ACTIVATION_GRACE_MS = 15 * 60 * 1000; // 15 minutes
+        const activation = await app.prisma.commentingChannelActivation.upsert({
+          where: { userId_channelId: { userId, channelId: source.channelId } },
+          update: {},
+          create: { userId, channelId: source.channelId, activatedAt: new Date() },
+          select: { activatedAt: true }
+        });
+        const sentAt = new Date(payload.sentAt);
+        const minSentAt = new Date(activation.activatedAt.getTime() - COMMENTING_CHANNEL_ACTIVATION_GRACE_MS);
+        if (sentAt < minSentAt) {
+          app.log.info(
+            {
+              telegramAccountId: telegramAccount.id,
+              channelId: source.channelId,
+              postId: source.postId,
+              sentAt: sentAt.toISOString(),
+              activatedAt: activation.activatedAt.toISOString()
+            },
+            "[Commenting] skipped generation (channel not activated yet / backfill)"
+          );
+          return {
+            ok: true,
+            conversationId: conversation.id,
+            messageId: existing.id
+          };
+        }
       }
       void enqueueCommentingGenerationJob(app.config.env, {
         telegramAccountId: telegramAccount.id,
@@ -870,6 +900,33 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
         app.log.info(
           { telegramAccountId: telegramAccount.id, channelId: source.channelId, postId: source.postId },
           "[Commenting] skipped generation (channel excluded)"
+        );
+        return {
+          ok: true,
+          conversationId: conversation.id,
+          messageId: message.id
+        };
+      }
+
+      const COMMENTING_CHANNEL_ACTIVATION_GRACE_MS = 15 * 60 * 1000; // 15 minutes
+      const activation = await app.prisma.commentingChannelActivation.upsert({
+        where: { userId_channelId: { userId, channelId: source.channelId } },
+        update: {},
+        create: { userId, channelId: source.channelId, activatedAt: new Date() },
+        select: { activatedAt: true }
+      });
+      const sentAt = new Date(payload.sentAt);
+      const minSentAt = new Date(activation.activatedAt.getTime() - COMMENTING_CHANNEL_ACTIVATION_GRACE_MS);
+      if (sentAt < minSentAt) {
+        app.log.info(
+          {
+            telegramAccountId: telegramAccount.id,
+            channelId: source.channelId,
+            postId: source.postId,
+            sentAt: sentAt.toISOString(),
+            activatedAt: activation.activatedAt.toISOString()
+          },
+          "[Commenting] skipped generation (channel not activated yet / backfill)"
         );
         return {
           ok: true,

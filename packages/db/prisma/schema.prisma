@@ -795,6 +795,26 @@ model CommentingChannelExclusion {
 }
 
 /// =========================
+/// Commenting per-channel activation
+/// - Used to avoid backfill of old posts when a user starts monitoring a new channel
+/// =========================
+model CommentingChannelActivation {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  channelId   String
+  activatedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channelId])
+  @@index([userId])
+  @@index([channelId])
+  @@index([userId, activatedAt(sort: Desc)])
+}
+
+/// =========================
 /// Tasks
 /// =========================
 model Task {
