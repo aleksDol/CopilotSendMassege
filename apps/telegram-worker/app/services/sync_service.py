@@ -749,6 +749,9 @@ async def _ingest_channel_comments_for_sources(
                             "relatedChannelId": channel_peer_id,
                             "relatedPostId": str(post_id),
                             "contextPreview": context_preview,
+                            # Historical backfill guard (prevents LeadRadar running on old comments).
+                            "isHistorical": True,
+                            "ingestionSource": "channel_comments_backfill",
                             # Required dedupe format: source_id + post_id + message_id
                             "dedupeKey": f"{source_id}:{post_id}:{getattr(c, 'id', '')}",
                         },
