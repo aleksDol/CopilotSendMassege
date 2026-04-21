@@ -218,6 +218,11 @@ enum CommentCandidateStatus {
   ignored
 }
 
+enum CommentPublishSource {
+  manual
+  auto
+}
+
 enum KnowledgeKind {
   FAQ
   PRODUCT
@@ -741,6 +746,10 @@ model CommentCandidate {
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
   publishedAt       DateTime?
+  publishedBy       CommentPublishSource?
+  autoPublishAttempts    Int      @default(0)
+  autoPublishLastErrorAt DateTime?
+  autoPublishLastError   String?
 
   user            User            @relation(fields: [userId], references: [id], onDelete: Restrict)
   telegramAccount TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Restrict)
@@ -757,6 +766,12 @@ model CommentingUserState {
   id         String   @id @default(uuid()) @db.Uuid
   userId     String   @db.Uuid
   lastSeenAt DateTime @default(now())
+  autoCommentingEnabled Boolean @default(false)
+  autoCommentingEnabledAt DateTime?
+  autoCommentingPausedUntil DateTime?
+  autoCommentingPauseReason String?
+  autoCommentingConsecutiveErrors Int @default(0)
+  lastAutoPublishedAt DateTime?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

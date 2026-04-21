@@ -1,5 +1,5 @@
 import { apiClient } from "./client";
-import type { CommentCandidate, CommentCandidateStatus, CommentingState } from "./types";
+import type { CommentCandidate, CommentCandidateStatus, CommentingState, CommentingStats } from "./types";
 
 export const commentingApi = {
   listCandidates: (token: string, query?: { status?: CommentCandidateStatus; limit?: number; onlyNew?: boolean }) =>
@@ -27,6 +27,9 @@ export const commentingApi = {
     apiClient.post<{ item: CommentCandidate; alreadyPublished?: boolean }>(`/commenting/${id}/publish`, {}, { token }),
 
   getState: (token: string) => apiClient.get<CommentingState>("/commenting/state", { token }),
+  setAutoMode: (token: string, enabled: boolean) =>
+    apiClient.post<CommentingState>("/commenting/auto", { enabled }, { token }),
+  getStats: (token: string) => apiClient.get<CommentingStats>("/commenting/stats", { token }),
   markSeen: (token: string, lastSeenAt?: string) => apiClient.post<{ lastSeenAt: string }>(
     "/commenting/state",
     lastSeenAt ? { lastSeenAt } : {},

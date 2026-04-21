@@ -51,6 +51,7 @@ export default function CommentingPage() {
   const queryClient = useQueryClient();
   const scope = baseScopeKey(company?.id, user?.id);
 
+  const [activeTab, setActiveTab] = useState<"feed" | "stats">("feed");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [draftComment, setDraftComment] = useState("");
@@ -58,6 +59,8 @@ export default function CommentingPage() {
   const [actionInfo, setActionInfo] = useState<string | null>(null);
   const [excludeChannelId, setExcludeChannelId] = useState("");
   const [onlyNew, setOnlyNew] = useState(false);
+  const [autoConfirmOpen, setAutoConfirmOpen] = useState(false);
+  const [pendingAutoEnabled, setPendingAutoEnabled] = useState<boolean | null>(null);
 
   const stateQuery = useQuery({
     queryKey: ["commenting-state", scope],
@@ -65,10 +68,34 @@ export default function CommentingPage() {
     enabled: Boolean(token)
   });
 
+  const autoEnabled = Boolean(stateQuery.data?.autoCommentingEnabled);
+  const autoPausedUntil = stateQuery.data?.autoCommentingPausedUntil ?? null;
+  const isAutoActive = autoEnabled && !autoPausedUntil;
+
+  const setAutoModeMutation = useMutation({
+    mutationFn: (enabled: boolean) => commentingApi.setAutoMode(token ?? "", enabled),
+    onSuccess: async () => {
+      await Promise.allSettled([
+        queryClient.invalidateQueries({ queryKey: ["commenting-state", scope] }),
+        queryClient.invalidateQueries({ queryKey: ["commenting-stats", scope] })
+      ]);
+    },
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : "Failed to update auto mode");
+      setActionInfo(null);
+    }
+  });
+
+  const statsQuery = useQuery({
+    queryKey: ["commenting-stats", scope],
+    queryFn: () => commentingApi.getStats(token ?? ""),
+    enabled: Boolean(token && activeTab === "stats")
+  });
+
   const candidatesQuery = useQuery({
     queryKey: ["commenting-candidates", scope, onlyNew],
     queryFn: () => commentingApi.listCandidates(token ?? "", { limit: 100, onlyNew }),
-    enabled: Boolean(token)
+    enabled: Boolean(token && activeTab === "feed")
   });
 
   const candidates = candidatesQuery.data?.items ?? [];
@@ -213,11 +240,11 @@ export default function CommentingPage() {
     }
   });
 
-  if (candidatesQuery.isLoading) {
+  if (activeTab === "feed" && candidatesQuery.isLoading) {
     return <LoadingState label="Loading comment candidates..." />;
   }
 
-  if (!candidates.length) {
+  if (activeTab === "feed" && !candidates.length) {
     return (
       <EmptyState
         title={onlyNew ? "Нет новых постов" : "No comment candidates yet"}
@@ -233,11 +260,63 @@ export default function CommentingPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold">Commenting</h1>
-        <p className="text-sm text-muted-foreground">Browse channel posts, edit AI suggestions, and publish comments.</p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold">Commenting</h1>
+            <p className="text-sm text-muted-foreground">Browse channel posts, edit AI suggestions, and publish comments.</p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            {isAutoActive ? <Badge variant="success">Auto mode is active</Badge> : null}
+            {autoEnabled && autoPausedUntil ? (
+              <Badge variant="secondary" title={`Paused until ${new Date(autoPausedUntil).toLocaleString()}`}>
+                Auto paused
+              </Badge>
+            ) : null}
+
+            <label className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm">
+              <span className="font-medium">Auto Commenting</span>
+              <span className="text-muted-foreground">{autoEnabled ? "ON" : "OFF"}</span>
+              <input
+                type="checkbox"
+                checked={autoEnabled}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  setActionError(null);
+                  setActionInfo(null);
+                  if (next) {
+                    setPendingAutoEnabled(true);
+                    setAutoConfirmOpen(true);
+                    return;
+                  }
+                  setAutoModeMutation.mutate(false);
+                }}
+                disabled={!token || setAutoModeMutation.isPending}
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="mt-3 flex gap-2">
+          <Button
+            variant={activeTab === "feed" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveTab("feed")}
+          >
+            Feed
+          </Button>
+          <Button
+            variant={activeTab === "stats" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveTab("stats")}
+          >
+            Stats
+          </Button>
+        </div>
       </div>
 
-      <Card>
+      {activeTab === "feed" ? (
+        <Card>
         <div className="border-b border-border px-4 py-3 text-sm font-semibold">Фильтры</div>
         <div className="space-y-3 p-4">
           <label className="flex items-center gap-2 text-sm">
@@ -299,9 +378,62 @@ export default function CommentingPage() {
             </div>
           ) : null}
         </div>
-      </Card>
+        </Card>
+      ) : null}
 
-      <div className="grid min-h-[70vh] grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)_380px]">
+      {activeTab === "stats" ? (
+        <Card>
+          <div className="border-b border-border px-4 py-3 text-sm font-semibold">Stats</div>
+          <div className="space-y-3 p-4 text-sm">
+            {statsQuery.isLoading ? (
+              <div className="text-sm text-muted-foreground">Loading stats...</div>
+            ) : statsQuery.data ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                <Card className="p-4">
+                  <div className="text-xs text-muted-foreground">Auto mode</div>
+                  <div className="mt-1 text-lg font-semibold">{statsQuery.data.autoMode.enabled ? "ON" : "OFF"}</div>
+                  {statsQuery.data.autoMode.pausedUntil ? (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Paused until: {new Date(statsQuery.data.autoMode.pausedUntil).toLocaleString()}
+                    </div>
+                  ) : null}
+                  {statsQuery.data.autoMode.pauseReason ? (
+                    <div className="mt-1 text-xs text-muted-foreground">Reason: {statsQuery.data.autoMode.pauseReason}</div>
+                  ) : null}
+                </Card>
+
+                <Card className="p-4">
+                  <div className="text-xs text-muted-foreground">Auto published</div>
+                  <div className="mt-1 text-lg font-semibold">{statsQuery.data.totals.autoPublished}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Today: {statsQuery.data.windows.autoPublishedToday} · This week: {statsQuery.data.windows.autoPublishedThisWeek}
+                  </div>
+                </Card>
+
+                <Card className="p-4">
+                  <div className="text-xs text-muted-foreground">Published successfully</div>
+                  <div className="mt-1 text-lg font-semibold">{statsQuery.data.publishedSuccessfully}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">Manual published: {statsQuery.data.totals.manualPublished}</div>
+                </Card>
+
+                <Card className="p-4">
+                  <div className="text-xs text-muted-foreground">Failed (auto)</div>
+                  <div className="mt-1 text-lg font-semibold">{statsQuery.data.failedAutoPublishes}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Last published at:{" "}
+                    {statsQuery.data.lastAutoPublishedAt ? new Date(statsQuery.data.lastAutoPublishedAt).toLocaleString() : "—"}
+                  </div>
+                </Card>
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground">No stats yet.</div>
+            )}
+          </div>
+        </Card>
+      ) : null}
+
+      {activeTab === "feed" ? (
+        <div className="grid min-h-[70vh] grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)_380px]">
         <Card className="min-h-0 overflow-hidden">
           <div className="border-b border-border px-4 py-3 text-sm font-semibold">Candidates</div>
           <div className="max-h-[70vh] space-y-2 overflow-y-auto p-2">
@@ -430,6 +562,42 @@ export default function CommentingPage() {
           </div>
         </Card>
       </div>
+      ) : null}
+
+      {autoConfirmOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <Card className="w-full max-w-lg">
+            <div className="border-b border-border px-4 py-3 text-sm font-semibold">Enable Auto Commenting</div>
+            <div className="space-y-3 p-4 text-sm">
+              <div className="text-muted-foreground">
+                Комментарии будут публиковаться автоматически от имени вашего Telegram аккаунта. Используйте функцию
+                осторожно — активность аккаунта может увеличиться.
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setAutoConfirmOpen(false);
+                    setPendingAutoEnabled(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    const next = pendingAutoEnabled === true;
+                    setAutoConfirmOpen(false);
+                    setPendingAutoEnabled(null);
+                    setAutoModeMutation.mutate(next);
+                  }}
+                >
+                  Enable Auto Commenting
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      ) : null}
     </div>
   );
 }

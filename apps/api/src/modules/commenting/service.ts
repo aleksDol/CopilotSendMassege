@@ -1,4 +1,4 @@
-import { CommentCandidateStatus } from "@prisma/client";
+import { CommentCandidateStatus, CommentPublishSource } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { AppError } from "../../lib/errors.js";
 import { TelegramWorkerClient } from "../../lib/telegram-worker-client.js";
@@ -26,6 +26,10 @@ const mapCandidate = (candidate: {
   createdAt: Date;
   updatedAt: Date;
   publishedAt: Date | null;
+  publishedBy: CommentPublishSource | null;
+  autoPublishAttempts: number;
+  autoPublishLastErrorAt: Date | null;
+  autoPublishLastError: string | null;
 }) => ({
   id: candidate.id,
   userId: candidate.userId,
@@ -37,7 +41,11 @@ const mapCandidate = (candidate: {
   status: candidate.status,
   createdAt: candidate.createdAt,
   updatedAt: candidate.updatedAt,
-  publishedAt: candidate.publishedAt
+  publishedAt: candidate.publishedAt,
+  publishedBy: candidate.publishedBy,
+  autoPublishAttempts: candidate.autoPublishAttempts,
+  autoPublishLastErrorAt: candidate.autoPublishLastErrorAt,
+  autoPublishLastError: candidate.autoPublishLastError
 });
 
 export const listCommentCandidates = async (
@@ -228,6 +236,7 @@ export const publishCommentCandidate = async (
   params: {
     companyId: string;
     id: string;
+    source?: "manual" | "auto";
   }
 ) => {
   const candidate = await app.prisma.commentCandidate.findFirst({
@@ -257,6 +266,9 @@ export const publishCommentCandidate = async (
   if (!candidate) {
     throw new AppError(404, "COMMENT_CANDIDATE_NOT_FOUND", "Comment candidate not found");
   }
+
+  const source: CommentPublishSource =
+    params.source === "auto" ? CommentPublishSource.auto : CommentPublishSource.manual;
 
   if (candidate.status === CommentCandidateStatus.published && candidate.publishedAt) {
     return {
@@ -295,7 +307,10 @@ export const publishCommentCandidate = async (
       where: { id: candidate.id },
       data: {
         status: CommentCandidateStatus.published,
-        publishedAt
+        publishedAt,
+        publishedBy: source,
+        autoPublishLastError: null,
+        autoPublishLastErrorAt: null
       }
     });
 
@@ -328,6 +343,32 @@ export const publishCommentCandidate = async (
   }
 };
 
+export const publishCommentCandidateInternal = async (
+  app: FastifyInstance,
+  params: {
+    id: string;
+    source: "auto";
+  }
+) => {
+  const candidate = await app.prisma.commentCandidate.findFirst({
+    where: { id: params.id },
+    select: {
+      id: true,
+      telegramAccount: { select: { channelAccount: { select: { companyId: true } } } }
+    }
+  });
+
+  if (!candidate) {
+    throw new AppError(404, "COMMENT_CANDIDATE_NOT_FOUND", "Comment candidate not found");
+  }
+
+  return publishCommentCandidate(app, {
+    companyId: candidate.telegramAccount.channelAccount.companyId,
+    id: candidate.id,
+    source: "auto"
+  });
+};
+
 export const getCommentingState = async (
   app: FastifyInstance,
   params: { userId: string }
@@ -336,7 +377,15 @@ export const getCommentingState = async (
     where: { userId: params.userId },
     update: {},
     create: { userId: params.userId, lastSeenAt: new Date(0) },
-    select: { lastSeenAt: true }
+    select: {
+      lastSeenAt: true,
+      autoCommentingEnabled: true,
+      autoCommentingEnabledAt: true,
+      autoCommentingPausedUntil: true,
+      autoCommentingPauseReason: true,
+      autoCommentingConsecutiveErrors: true,
+      lastAutoPublishedAt: true
+    }
   });
   const exclusions = await app.prisma.commentingChannelExclusion.findMany({
     where: { userId: params.userId },
@@ -346,7 +395,148 @@ export const getCommentingState = async (
 
   return {
     lastSeenAt: state.lastSeenAt.toISOString(),
+    autoCommentingEnabled: state.autoCommentingEnabled,
+    autoCommentingEnabledAt: state.autoCommentingEnabledAt?.toISOString() ?? null,
+    autoCommentingPausedUntil: state.autoCommentingPausedUntil?.toISOString() ?? null,
+    autoCommentingPauseReason: state.autoCommentingPauseReason ?? null,
+    autoCommentingConsecutiveErrors: state.autoCommentingConsecutiveErrors,
+    lastAutoPublishedAt: state.lastAutoPublishedAt?.toISOString() ?? null,
     exclusions: exclusions.map((e) => ({ channelId: e.channelId, createdAt: e.createdAt.toISOString() }))
+  };
+};
+
+export const setAutoCommentingEnabled = async (
+  app: FastifyInstance,
+  params: { userId: string; enabled: boolean }
+) => {
+  const now = new Date();
+  const state = await app.prisma.commentingUserState.upsert({
+    where: { userId: params.userId },
+    update: {
+      autoCommentingEnabled: params.enabled,
+      autoCommentingEnabledAt: params.enabled ? now : null,
+      autoCommentingPausedUntil: null,
+      autoCommentingPauseReason: null,
+      ...(params.enabled ? {} : { autoCommentingConsecutiveErrors: 0 })
+    },
+    create: {
+      userId: params.userId,
+      lastSeenAt: new Date(0),
+      autoCommentingEnabled: params.enabled,
+      autoCommentingEnabledAt: params.enabled ? now : null,
+      autoCommentingConsecutiveErrors: 0
+    },
+    select: { userId: true }
+  });
+
+  return getCommentingState(app, { userId: state.userId });
+};
+
+const startOfUtcDay = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+const startOfUtcWeek = (d: Date) => {
+  const day = d.getUTCDay(); // 0 sunday
+  const mondayBased = (day + 6) % 7; // 0 monday
+  const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  start.setUTCDate(start.getUTCDate() - mondayBased);
+  return start;
+};
+
+export const getCommentingStats = async (app: FastifyInstance, params: { companyId: string; userId: string }) => {
+  const now = new Date();
+  const today = startOfUtcDay(now);
+  const week = startOfUtcWeek(now);
+
+  const [state, totalAuto, totalManual, todayAuto, weekAuto, publishedOk, failedAuto, lastAutoPublished] =
+    await Promise.all([
+      app.prisma.commentingUserState.upsert({
+        where: { userId: params.userId },
+        update: {},
+        create: { userId: params.userId, lastSeenAt: new Date(0) },
+        select: {
+          autoCommentingEnabled: true,
+          autoCommentingPausedUntil: true,
+          autoCommentingPauseReason: true,
+          autoCommentingConsecutiveErrors: true
+        }
+      }),
+      app.prisma.commentCandidate.count({
+        where: {
+          userId: params.userId,
+          telegramAccount: { channelAccount: { companyId: params.companyId } },
+          publishedBy: CommentPublishSource.auto,
+          publishedAt: { not: null }
+        }
+      }),
+      app.prisma.commentCandidate.count({
+        where: {
+          userId: params.userId,
+          telegramAccount: { channelAccount: { companyId: params.companyId } },
+          publishedBy: CommentPublishSource.manual,
+          publishedAt: { not: null }
+        }
+      }),
+      app.prisma.commentCandidate.count({
+        where: {
+          userId: params.userId,
+          telegramAccount: { channelAccount: { companyId: params.companyId } },
+          publishedBy: CommentPublishSource.auto,
+          publishedAt: { gte: today }
+        }
+      }),
+      app.prisma.commentCandidate.count({
+        where: {
+          userId: params.userId,
+          telegramAccount: { channelAccount: { companyId: params.companyId } },
+          publishedBy: CommentPublishSource.auto,
+          publishedAt: { gte: week }
+        }
+      }),
+      app.prisma.commentCandidate.count({
+        where: {
+          userId: params.userId,
+          telegramAccount: { channelAccount: { companyId: params.companyId } },
+          status: CommentCandidateStatus.published,
+          publishedAt: { not: null }
+        }
+      }),
+      app.prisma.commentCandidate.count({
+        where: {
+          userId: params.userId,
+          telegramAccount: { channelAccount: { companyId: params.companyId } },
+          autoPublishLastErrorAt: { not: null },
+          status: { not: CommentCandidateStatus.published }
+        }
+      }),
+      app.prisma.commentCandidate.findFirst({
+        where: {
+          userId: params.userId,
+          telegramAccount: { channelAccount: { companyId: params.companyId } },
+          publishedBy: CommentPublishSource.auto,
+          publishedAt: { not: null }
+        },
+        orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
+        select: { publishedAt: true }
+      })
+    ]);
+
+  return {
+    autoMode: {
+      enabled: state.autoCommentingEnabled,
+      pausedUntil: state.autoCommentingPausedUntil?.toISOString() ?? null,
+      pauseReason: state.autoCommentingPauseReason ?? null,
+      consecutiveErrors: state.autoCommentingConsecutiveErrors
+    },
+    totals: {
+      autoPublished: totalAuto,
+      manualPublished: totalManual
+    },
+    windows: {
+      autoPublishedToday: todayAuto,
+      autoPublishedThisWeek: weekAuto
+    },
+    publishedSuccessfully: publishedOk,
+    failedAutoPublishes: failedAuto,
+    lastAutoPublishedAt: lastAutoPublished?.publishedAt?.toISOString() ?? null
   };
 };
 

@@ -355,6 +355,10 @@ export type CommentCandidate = {
   createdAt: string;
   updatedAt: string;
   publishedAt: string | null;
+  publishedBy?: "manual" | "auto" | null;
+  autoPublishAttempts?: number;
+  autoPublishLastErrorAt?: string | null;
+  autoPublishLastError?: string | null;
 };
 
 export type CommentingChannelExclusionItem = {
@@ -364,5 +368,31 @@ export type CommentingChannelExclusionItem = {
 
 export type CommentingState = {
   lastSeenAt: string;
+  autoCommentingEnabled?: boolean;
+  autoCommentingEnabledAt?: string | null;
+  autoCommentingPausedUntil?: string | null;
+  autoCommentingPauseReason?: string | null;
+  autoCommentingConsecutiveErrors?: number;
+  lastAutoPublishedAt?: string | null;
   exclusions: CommentingChannelExclusionItem[];
+};
+
+export type CommentingStats = {
+  autoMode: {
+    enabled: boolean;
+    pausedUntil: string | null;
+    pauseReason: string | null;
+    consecutiveErrors: number;
+  };
+  totals: {
+    autoPublished: number;
+    manualPublished: number;
+  };
+  windows: {
+    autoPublishedToday: number;
+    autoPublishedThisWeek: number;
+  };
+  publishedSuccessfully: number;
+  failedAutoPublishes: number;
+  lastAutoPublishedAt: string | null;
 };

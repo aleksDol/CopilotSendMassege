@@ -15,6 +15,8 @@ export const commentCandidateIdParamsSchema = z.object({
   id: z.string().uuid()
 });
 
+export const internalCommentCandidateIdParamsSchema = commentCandidateIdParamsSchema;
+
 export const channelIdParamSchema = z.object({
   channelId: z.string().trim().min(1).max(64)
 });
@@ -29,4 +31,8 @@ export const upsertCommentingStateBodySchema = z.object({
 
 export const addChannelExclusionBodySchema = z.object({
   channelId: z.string().trim().min(1).max(64)
+});
+
+export const setAutoCommentingBodySchema = z.object({
+  enabled: z.boolean()
 });
