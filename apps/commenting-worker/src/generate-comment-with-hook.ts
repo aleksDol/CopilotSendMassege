@@ -14,6 +14,7 @@ export type GenerateCommentWithHookResult = {
   reason: string;
   model: string;
   attemptsUsed: number;
+  wasRegenerated: boolean;
 };
 
 type OpenAIChatRequest = {
@@ -108,7 +109,7 @@ const toneInstruction = (mode: ToneMode): string => {
 const validateGeneratedComment = (comment: string): { ok: true } | { ok: false; reason: string } => {
   const normalized = comment.trim();
   if (!normalized.length) return { ok: false, reason: "empty_comment" };
-  if (normalized.length > 300) return { ok: false, reason: "too_long" };
+  if (normalized.length > 220) return { ok: false, reason: "too_long" };
   if (FORBIDDEN_PHRASE_PATTERNS.some((pattern) => pattern.test(normalized))) {
     return { ok: false, reason: "forbidden_sales_phrase" };
   }
@@ -116,6 +117,18 @@ const validateGeneratedComment = (comment: string): { ok: true } | { ok: false; 
     return { ok: false, reason: "generic_filler" };
   }
   return { ok: true };
+};
+
+const shouldRegenerateDueToBannedPhrases = (comment: string): boolean => {
+  const normalized = comment.trim().toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized.includes("часто") ||
+    normalized.includes("многие") ||
+    normalized.includes("в большинстве") ||
+    normalized.includes("как правило") ||
+    normalized.includes("интересно какие")
+  );
 };
 
 const generationMemory: {
@@ -134,27 +147,114 @@ const buildSystemPrompt = (params: {
   structureVariant: string;
 }) =>
   [
-    "You generate Telegram comments for channel posts.",
-    "Write the comment in Russian (ru).",
-    "Write short, natural comments that feel like a real participant, not an ad.",
-    toneInstruction(params.toneMode),
-    "Requirements:",
-    "- 1 to 3 short sentences",
-    "- max 300 characters",
-    "- no direct selling, no aggressive CTA, no DM me, no I provide services, no spammy wording",
-    "- should create curiosity or invite response",
-    "- avoid generic filler like 'interesting post'",
-    "- vary opening pattern and sentence structure so outputs do not feel templated",
+    "You are writing short Telegram comments as a real person participating in a discussion.",
+    "",
+    "Your goal is to write a natural, human-like comment that feels real and can slightly hook the reader into replying.",
+    "",
+    "---",
+    "",
+    "Language rule:",
+    "",
+    "- Always write the comment in the same language as the original post.",
+    "- If the post is in Russian, the comment MUST be in Russian.",
+    "- Do NOT mix languages.",
+    "- If language is unclear, default to Russian.",
+    "",
+    "---",
+    "",
+    "Style rules:",
+    "",
+    "- Write like a real person, not like an article or assistant",
+    "- Avoid formal tone",
+    "- Avoid generic explanations",
+    "- Avoid “teaching” or sounding like documentation",
+    "- Do NOT sound like AI",
+    "",
+    "---",
+    "",
+    "Strictly avoid starting with:",
+    "",
+    "- “Часто…”",
+    "- “Многие…”",
+    "- “В большинстве случаев…”",
+    "- “Как правило…”",
+    "- “Интересно, какие…”",
+    "",
+    "---",
+    "",
+    "Instead:",
+    "",
+    "- Use personal or implied experience:",
+    '  - “была похожая ситуация”',
+    '  - “сталкивались с таким”',
+    '  - “у нас как-то было”',
+    '  - “помню, было похожее”',
+    "",
+    "- Add a small insight or twist:",
+    "  - hint that the problem might be deeper",
+    "  - suggest that the real issue may be somewhere unexpected",
+    "",
+    "- Optionally add a soft hook:",
+    '  - “в итоге оказалось, что…”',
+    '  - “оказалось не там, где сначала искали”',
+    '  - “интересный момент был в том, что…”',
+    "",
+    "---",
+    "",
+    "Output constraints:",
+    "",
+    "- 1–3 short sentences",
+    "- maximum 220 characters",
+    "- simple conversational language",
+    "- no emojis",
+    "- no hashtags",
+    "- no formatting",
+    "- no lists",
+    "",
+    "---",
+    "",
+    "STRICTLY FORBIDDEN:",
+    "",
+    "- “напишите в личку”",
+    "- “могу помочь”",
+    "- “я эксперт”",
+    "- “обращайтесь”",
+    "- any direct selling or promotion",
+    "- any call-to-action",
+    "",
+    "---",
+    "",
+    "Critical behavior:",
+    "",
+    "- Write as if typing quickly in a chat",
+    "- Slightly informal is good",
+    "- Do NOT over-explain",
+    "- Do NOT try to sound smart",
+    "- It should feel like a quick human thought, not a polished answer",
+    "",
+    "---",
+    "",
+    "Bad example:",
+    "“Часто люди не понимают, как это работает. Интересно, какие факторы могут влиять...”",
+    "",
+    "Good example:",
+    "“Была похожая ситуация, тоже сначала не туда копали",
+    "в итоге оказалось, что проблема вообще была в другом месте”",
+    "",
+    "---",
+    "",
+    "Final requirement:",
+    "",
+    "The comment must feel:",
+    "- natural",
+    "- slightly imperfect",
+    "- believable as a real Telegram user",
+    "",
+    ...(params.bannedOpener ? [`Avoid starting with this opener pattern: "${params.bannedOpener}"`] : []),
     params.promptVariant,
     params.structureVariant,
-    "Hook types:",
-    "- experience: had a similar case...",
-    "- insight: often the issue is...",
-    "- soft_offer: if useful, I can share what helped",
-    "- question: have you checked whether...?",
-    `Prefer hook_type="${params.preferredHookType}" unless obviously mismatched.`,
-    ...(params.bannedOpener ? [`Avoid starting with this opener pattern: "${params.bannedOpener}"`] : []),
-    "Return ONLY valid JSON with fields: comment, hook_type, confidence, reason."
+    toneInstruction(params.toneMode),
+    `Prefer hook_type="${params.preferredHookType}" unless obviously mismatched.`
   ].join("\n");
 
 const buildUserPrompt = (input: GenerateCommentWithHookInput) =>
@@ -190,7 +290,7 @@ const buildResponseFormat = () => ({
 const isHookType = (value: unknown): value is HookType =>
   typeof value === "string" && HOOK_TYPES.includes(value as HookType);
 
-const parseResult = (raw: string): Omit<GenerateCommentWithHookResult, "model"> => {
+const parseResult = (raw: string): Omit<GenerateCommentWithHookResult, "model" | "wasRegenerated"> => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -204,16 +304,17 @@ const parseResult = (raw: string): Omit<GenerateCommentWithHookResult, "model"> 
 
   const record = parsed as Record<string, unknown>;
   const comment = typeof record.comment === "string" ? record.comment.trim() : "";
-  const hookType = record.hook_type;
+  const hookTypeRaw = record.hook_type;
   const confidence = typeof record.confidence === "number" ? record.confidence : NaN;
   const reason = typeof record.reason === "string" ? record.reason.trim() : "";
 
   if (!comment.length) {
     throw new Error("Generated comment is empty");
   }
-  if (!isHookType(hookType)) {
+  if (!isHookType(hookTypeRaw)) {
     throw new Error("Generated hook_type is invalid");
   }
+  const hookType = hookTypeRaw as HookType;
   if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) {
     throw new Error("Generated confidence is invalid");
   }
@@ -278,6 +379,8 @@ export const generateCommentWithHook = async (
   const preferredHookType = pickRotatedHook();
   const bannedOpener = generationMemory.lastOpener;
   let lastError: string | null = null;
+  let wasRegenerated = false;
+  let lastGeneratedComment: string | null = null;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     try {
@@ -309,6 +412,7 @@ export const generateCommentWithHook = async (
 
       const content = completion.choices?.[0]?.message?.content?.trim() ?? "";
       const parsed = parseResult(content);
+      lastGeneratedComment = parsed.comment;
       const currentOpener = openerSignature(parsed.comment);
       if (currentOpener && bannedOpener && currentOpener === bannedOpener) {
         throw new Error("Generated comment repeated opener signature");
@@ -317,14 +421,32 @@ export const generateCommentWithHook = async (
       generationMemory.lastHookType = parsed.hookType;
       generationMemory.lastOpener = currentOpener || generationMemory.lastOpener;
 
+      if (!wasRegenerated && shouldRegenerateDueToBannedPhrases(parsed.comment)) {
+        wasRegenerated = true;
+        continue;
+      }
+
       return {
         ...parsed,
         model: runtime.model,
-        attemptsUsed: attempt
+        attemptsUsed: attempt,
+        wasRegenerated
       };
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
     }
+  }
+
+  if (wasRegenerated && lastGeneratedComment && shouldRegenerateDueToBannedPhrases(lastGeneratedComment)) {
+    return {
+      comment: lastGeneratedComment,
+      hookType: preferredHookType,
+      confidence: 0.35,
+      reason: "Regeneration requested by banned phrase check, but output still contained a banned phrase. Accepting with warning.",
+      model: runtime.model,
+      attemptsUsed: MAX_ATTEMPTS,
+      wasRegenerated: true
+    };
   }
 
   throw new Error(lastError ?? "comment_generation_invalid_after_retries");

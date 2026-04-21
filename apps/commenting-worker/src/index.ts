@@ -499,6 +499,35 @@ const worker = new Worker<CommentingGenerationJob | CommentingAutoPublishJob>(
       return { status: "skipped", reason: "empty_generation" };
     }
 
+    log("info", "comment generation debug", {
+      jobId: job.id,
+      telegramAccountId,
+      channelId,
+      postId,
+      generated_comment: generated.comment,
+      was_regenerated: generated.wasRegenerated
+    });
+    if (
+      generated.wasRegenerated &&
+      (() => {
+        const t = (generated.comment ?? "").trim().toLowerCase();
+        return (
+          t.includes("часто") ||
+          t.includes("многие") ||
+          t.includes("в большинстве") ||
+          t.includes("как правило") ||
+          t.includes("интересно какие")
+        );
+      })()
+    ) {
+      log("warn", "comment regeneration warning (still similar banned phrase)", {
+        jobId: job.id,
+        telegramAccountId,
+        channelId,
+        postId
+      });
+    }
+
     let candidateId: string;
     if (!existing) {
       const created = await prisma.commentCandidate.create({
