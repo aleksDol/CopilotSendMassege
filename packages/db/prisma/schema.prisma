@@ -323,6 +323,7 @@ model User {
   commentCandidates         CommentCandidate[]
   commentingState           CommentingUserState?
   commentingChannelExclusions CommentingChannelExclusion[]
+  commentingChannelActivations CommentingChannelActivation[]
 
   @@index([companyId])
   @@index([companyId, role])
