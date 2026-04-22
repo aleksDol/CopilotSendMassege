@@ -127,7 +127,22 @@ const canTriggerLeadRadar = (
   // Only sync_service._sync_messages_for_dialog sets this flag. The live listener and outgoing
   // send paths do NOT set it, so real-time traffic keeps triggering LeadRadar as before.
   if (payload.rawPayload?.isHistorical === true) {
-    return false;
+    // Allow a small catch-up window for sync backfill so we don't miss leads when the live listener
+    // temporarily drops events (reconnect, flood waits, restarts). This still blocks "days-old"
+    // history from triggering LeadRadar.
+    const ingestionSource =
+      typeof payload.rawPayload?.ingestionSource === "string" ? payload.rawPayload.ingestionSource : null;
+    if (ingestionSource !== "sync_backfill") {
+      return false;
+    }
+    const sentAtMs = Date.parse(payload.sentAt);
+    if (!Number.isFinite(sentAtMs)) {
+      return false;
+    }
+    const windowMs = 60 * 60 * 1000;
+    if (Date.now() - sentAtMs > windowMs) {
+      return false;
+    }
   }
   // Broadcast channel *posts* (feed). `channel_comments` sources use the same telegramChatId as the
   // channel; without this guard LeadRadar runs on post bodies while real comments live in the
