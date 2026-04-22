@@ -74,10 +74,17 @@ export function LeadDrawer({
   const [notes, setNotes] = useState<string>("");
   const [notesDirty, setNotesDirty] = useState(false);
 
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerText, setComposerText] = useState("");
+  const [composerError, setComposerError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!leadId) return;
     setNotes(lead?.notes ?? "");
     setNotesDirty(false);
+    setComposerOpen(false);
+    setComposerText("");
+    setComposerError(null);
   }, [leadId, lead?.notes]);
 
   const status = lead?.status ?? "new";
@@ -99,6 +106,26 @@ export function LeadDrawer({
   }, [lead]);
 
   if (!leadId) return null;
+
+  const canMessageLead = Boolean((lead?.username ?? "").trim() || (lead?.telegramUserId ?? "").trim());
+
+  const generateFirstMessage = async () => {
+    if (!lead) return;
+    if (actions.generateFirstMessage.isPending) return;
+    setComposerError(null);
+    setComposerOpen(true);
+    try {
+      const res = await actions.generateFirstMessage.mutateAsync(lead.id);
+      const text = (res?.text ?? "").trim();
+      setComposerText(text || "");
+      if (!text) {
+        setComposerError("Не удалось сгенерировать текст сообщения");
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Не удалось сгенерировать сообщение";
+      setComposerError(msg);
+    }
+  };
 
   return (
     <aside className="fixed right-0 top-0 z-40 flex h-dvh w-full max-w-[520px] flex-col border-l border-border bg-background shadow-xl">
@@ -208,21 +235,73 @@ export function LeadDrawer({
                 </div>
 
                 <div className="pt-1">
-                  {telegramProfileUrl ? (
-                    <a
-                      className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-                      href={telegramProfileUrl}
-                      target="_blank"
-                      rel="noreferrer"
+                  <div className="flex flex-wrap items-center gap-2">
+                    {telegramProfileUrl ? (
+                      <a
+                        className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                        href={telegramProfileUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Открыть в Telegram
+                      </a>
+                    ) : (
+                      <Button variant="outline" size="sm" disabled title="Нет username или Telegram ID">
+                        Открыть в Telegram
+                      </Button>
+                    )}
+
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={!lead || !canMessageLead || actions.generateFirstMessage.isPending}
+                      title={!canMessageLead ? "Нет username или Telegram ID" : undefined}
+                      onClick={generateFirstMessage}
                     >
-                      Открыть в Telegram
-                    </a>
-                  ) : (
-                    <Button variant="outline" size="sm" disabled title="Нет username или Telegram ID">
-                      Открыть в Telegram
+                      Сгенерировать сообщение
                     </Button>
-                  )}
+                  </div>
                 </div>
+
+                {composerOpen ? (
+                  <div className="mt-2 space-y-2 rounded-md border border-border bg-muted/10 p-3">
+                    <div className="text-xs font-medium">Первое сообщение</div>
+                    <Textarea
+                      value={composerText}
+                      onChange={(e) => setComposerText(e.target.value)}
+                      placeholder="Текст сообщения…"
+                      rows={4}
+                      disabled={actions.generateFirstMessage.isPending}
+                    />
+                    {actions.generateFirstMessage.isPending ? (
+                      <div className="text-xs text-muted-foreground">Генерируем…</div>
+                    ) : null}
+                    {composerError ? <div className="text-xs text-destructive">{composerError}</div> : null}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          disabled={actions.generateFirstMessage.isPending}
+                          onClick={generateFirstMessage}
+                        >
+                          Сгенерировать заново
+                        </Button>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={actions.generateFirstMessage.isPending}
+                        onClick={() => {
+                          setComposerOpen(false);
+                          setComposerError(null);
+                        }}
+                      >
+                        Отмена
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
 

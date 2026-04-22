@@ -111,3 +111,7 @@ export const updateLeadNotesBodySchema = z.object({
   notes: z.string().max(10_000).nullable()
 });
 
+export const sendLeadFirstMessageBodySchema = z.object({
+  text: z.string().trim().min(1).max(4096)
+});
+

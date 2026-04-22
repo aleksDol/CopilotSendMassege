@@ -183,6 +183,23 @@ export const useLeadRadarActions = () => {
   const invalidateLead = (leadId: string) => void qc.invalidateQueries({ queryKey: ["leadradar-lead", scope, leadId] });
 
   return {
+    generateFirstMessage: useMutation({
+      mutationFn: (leadId: string) => leadradarApi.generateFirstMessage(token ?? "", leadId),
+      onSuccess: (_data, leadId) => {
+        // Does not change lead status, but refresh lead details is cheap and keeps UI consistent.
+        invalidateLead(leadId);
+      }
+    }),
+    sendFirstMessage: useMutation({
+      mutationFn: (input: { leadId: string; text: string }) =>
+        leadradarApi.sendFirstMessage(token ?? "", input.leadId, input.text),
+      onSuccess: (_data, vars) => {
+        // Backend updates status only after successful send.
+        invalidateList();
+        invalidateLead(vars.leadId);
+        void qc.invalidateQueries({ queryKey: ["conversations"] });
+      }
+    }),
     updateLeadStatus: useMutation({
       mutationFn: (input: { leadId: string; status: import("@/lib/api/types").LeadRadarLeadStatus }) =>
         leadradarApi.updateLeadStatus(token ?? "", input.leadId, input.status),

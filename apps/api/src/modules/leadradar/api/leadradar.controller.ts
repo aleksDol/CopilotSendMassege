@@ -6,6 +6,8 @@ import { ensureInternalToken } from "../../../lib/internal-auth.js";
 import { getCompanyScope } from "../../../lib/request-context.js";
 import { TelegramWorkerClient } from "../../../lib/telegram-worker-client.js";
 import { parseWithSchema } from "../../../lib/validation.js";
+import { invalidateConversationCaches } from "../../conversations/service.js";
+import { LeadRadarFirstMessageService } from "../../ai/leadradar-first-message-service.js";
 import {
   createSourceBodySchema,
   createSourceByLinkBodySchema,
@@ -15,6 +17,7 @@ import {
   listKeywordsQuerySchema,
   listSourcesQuerySchema,
   sourceIdParamsSchema,
+  sendLeadFirstMessageBodySchema,
   updateLeadNotesBodySchema,
   updateLeadStatusBodySchema,
   updateKeywordBodySchema,
@@ -99,6 +102,28 @@ const leadradarController: FastifyPluginAsync = async (app) => {
 
   const TG_CONNECTED = "CONNECTED" as unknown as TelegramLoginStatus;
   const TG_ERROR = "ERROR" as unknown as TelegramLoginStatus;
+
+  const requireActiveTelegramChannelAccountId = async (params: { companyId: string; userId: string }) => {
+    const active = await app.prisma.telegramAccount.findFirst({
+      where: {
+        loginStatus: { in: [TG_CONNECTED, TG_ERROR] },
+        channelAccount: {
+          companyId: params.companyId,
+          channelType: ChannelType.TELEGRAM,
+          createdByUserId: params.userId,
+          status: { not: ChannelAccountStatus.DISCONNECTED }
+        }
+      },
+      orderBy: { updatedAt: "desc" },
+      select: { channelAccountId: true }
+    });
+
+    if (!active?.channelAccountId) {
+      throw new AppError(400, "TELEGRAM_NOT_CONNECTED", "Telegram account not connected");
+    }
+
+    return active.channelAccountId;
+  };
 
   const requireActiveTelegramAccountId = async (params: { companyId: string; userId: string }) => {
     const active = await app.prisma.telegramAccount.findFirst({
@@ -691,6 +716,106 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       events
     };
   });
+
+  const firstMessageService = new LeadRadarFirstMessageService(app);
+
+  app.post(
+    "/api/leadradar/leads/:id/first-message/generate",
+    { preHandler: [app.authenticate, requireAccess] },
+    async (request) => {
+      const scope = getCompanyScope(request);
+      const params = parseWithSchema(sourceIdParamsSchema, request.params);
+
+      if (!request.server.leadradar) {
+        throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
+      }
+
+      const telegram_account_id = await requireActiveTelegramAccountId(scope);
+      const repo = request.server.leadradar.repositories.lead;
+      const lead = await repo.findById({
+        id: params.id,
+        user_id: scope.userId,
+        telegram_account_id,
+        include: { context: false, events: false }
+      });
+
+      if (!lead) {
+        throw new AppError(404, "LEAD_NOT_FOUND", "Lead not found");
+      }
+
+      return firstMessageService.generate({
+        companyId: scope.companyId,
+        userId: scope.userId,
+        leadId: lead.id,
+        leadMessage: lead.message_text ?? null,
+        leadName: lead.display_name ?? null
+      });
+    }
+  );
+
+  app.post(
+    "/api/leadradar/leads/:id/first-message/send",
+    { preHandler: [app.authenticate, requireAccess] },
+    async (request) => {
+      const scope = getCompanyScope(request);
+      const params = parseWithSchema(sourceIdParamsSchema, request.params);
+      const body = parseWithSchema(sendLeadFirstMessageBodySchema, request.body);
+
+      if (!request.server.leadradar) {
+        throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
+      }
+
+      const telegram_account_id = await requireActiveTelegramAccountId(scope);
+      const repo = request.server.leadradar.repositories.lead;
+      const lead = await repo.findById({
+        id: params.id,
+        user_id: scope.userId,
+        telegram_account_id,
+        include: { context: false, events: false }
+      });
+
+      if (!lead) {
+        throw new AppError(404, "LEAD_NOT_FOUND", "Lead not found");
+      }
+
+      const username = (lead.username ?? "").trim().replace(/^@/, "");
+      const telegramUserId = (lead.telegram_user_id ?? "").trim();
+      const externalConversationId = username || telegramUserId;
+      if (!externalConversationId) {
+        throw new AppError(400, "LEAD_NO_TELEGRAM_ID", "Lead has no Telegram username or id");
+      }
+
+      const channelAccountId = await requireActiveTelegramChannelAccountId(scope);
+      const worker = new TelegramWorkerClient(
+        app.config.env.TELEGRAM_WORKER_URL,
+        app.config.env.INTERNAL_API_TOKEN,
+        app.config.env.TELEGRAM_WORKER_TIMEOUT_MS
+      );
+
+      const response = await worker.sendMessage({
+        companyId: scope.companyId,
+        channelAccountId,
+        externalConversationId,
+        text: body.text
+      });
+
+      // Status update happens ONLY after successful send.
+      const updated = await repo.updateStatus({
+        lead_id: lead.id,
+        user_id: scope.userId,
+        telegram_account_id,
+        status: "contacted"
+      });
+
+      await invalidateConversationCaches(app, scope.companyId);
+
+      return {
+        ok: true,
+        sendStatus: response.status,
+        lead: toLeadItem(updated)
+      };
+    }
+  );
 
   app.patch("/api/leadradar/leads/:id/status", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);

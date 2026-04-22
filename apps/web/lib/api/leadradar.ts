@@ -44,6 +44,12 @@ export const leadradarApi = {
 
   ,
 
+  generateFirstMessage: (token: string, leadId: string) =>
+    apiClient.post<{ text: string }>(`/leadradar/leads/${leadId}/first-message/generate`, {}, { token }),
+
+  sendFirstMessage: (token: string, leadId: string, text: string) =>
+    apiClient.post<{ ok: boolean; sendStatus: string; lead: unknown }>(`/leadradar/leads/${leadId}/first-message/send`, { text }, { token }),
+
   removeLead: (token: string, leadId: string) => apiClient.delete(`/leadradar/leads/${leadId}`, { token }),
 
   // ===== Sources =====
