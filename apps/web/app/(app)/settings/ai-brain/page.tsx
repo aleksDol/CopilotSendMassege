@@ -147,7 +147,7 @@ export default function AIBrainSettingsPage() {
   const [createGroup, setCreateGroup] = useState<KnowledgeGroup["id"] | null>(null);
   const advancedRef = useRef<HTMLDetailsElement | null>(null);
 
-  const items = knowledge.data?.items ?? [];
+  const items = useMemo(() => knowledge.data?.items ?? [], [knowledge.data?.items]);
   const primaryProductItem = useMemo(() => {
     const productItems = items.filter((item) => item.kind === "product");
     return (
@@ -156,6 +156,13 @@ export default function AIBrainSettingsPage() {
       null
     );
   }, [items]);
+
+  const previewReply = useMemo(() => {
+    const cleanGoal = goal.trim() || "следующему шагу";
+    const cleanProduct = product.trim() || "вашему продукту";
+    const cleanStrategy = strategy.trim() || "уточнять детали и объяснять просто";
+    return `Отличный вопрос. ${cleanProduct} может помочь в вашей ситуации.\n\nЧтобы дать точный вариант, задам 1-2 уточняющих вопроса.\n\nПосле этого помогу перейти к ${cleanGoal}. (${cleanStrategy.slice(0, 90)}${cleanStrategy.length > 90 ? "..." : ""})`;
+  }, [goal, product, strategy]);
 
   useEffect(() => {
     setProduct(primaryProductItem?.content ?? "");
@@ -175,13 +182,6 @@ export default function AIBrainSettingsPage() {
     ...group,
     items: items.filter((item) => group.match(item, primaryProductItem?.id ?? null))
   }));
-
-  const previewReply = useMemo(() => {
-    const cleanGoal = goal.trim() || "следующему шагу";
-    const cleanProduct = product.trim() || "вашему продукту";
-    const cleanStrategy = strategy.trim() || "уточнять детали и объяснять просто";
-    return `Отличный вопрос. ${cleanProduct} может помочь в вашей ситуации.\n\nЧтобы дать точный вариант, задам 1-2 уточняющих вопроса.\n\nПосле этого помогу перейти к ${cleanGoal}. (${cleanStrategy.slice(0, 90)}${cleanStrategy.length > 90 ? "..." : ""})`;
-  }, [goal, product, strategy]);
 
   const handleSaveBrain = async () => {
     setError(null);
