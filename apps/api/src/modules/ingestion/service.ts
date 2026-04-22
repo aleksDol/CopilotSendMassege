@@ -9,7 +9,6 @@ import { upsertParticipant } from "../participants/service.js";
 import { ConversationStateService } from "../state/service.js";
 import type { LeadRadarMessageInput } from "../leadradar/types/ingestion.js";
 import { enqueueLeadRadarJob } from "../leadradar/queue/leadradar-queue.js";
-import { enqueueCommentingGenerationJob } from "../commenting/queue/commenting-queue.js";
 
 type MessageEventPayload = {
   telegramAccountId: string;
@@ -145,39 +144,6 @@ const canTriggerLeadRadar = (
     return false;
   }
   return true;
-};
-
-const canQueueCommentCandidate = (payload: MessageEventPayload): boolean => {
-  if (toConversationType(payload) !== "CHANNEL") {
-    return false;
-  }
-
-  // We can only publish comments when the channel has a linked discussion chat (Telegram "comments enabled").
-  // telegram-worker provides this as rawPayload.linkedChatId for channel dialogs.
-  const linkedChatId = getRawString(payload.rawPayload?.linkedChatId);
-  if (!linkedChatId) {
-    return false;
-  }
-
-  const text = typeof payload.text === "string" ? payload.text.trim() : "";
-  return text.length > 0;
-};
-
-const toCommentCandidateSource = (payload: MessageEventPayload): { channelId: string; postId: string } => ({
-  channelId: getRawString(payload.rawPayload?.relatedChannelId) ?? payload.externalConversationId,
-  postId: getRawString(payload.rawPayload?.relatedPostId) ?? payload.externalMessageId
-});
-
-const isCommentingChannelExcluded = async (params: {
-  app: FastifyInstance;
-  userId: string;
-  channelId: string;
-}): Promise<boolean> => {
-  const row = await params.app.prisma.commentingChannelExclusion.findUnique({
-    where: { userId_channelId: { userId: params.userId, channelId: params.channelId } },
-    select: { id: true }
-  });
-  return Boolean(row);
 };
 
 const toLeadRadarInput = (params: {
@@ -638,67 +604,6 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
       }
     }
 
-    if (canQueueCommentCandidate(payload)) {
-      const source = toCommentCandidateSource(payload);
-      const userId = telegramAccount.channelAccount.createdByUserId;
-      if (typeof userId === "string" && userId.length) {
-        const excluded = await isCommentingChannelExcluded({ app, userId, channelId: source.channelId });
-        if (excluded) {
-          app.log.info(
-            { telegramAccountId: telegramAccount.id, channelId: source.channelId, postId: source.postId },
-            "[Commenting] skipped generation (channel excluded)"
-          );
-          return {
-            ok: true,
-            conversationId: conversation.id,
-            messageId: existing.id
-          };
-        }
-
-        // Prevent "backfill" candidates for channels first seen by Commenting.
-        // If the user recently started monitoring a channel and ingestion is replaying older posts,
-        // we should not generate candidates for historical content.
-        const COMMENTING_CHANNEL_ACTIVATION_GRACE_MS = 15 * 60 * 1000; // 15 minutes
-        const activation = await app.prisma.commentingChannelActivation.upsert({
-          where: { userId_channelId: { userId, channelId: source.channelId } },
-          update: {},
-          create: { userId, channelId: source.channelId, activatedAt: new Date() },
-          select: { activatedAt: true }
-        });
-        const sentAt = new Date(payload.sentAt);
-        const minSentAt = new Date(activation.activatedAt.getTime() - COMMENTING_CHANNEL_ACTIVATION_GRACE_MS);
-        if (sentAt < minSentAt) {
-          app.log.info(
-            {
-              telegramAccountId: telegramAccount.id,
-              channelId: source.channelId,
-              postId: source.postId,
-              sentAt: sentAt.toISOString(),
-              activatedAt: activation.activatedAt.toISOString()
-            },
-            "[Commenting] skipped generation (channel not activated yet / backfill)"
-          );
-          return {
-            ok: true,
-            conversationId: conversation.id,
-            messageId: existing.id
-          };
-        }
-      }
-      void enqueueCommentingGenerationJob(app.config.env, {
-        telegramAccountId: telegramAccount.id,
-        channelId: source.channelId,
-        postId: source.postId
-      }).then(
-        ({ jobId, deduped }) =>
-          app.log.info(
-            { jobId, deduped, telegramAccountId: telegramAccount.id, channelId: source.channelId, postId: source.postId },
-            "[Commenting] generation job enqueued"
-          ),
-        (err: unknown) => app.log.warn({ err }, "[Commenting] failed to enqueue generation job")
-      );
-    }
-
     return {
       ok: true,
       conversationId: conversation.id,
@@ -889,64 +794,6 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
         });
       }
     }
-  }
-
-  if (canQueueCommentCandidate(payload)) {
-    const source = toCommentCandidateSource(payload);
-    const userId = telegramAccount.channelAccount.createdByUserId;
-    if (typeof userId === "string" && userId.length) {
-      const excluded = await isCommentingChannelExcluded({ app, userId, channelId: source.channelId });
-      if (excluded) {
-        app.log.info(
-          { telegramAccountId: telegramAccount.id, channelId: source.channelId, postId: source.postId },
-          "[Commenting] skipped generation (channel excluded)"
-        );
-        return {
-          ok: true,
-          conversationId: conversation.id,
-          messageId: message.id
-        };
-      }
-
-      const COMMENTING_CHANNEL_ACTIVATION_GRACE_MS = 15 * 60 * 1000; // 15 minutes
-      const activation = await app.prisma.commentingChannelActivation.upsert({
-        where: { userId_channelId: { userId, channelId: source.channelId } },
-        update: {},
-        create: { userId, channelId: source.channelId, activatedAt: new Date() },
-        select: { activatedAt: true }
-      });
-      const sentAt = new Date(payload.sentAt);
-      const minSentAt = new Date(activation.activatedAt.getTime() - COMMENTING_CHANNEL_ACTIVATION_GRACE_MS);
-      if (sentAt < minSentAt) {
-        app.log.info(
-          {
-            telegramAccountId: telegramAccount.id,
-            channelId: source.channelId,
-            postId: source.postId,
-            sentAt: sentAt.toISOString(),
-            activatedAt: activation.activatedAt.toISOString()
-          },
-          "[Commenting] skipped generation (channel not activated yet / backfill)"
-        );
-        return {
-          ok: true,
-          conversationId: conversation.id,
-          messageId: message.id
-        };
-      }
-    }
-    void enqueueCommentingGenerationJob(app.config.env, {
-      telegramAccountId: telegramAccount.id,
-      channelId: source.channelId,
-      postId: source.postId
-    }).then(
-      ({ jobId, deduped }) =>
-        app.log.info(
-          { jobId, deduped, telegramAccountId: telegramAccount.id, channelId: source.channelId, postId: source.postId },
-          "[Commenting] generation job enqueued"
-        ),
-      (err: unknown) => app.log.warn({ err }, "[Commenting] failed to enqueue generation job")
-    );
   }
 
   return {

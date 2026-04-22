@@ -67,6 +67,24 @@ const estimateCostUsd = (model: string, inputTokens = 0, outputTokens = 0): numb
   return Number(((inputTokens / 1_000_000) * inputPer1m + (outputTokens / 1_000_000) * outputPer1m).toFixed(6));
 };
 
+const REGEN_TRIGGER_PHRASES = ["часто", "многие", "в большинстве", "как правило"] as const;
+
+const shouldRegenerateCopilotReply = (text: string): boolean => {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized.length) return false;
+  return REGEN_TRIGGER_PHRASES.some((phrase) => normalized.includes(phrase));
+};
+
+const MAX_RECENT_MESSAGES_FOR_COMPLETION = 10;
+
+const composePromptMessages = (
+  recentMessages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
+  userPrompt: string
+) => [
+  ...recentMessages.slice(-MAX_RECENT_MESSAGES_FOR_COMPLETION),
+  { role: "user" as const, content: userPrompt }
+];
+
 export class ReplySuggestionService {
   private readonly contextService: AIContextService;
   private readonly promptAssemblyService: PromptAssemblyService;
@@ -103,11 +121,12 @@ export class ReplySuggestionService {
       conversationId: params.conversationId
     });
 
-    const { systemPrompt, promptHash } = this.promptAssemblyService.build({
+    const { systemPrompt, userPrompt, promptDebug, promptHash } = this.promptAssemblyService.build({
       mode: params.mode,
       promptVersion: this.app.config.env.AI_PROMPT_VERSION,
       context
     });
+    const promptMessages = composePromptMessages(context.recentMessages, userPrompt);
 
     const triggerMessageId = context.triggerMessageId;
 
@@ -173,13 +192,95 @@ export class ReplySuggestionService {
 
     try {
       const provider = this.getProvider();
+      this.app.log.debug(
+        { companyId: params.companyId, conversationId: params.conversationId, value: promptDebug.hasProduct },
+        "copilot_prompt_has_product"
+      );
+      this.app.log.debug(
+        { companyId: params.companyId, conversationId: params.conversationId, value: promptDebug.hasGoal },
+        "copilot_prompt_has_goal"
+      );
+      this.app.log.debug(
+        { companyId: params.companyId, conversationId: params.conversationId, value: promptDebug.hasStrategy },
+        "copilot_prompt_has_strategy"
+      );
+      this.app.log.debug(
+        { companyId: params.companyId, conversationId: params.conversationId, value: promptDebug.hasRelevantKnowledge },
+        "copilot_prompt_has_relevant_knowledge"
+      );
+      this.app.log.debug(
+        { companyId: params.companyId, conversationId: params.conversationId, selected_knowledge_types: promptDebug.selectedKnowledgeTypes },
+        "selected_knowledge_types"
+      );
+      this.app.log.debug(
+        { companyId: params.companyId, conversationId: params.conversationId, knowledge_blocks_count: promptDebug.knowledgeBlocksCount },
+        "knowledge_blocks_count"
+      );
+      this.app.log.debug(
+        { companyId: params.companyId, conversationId: params.conversationId, prompt_estimated_size: promptDebug.promptEstimatedSize },
+        "prompt_estimated_size"
+      );
+
       providerResult = await provider.generateReply({
         mode: params.mode,
         systemPrompt,
-        messages: context.recentMessages,
+        messages: promptMessages,
         temperature: 0.5,
         maxTokens: 220
       });
+
+      let copilotReplyRegenerated = false;
+      if (shouldRegenerateCopilotReply(providerResult.text)) {
+        copilotReplyRegenerated = true;
+        this.app.log.debug(
+          {
+            companyId: params.companyId,
+            conversationId: params.conversationId,
+            mode: params.mode,
+            copilot_reply_regenerated: true
+          },
+          "copilot_reply_regenerated"
+        );
+
+        providerResult = await provider.generateReply({
+          mode: params.mode,
+          systemPrompt,
+          messages: promptMessages,
+          temperature: 0.5,
+          maxTokens: 220
+        });
+
+        if (shouldRegenerateCopilotReply(providerResult.text)) {
+          this.app.log.warn(
+            {
+              companyId: params.companyId,
+              conversationId: params.conversationId,
+              mode: params.mode
+            },
+            "copilot_reply_regeneration_warning"
+          );
+        }
+      } else {
+        this.app.log.debug(
+          {
+            companyId: params.companyId,
+            conversationId: params.conversationId,
+            mode: params.mode,
+            copilot_reply_regenerated: false
+          },
+          "copilot_reply_regenerated"
+        );
+      }
+
+      this.app.log.debug(
+        {
+          companyId: params.companyId,
+          conversationId: params.conversationId,
+          mode: params.mode,
+          copilot_reply_regenerated: copilotReplyRegenerated
+        },
+        "copilot_reply_generated"
+      );
 
       const inputTokens = providerResult.metadata.inputTokens ?? 0;
       const outputTokens = providerResult.metadata.outputTokens ?? 0;

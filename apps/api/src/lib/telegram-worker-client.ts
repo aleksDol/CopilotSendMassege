@@ -121,10 +121,6 @@ export class TelegramWorkerClient {
     return this.post("/internal/telegram/send-message", payload);
   }
 
-  sendCommentToChannelPost(payload: WorkerPayload) {
-    return this.post("/internal/telegram/send-channel-post-comment", payload);
-  }
-
   logout(payload: WorkerPayload) {
     return this.post("/internal/telegram/logout", payload);
   }

@@ -1,0 +1,367 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { EmptyState } from "@/components/common/empty-state";
+import { LoadingState } from "@/components/common/loading-state";
+import { KnowledgeItemForm } from "@/components/settings/knowledge-item-form";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { useKnowledgeItems, useReplyPolicy, useSettingsActions } from "@/lib/hooks/use-app-data";
+import type { KnowledgeItem, ReplyPolicy } from "@/lib/api/types";
+
+const AI_BRAIN_PRODUCT_TITLE = "AI Brain Product";
+const AI_BRAIN_GOAL_KEY = "aiBrainGoal";
+const AI_BRAIN_STRATEGY_KEY = "aiBrainStrategy";
+
+type KnowledgeGroup = {
+  id: "faq" | "case" | "script" | "policy" | "features";
+  title: string;
+  hint: string;
+  empty: string;
+  match: (item: KnowledgeItem, primaryProductId: string | null) => boolean;
+};
+
+const KNOWLEDGE_GROUPS: KnowledgeGroup[] = [
+  {
+    id: "faq",
+    title: "FAQ",
+    hint: "Частые вопросы клиентов",
+    empty: "Нет FAQ блоков",
+    match: (item) => item.kind === "faq"
+  },
+  {
+    id: "case",
+    title: "Cases",
+    hint: "Примеры, результаты, доверие",
+    empty: "Нет кейсов",
+    match: (item) => item.kind === "case"
+  },
+  {
+    id: "script",
+    title: "Objections",
+    hint: "Работа с возражениями",
+    empty: "Нет блоков возражений",
+    match: (item) => item.kind === "script"
+  },
+  {
+    id: "policy",
+    title: "Pricing",
+    hint: "Цены, тарифы, условия",
+    empty: "Нет блоков pricing",
+    match: (item) => item.kind === "policy"
+  },
+  {
+    id: "features",
+    title: "Features",
+    hint: "Функции и возможности продукта",
+    empty: "Нет блоков features",
+    match: (item, primaryProductId) => item.kind === "product" && item.id !== primaryProductId
+  }
+];
+
+const toneRulesToObject = (value: unknown): Record<string, unknown> => {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return { ...(value as Record<string, unknown>) };
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    return { legacyToneRules: value };
+  }
+  return {};
+};
+
+const readAiBrainValues = (policy: ReplyPolicy | undefined): { goal: string; strategy: string } => {
+  const toneRules = policy?.toneRules;
+  if (toneRules && typeof toneRules === "object" && !Array.isArray(toneRules)) {
+    const record = toneRules as Record<string, unknown>;
+    const goal = typeof record[AI_BRAIN_GOAL_KEY] === "string" ? String(record[AI_BRAIN_GOAL_KEY]) : "";
+    const strategy = typeof record[AI_BRAIN_STRATEGY_KEY] === "string" ? String(record[AI_BRAIN_STRATEGY_KEY]) : "";
+    return { goal, strategy };
+  }
+  if (typeof toneRules === "string") {
+    return { goal: "", strategy: toneRules };
+  }
+  return { goal: "", strategy: "" };
+};
+
+const kindByGroup = (groupId: KnowledgeGroup["id"]): string => {
+  switch (groupId) {
+    case "faq":
+      return "faq";
+    case "case":
+      return "case";
+    case "script":
+      return "script";
+    case "policy":
+      return "policy";
+    case "features":
+      return "product";
+  }
+};
+
+export default function AIBrainSettingsPage() {
+  const knowledge = useKnowledgeItems();
+  const policy = useReplyPolicy();
+  const actions = useSettingsActions();
+
+  const [product, setProduct] = useState("");
+  const [goal, setGoal] = useState("");
+  const [strategy, setStrategy] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saveOk, setSaveOk] = useState<string | null>(null);
+  const [editing, setEditing] = useState<KnowledgeItem | null>(null);
+  const [createGroup, setCreateGroup] = useState<KnowledgeGroup["id"] | null>(null);
+
+  const items = knowledge.data?.items ?? [];
+  const primaryProductItem = useMemo(() => {
+    const productItems = items.filter((item) => item.kind === "product");
+    return (
+      productItems.find((item) => item.title.trim().toLowerCase() === AI_BRAIN_PRODUCT_TITLE.toLowerCase()) ??
+      productItems[0] ??
+      null
+    );
+  }, [items]);
+
+  useEffect(() => {
+    setProduct(primaryProductItem?.content ?? "");
+  }, [primaryProductItem]);
+
+  useEffect(() => {
+    const values = readAiBrainValues(policy.data?.policy);
+    setGoal(values.goal);
+    setStrategy(values.strategy);
+  }, [policy.data?.policy]);
+
+  if (knowledge.isLoading || policy.isLoading) {
+    return <LoadingState label="Загрузка AI Brain..." />;
+  }
+
+  const grouped = KNOWLEDGE_GROUPS.map((group) => ({
+    ...group,
+    items: items.filter((item) => group.match(item, primaryProductItem?.id ?? null))
+  }));
+
+  const handleSaveBrain = async () => {
+    setError(null);
+    setSaveOk(null);
+    try {
+      const sourcePolicy = policy.data?.policy;
+      const nextToneRules = toneRulesToObject(sourcePolicy?.toneRules);
+      nextToneRules[AI_BRAIN_GOAL_KEY] = goal.trim();
+      nextToneRules[AI_BRAIN_STRATEGY_KEY] = strategy.trim();
+
+      if (product.trim().length > 0) {
+        if (primaryProductItem) {
+          await actions.updateKnowledge.mutateAsync({
+            id: primaryProductItem.id,
+            payload: {
+              kind: "product",
+              title: primaryProductItem.title || AI_BRAIN_PRODUCT_TITLE,
+              content: product.trim(),
+              isActive: true
+            }
+          });
+        } else {
+          await actions.createKnowledge.mutateAsync({
+            kind: "product",
+            title: AI_BRAIN_PRODUCT_TITLE,
+            content: product.trim(),
+            priority: 100,
+            isActive: true
+          });
+        }
+      }
+
+      await actions.saveReplyPolicy.mutateAsync({
+        ...sourcePolicy,
+        toneRules: nextToneRules
+      });
+
+      setSaveOk("AI Brain сохранен.");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Не удалось сохранить AI Brain");
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-2xl font-semibold">AI Brain</h1>
+        <p className="text-sm text-muted-foreground">Единая настройка поведения AI Copilot.</p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Section 1 — Product</CardTitle>
+          <CardDescription>ИИ использует это как контекст.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Textarea
+            rows={5}
+            value={product}
+            onChange={(event) => setProduct(event.target.value)}
+            placeholder="Опишите ваш продукт: что это, для кого и какую проблему решает"
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Section 2 — Goal</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Input
+            value={goal}
+            onChange={(event) => setGoal(event.target.value)}
+            placeholder="Например: довести до заявки / записать на звонок"
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Section 3 — Strategy</CardTitle>
+          <CardDescription>Определяет поведение ИИ.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Textarea
+            rows={5}
+            value={strategy}
+            onChange={(event) => setStrategy(event.target.value)}
+            placeholder={"Как вести диалог:\n- не давать цену сразу\n- задавать вопросы\n- вести к следующему шагу"}
+          />
+        </CardContent>
+      </Card>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button onClick={handleSaveBrain} disabled={actions.saveReplyPolicy.isPending || actions.updateKnowledge.isPending || actions.createKnowledge.isPending}>
+          {actions.saveReplyPolicy.isPending || actions.updateKnowledge.isPending || actions.createKnowledge.isPending
+            ? "Сохранение..."
+            : "Сохранить AI Brain"}
+        </Button>
+        {saveOk ? <p className="text-sm text-emerald-600">{saveOk}</p> : null}
+        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Section 4 — Knowledge</CardTitle>
+          <CardDescription>Используется ИИ как аргументы в диалоге.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            {grouped.map((group) => (
+              <Card key={group.id} className="border-border/70">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">{group.title}</CardTitle>
+                  <CardDescription>{group.hint}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {group.items.length ? (
+                    group.items.map((item) => (
+                      <div key={item.id} className="rounded-md border border-border/70 p-2">
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <div className="truncate text-sm font-medium">{item.title}</div>
+                          <Badge variant={item.isActive ? "success" : "warning"}>{item.isActive ? "active" : "inactive"}</Badge>
+                        </div>
+                        <p className="line-clamp-2 text-xs text-muted-foreground">{item.content}</p>
+                        <div className="mt-2 flex gap-2">
+                          <Button size="sm" variant="outline" onClick={() => setEditing(item)}>
+                            Изменить
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={async () => {
+                              setError(null);
+                              try {
+                                await actions.updateKnowledge.mutateAsync({
+                                  id: item.id,
+                                  payload: { isActive: !item.isActive }
+                                });
+                              } catch (toggleError) {
+                                setError(toggleError instanceof Error ? toggleError.message : "Не удалось изменить статус");
+                              }
+                            }}
+                          >
+                            {item.isActive ? "Выключить" : "Включить"}
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <EmptyState title={group.empty} description="Добавьте блок и используйте его в AI Brain." />
+                  )}
+                  <Button size="sm" variant="secondary" onClick={() => setCreateGroup(group.id)}>
+                    Добавить {group.title}
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {createGroup ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Добавить блок знаний</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <KnowledgeItemForm
+              initial={{
+                id: "new",
+                kind: kindByGroup(createGroup),
+                title: "",
+                content: "",
+                isActive: true,
+                priority: 50,
+                version: 1
+              }}
+              submitLabel={actions.createKnowledge.isPending ? "Сохранение..." : "Сохранить"}
+              disabled={actions.createKnowledge.isPending}
+              onCancel={() => setCreateGroup(null)}
+              onSubmit={async (payload) => {
+                setError(null);
+                try {
+                  await actions.createKnowledge.mutateAsync(payload);
+                  setCreateGroup(null);
+                } catch (createError) {
+                  setError(createError instanceof Error ? createError.message : "Не удалось создать");
+                }
+              }}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {editing ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Редактировать блок знаний</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <KnowledgeItemForm
+              initial={editing}
+              submitLabel={actions.updateKnowledge.isPending ? "Сохранение..." : "Сохранить"}
+              disabled={actions.updateKnowledge.isPending}
+              onCancel={() => setEditing(null)}
+              onSubmit={async (payload) => {
+                setError(null);
+                try {
+                  await actions.updateKnowledge.mutateAsync({ id: editing.id, payload });
+                  setEditing(null);
+                } catch (updateError) {
+                  setError(updateError instanceof Error ? updateError.message : "Не удалось обновить");
+                }
+              }}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
+

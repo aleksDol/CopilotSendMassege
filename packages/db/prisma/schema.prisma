@@ -212,17 +212,6 @@ enum TaskSource {
   AI
 }
 
-enum CommentCandidateStatus {
-  new
-  published
-  ignored
-}
-
-enum CommentPublishSource {
-  manual
-  auto
-}
-
 enum KnowledgeKind {
   FAQ
   PRODUCT
@@ -320,10 +309,6 @@ model User {
   leadRadarNegativeKeywords LeadRadarNegativeKeyword[]
   leadRadarLeads            LeadRadarLead[]
   leadRadarSettings         LeadRadarSettings[]
-  commentCandidates         CommentCandidate[]
-  commentingState           CommentingUserState?
-  commentingChannelExclusions CommentingChannelExclusion[]
-  commentingChannelActivations CommentingChannelActivation[]
 
   @@index([companyId])
   @@index([companyId, role])
@@ -456,7 +441,6 @@ model TelegramAccount {
   leadRadarNegativeKeywords LeadRadarNegativeKeyword[]
   leadRadarLeads            LeadRadarLead[]
   leadRadarSettings         LeadRadarSettings[]
-  commentCandidates         CommentCandidate[]
 
   @@index([telegramUserId])
   @@index([loginStatus])
@@ -733,86 +717,6 @@ model AiRun {
   @@index([companyId, createdAt(sort: Desc)])
   @@index([conversationId, createdAt(sort: Desc)])
   @@index([messageId])
-}
-
-model CommentCandidate {
-  id                String                 @id @default(uuid()) @db.Uuid
-  userId            String                 @db.Uuid
-  telegramAccountId String                 @db.Uuid
-  channelId         String
-  postId            String
-  postText          String
-  aiComment         String?
-  status            CommentCandidateStatus @default(new)
-  createdAt         DateTime               @default(now())
-  updatedAt         DateTime               @updatedAt
-  publishedAt       DateTime?
-  publishedBy       CommentPublishSource?
-  autoPublishAttempts    Int      @default(0)
-  autoPublishLastErrorAt DateTime?
-  autoPublishLastError   String?
-
-  user            User            @relation(fields: [userId], references: [id], onDelete: Restrict)
-  telegramAccount TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Restrict)
-
-  @@unique([telegramAccountId, channelId, postId])
-  @@index([userId, createdAt(sort: Desc)])
-  @@index([telegramAccountId, status, createdAt(sort: Desc)])
-}
-
-/// =========================
-/// Commenting user preferences
-/// =========================
-model CommentingUserState {
-  id         String   @id @default(uuid()) @db.Uuid
-  userId     String   @db.Uuid
-  lastSeenAt DateTime @default(now())
-  autoCommentingEnabled Boolean @default(false)
-  autoCommentingEnabledAt DateTime?
-  autoCommentingPausedUntil DateTime?
-  autoCommentingPauseReason String?
-  autoCommentingConsecutiveErrors Int @default(0)
-  lastAutoPublishedAt DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId])
-  @@index([userId])
-}
-
-model CommentingChannelExclusion {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @db.Uuid
-  channelId String
-  createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, channelId])
-  @@index([userId])
-  @@index([channelId])
-}
-
-/// =========================
-/// Commenting per-channel activation
-/// - Used to avoid backfill of old posts when a user starts monitoring a new channel
-/// =========================
-model CommentingChannelActivation {
-  id          String   @id @default(uuid()) @db.Uuid
-  userId      String   @db.Uuid
-  channelId   String
-  activatedAt DateTime @default(now())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, channelId])
-  @@index([userId])
-  @@index([channelId])
-  @@index([userId, activatedAt(sort: Desc)])
 }
 
 /// =========================

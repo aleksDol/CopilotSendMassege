@@ -120,32 +120,6 @@ services:
       redis:
         condition: service_healthy
 
-  commenting-worker:
-    build:
-      context: .
-      dockerfile: apps/commenting-worker/Dockerfile
-    container_name: ai-sales-commenting-worker
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_MODEL_REPLY: ${OPENAI_MODEL_REPLY:-gpt-4o-mini}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS:-12000}
-      COMMENTING_WORKER_PORT: 8093
-      COMMENTING_WORKER_CONCURRENCY: ${COMMENTING_WORKER_CONCURRENCY:-4}
-      COMMENTING_MIN_POST_LENGTH: ${COMMENTING_MIN_POST_LENGTH:-20}
-      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
-      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:${API_PORT:-4000}}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
   telegram-worker:
     build:
       context: .

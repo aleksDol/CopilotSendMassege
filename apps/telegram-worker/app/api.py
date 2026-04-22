@@ -13,7 +13,6 @@ from app.schemas import (
     LogoutRequest,
     ResolveChatByLinkRequest,
     PollLoginQrRequest,
-    SendChannelPostCommentRequest,
     SendMessageRequest,
     StartLoginQrRequest,
     StartLoginRequest,
@@ -37,7 +36,6 @@ from app.services.auth_flow import (
 from app.services.sync_service import (
     list_connected_accounts,
     run_initial_sync,
-    send_channel_post_comment,
     send_message,
     resolve_public_group_by_link,
 )
@@ -316,33 +314,6 @@ async def internal_send_message(payload: SendMessageRequest) -> dict:
             raise
         except Exception as exc:
             raise WorkerError("TELEGRAM_SEND_FAILED", "Failed to send Telegram message", 500) from exc
-
-
-@app.post("/internal/telegram/send-channel-post-comment", dependencies=[Depends(verify_internal_token)])
-async def internal_send_channel_post_comment(payload: SendChannelPostCommentRequest) -> dict:
-    logger.info(
-        "send-channel-post-comment requested for company=%s channelAccount=%s channel=%s post=%s",
-        payload.company_id,
-        payload.channel_account_id,
-        payload.channel_id,
-        payload.post_id,
-    )
-    async with concurrency_limiter:
-        try:
-            # Comment sends are safety-checked inside `send_channel_post_comment`
-            # using the linked discussion chat id (not the channel id).
-            return await send_channel_post_comment(
-                company_id=payload.company_id,
-                channel_account_id=payload.channel_account_id,
-                channel_id=payload.channel_id,
-                post_id=payload.post_id,
-                text=payload.text,
-                crypto=crypto,
-            )
-        except WorkerError:
-            raise
-        except Exception as exc:
-            raise WorkerError("TELEGRAM_SEND_COMMENT_FAILED", "Failed to send Telegram channel post comment", 500) from exc
 
 
 @app.post("/internal/telegram/logout", dependencies=[Depends(verify_internal_token)])

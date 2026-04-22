@@ -7,11 +7,9 @@ import {
   LayoutDashboard,
   CircleHelp,
   MessageCircle,
-  MessageSquareText,
   CheckSquare,
   Radar,
-  BookOpen,
-  ShieldCheck,
+  Bot,
   Smartphone,
   CreditCard,
   Users,
@@ -27,14 +25,12 @@ const navItems = [
   { href: "/getting-started", label: "Начало работы", icon: CircleHelp },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/chats", label: "Chats", icon: MessageCircle },
-  { href: "/commenting", label: "Commenting", icon: MessageSquareText },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/leadradar", label: "LeadRadar", icon: Radar }
 ];
 
 const settingsItems = [
-  { href: "/settings/knowledge", label: "Knowledge Base", icon: BookOpen },
-  { href: "/settings/reply-policy", label: "Reply Policy", icon: ShieldCheck },
+  { href: "/settings/ai-brain", label: "AI Brain", icon: Bot },
   { href: "/settings/telegram", label: "Telegram Connection", icon: Smartphone },
   { href: "/settings/billing", label: "Billing", icon: CreditCard },
   { href: "/settings/team", label: "Team", icon: Users }
