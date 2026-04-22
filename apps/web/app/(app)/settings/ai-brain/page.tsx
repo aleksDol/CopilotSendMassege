@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { EmptyState } from "@/components/common/empty-state";
 import { LoadingState } from "@/components/common/loading-state";
 import { KnowledgeItemForm } from "@/components/settings/knowledge-item-form";
@@ -19,27 +20,27 @@ const AI_BRAIN_STRATEGY_KEY = "aiBrainStrategy";
 const STRATEGY_TEMPLATES = [
   {
     id: "seller",
-    label: "Seller",
+    label: "Продавец",
     value:
-      "Lead the client from interest to action. Clarify goals, show value in simple words, handle objections calmly, and move toward the next step."
+      "Ведите клиента от интереса к действию: уточняйте потребность, говорите о пользе простыми словами, отрабатывайте возражения и мягко ведите к следующему шагу."
   },
   {
     id: "consultant",
-    label: "Consultant",
+    label: "Консультант",
     value:
-      "Act like a trusted consultant. Ask clarifying questions first, diagnose the situation, then recommend the most suitable option and next action."
+      "Действуйте как эксперт-консультант: сначала задайте уточняющие вопросы, затем предложите подходящее решение и следующий конкретный шаг."
   },
   {
     id: "soft",
-    label: "Soft",
+    label: "Мягкий",
     value:
-      "Keep the tone warm and low-pressure. Explain clearly, avoid aggressive selling, gently guide the client toward a useful next step."
+      "Поддерживайте теплый и спокойный тон без давления: понятно объясняйте, помогайте разобраться и аккуратно подводите к следующему шагу."
   },
   {
     id: "direct",
-    label: "Direct",
+    label: "Прямой",
     value:
-      "Be concise and action-oriented. Get to the main point quickly, ask only key questions, and lead the client to a concrete next step."
+      "Отвечайте кратко и по делу: быстро переходите к сути, задавайте только ключевые вопросы и ведите к конкретному действию."
   }
 ] as const;
 
@@ -55,36 +56,36 @@ const KNOWLEDGE_GROUPS: KnowledgeGroup[] = [
   {
     id: "faq",
     title: "FAQ",
-    hint: "Common client questions",
-    empty: "No FAQ blocks yet",
+    hint: "Частые вопросы клиентов",
+    empty: "Нет блоков FAQ",
     match: (item) => item.kind === "faq"
   },
   {
     id: "case",
-    title: "Cases",
-    hint: "Examples and outcomes",
-    empty: "No case blocks yet",
+    title: "Кейсы",
+    hint: "Примеры и результаты",
+    empty: "Нет блоков с кейсами",
     match: (item) => item.kind === "case"
   },
   {
     id: "script",
-    title: "Objections",
-    hint: "How to handle concerns",
-    empty: "No objection blocks yet",
+    title: "Возражения",
+    hint: "Как отвечать на сомнения",
+    empty: "Нет блоков с возражениями",
     match: (item) => item.kind === "script"
   },
   {
     id: "policy",
-    title: "Pricing",
-    hint: "Rates and conditions",
-    empty: "No pricing blocks yet",
+    title: "Цены",
+    hint: "Тарифы и условия",
+    empty: "Нет блоков с ценами",
     match: (item) => item.kind === "policy"
   },
   {
     id: "features",
-    title: "Features",
-    hint: "Capabilities and details",
-    empty: "No feature blocks yet",
+    title: "Функции",
+    hint: "Возможности продукта",
+    empty: "Нет блоков с функциями",
     match: (item, primaryProductId) => item.kind === "product" && item.id !== primaryProductId
   }
 ];
@@ -129,6 +130,7 @@ const kindByGroup = (groupId: KnowledgeGroup["id"]): string => {
 };
 
 export default function AIBrainSettingsPage() {
+  const router = useRouter();
   const knowledge = useKnowledgeItems();
   const policy = useReplyPolicy();
   const actions = useSettingsActions();
@@ -136,12 +138,16 @@ export default function AIBrainSettingsPage() {
   const [product, setProduct] = useState("");
   const [goal, setGoal] = useState("");
   const [strategy, setStrategy] = useState("");
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
+  const [saved, setSaved] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveOk, setSaveOk] = useState<string | null>(null);
   const [editing, setEditing] = useState<KnowledgeItem | null>(null);
   const [createGroup, setCreateGroup] = useState<KnowledgeGroup["id"] | null>(null);
+  const advancedRef = useRef<HTMLDetailsElement | null>(null);
 
-  const items = useMemo(() => knowledge.data?.items ?? [], [knowledge.data?.items]);
+  const items = knowledge.data?.items ?? [];
   const primaryProductItem = useMemo(() => {
     const productItems = items.filter((item) => item.kind === "product");
     return (
@@ -150,13 +156,6 @@ export default function AIBrainSettingsPage() {
       null
     );
   }, [items]);
-
-  const previewReply = useMemo(() => {
-    const cleanGoal = goal.trim() || "the next agreed step";
-    const cleanProduct = product.trim() || "your offer";
-    const cleanStrategy = strategy.trim() || "ask clarifying questions and explain simply";
-    return `Great question. ${cleanProduct} can help here.\n\nTo suggest the best option, may I ask 1-2 details about your case?\n\nThen I will guide you to ${cleanGoal}. (${cleanStrategy.slice(0, 90)}${cleanStrategy.length > 90 ? "..." : ""})`;
-  }, [goal, product, strategy]);
 
   useEffect(() => {
     setProduct(primaryProductItem?.content ?? "");
@@ -169,13 +168,20 @@ export default function AIBrainSettingsPage() {
   }, [policy.data?.policy]);
 
   if (knowledge.isLoading || policy.isLoading) {
-    return <LoadingState label="Loading settings..." />;
+    return <LoadingState label="Загрузка настроек..." />;
   }
 
   const grouped = KNOWLEDGE_GROUPS.map((group) => ({
     ...group,
     items: items.filter((item) => group.match(item, primaryProductItem?.id ?? null))
   }));
+
+  const previewReply = useMemo(() => {
+    const cleanGoal = goal.trim() || "следующему шагу";
+    const cleanProduct = product.trim() || "вашему продукту";
+    const cleanStrategy = strategy.trim() || "уточнять детали и объяснять просто";
+    return `Отличный вопрос. ${cleanProduct} может помочь в вашей ситуации.\n\nЧтобы дать точный вариант, задам 1-2 уточняющих вопроса.\n\nПосле этого помогу перейти к ${cleanGoal}. (${cleanStrategy.slice(0, 90)}${cleanStrategy.length > 90 ? "..." : ""})`;
+  }, [goal, product, strategy]);
 
   const handleSaveBrain = async () => {
     setError(null);
@@ -213,98 +219,156 @@ export default function AIBrainSettingsPage() {
         toneRules: nextToneRules
       });
 
-      setSaveOk("Settings saved.");
+      setSaveOk("Настройки сохранены.");
+      setSaved(true);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Failed to save settings");
+      setError(saveError instanceof Error ? saveError.message : "Не удалось сохранить настройки");
     }
   };
+
+  const handleOpenAdvanced = () => {
+    setSaved(false);
+    setAdvancedOpen(true);
+    setTimeout(() => {
+      advancedRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
+
+  const progress = (currentStep / 3) * 100;
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <div>
-        <h1 className="text-2xl font-semibold">How AI talks to clients</h1>
-        <p className="text-sm text-muted-foreground">Answer a few simple questions and save.</p>
+        <h1 className="text-2xl font-semibold">Как ИИ общается с клиентами</h1>
+        <p className="text-sm text-muted-foreground">Ответьте на 3 вопроса. Это поможет ИИ вести диалог понятнее и эффективнее.</p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>What do you sell?</CardTitle>
-          <CardDescription>Briefly describe your product, who it is for, and what problem it solves</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Textarea
-            rows={5}
-            value={product}
-            onChange={(event) => setProduct(event.target.value)}
-            placeholder="Describe what you sell and who it helps"
-          />
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">What should AI lead the client to?</label>
-            <p className="text-xs text-muted-foreground">Examples: leave a request, book a call, send project details</p>
-            <Input
-              value={goal}
-              onChange={(event) => setGoal(event.target.value)}
-              placeholder="leave a request / book a call / send project details"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">How should AI lead the conversation?</label>
-            <p className="text-xs text-muted-foreground">
-              For example: do not give price immediately, ask clarifying questions, explain simply, move toward the next
-              step
-            </p>
-            <Textarea
-              rows={5}
-              value={strategy}
-              onChange={(event) => setStrategy(event.target.value)}
-              placeholder={"- do not give price immediately\n- ask clarifying questions\n- explain simply\n- move toward the next step"}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Templates</p>
-            <div className="flex flex-wrap gap-2">
-              {STRATEGY_TEMPLATES.map((template) => (
-                <Button key={template.id} type="button" size="sm" variant="secondary" onClick={() => setStrategy(template.value)}>
-                  {template.label}
-                </Button>
-              ))}
+      {saved ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Готово. ИИ настроен</CardTitle>
+            <CardDescription>Основные параметры сохранены. Вы можете сразу перейти к чатам.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button onClick={() => router.push("/chats")}>Перейти к чатам</Button>
+            <Button variant="outline" onClick={handleOpenAdvanced}>
+              Открыть расширенные настройки
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader className="space-y-3">
+            <div>
+              <CardTitle>Пошаговая настройка</CardTitle>
+              <CardDescription>Шаг {currentStep} из 3</CardDescription>
             </div>
-          </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {currentStep === 1 ? (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Что вы продаёте?</label>
+                <p className="text-xs text-muted-foreground">Коротко опишите продукт, для кого он и какую проблему решает</p>
+                <Textarea
+                  rows={6}
+                  value={product}
+                  onChange={(event) => setProduct(event.target.value)}
+                  placeholder="Например: мы помогаем онлайн-школам автоматически отвечать на заявки и доводить до оплаты"
+                />
+              </div>
+            ) : null}
 
-          <Card className="border-border/60 bg-muted/20">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Example AI reply</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="whitespace-pre-line text-sm text-muted-foreground">{previewReply}</p>
-            </CardContent>
-          </Card>
-        </CardContent>
-      </Card>
+            {currentStep === 2 ? (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">К чему вести клиента?</label>
+                <Input
+                  value={goal}
+                  onChange={(event) => setGoal(event.target.value)}
+                  placeholder="например: оставить заявку, записаться на звонок"
+                />
+              </div>
+            ) : null}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          onClick={handleSaveBrain}
-          disabled={actions.saveReplyPolicy.isPending || actions.updateKnowledge.isPending || actions.createKnowledge.isPending}
-        >
-          {actions.saveReplyPolicy.isPending || actions.updateKnowledge.isPending || actions.createKnowledge.isPending
-            ? "Saving..."
-            : "Save settings"}
-        </Button>
-        {saveOk ? <p className="text-sm text-emerald-600">{saveOk}</p> : null}
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      </div>
+            {currentStep === 3 ? (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Как вести диалог?</label>
+                  <p className="text-xs text-muted-foreground">
+                    Например: не давать цену сразу, задавать уточняющие вопросы, объяснять просто, вести к следующему шагу
+                  </p>
+                  <Textarea
+                    rows={6}
+                    value={strategy}
+                    onChange={(event) => setStrategy(event.target.value)}
+                    placeholder={"- не давать цену сразу\n- задавать уточняющие вопросы\n- объяснять простыми словами\n- вести к следующему шагу"}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Шаблоны</p>
+                  <div className="flex flex-wrap gap-2">
+                    {STRATEGY_TEMPLATES.map((template) => (
+                      <Button key={template.id} type="button" size="sm" variant="secondary" onClick={() => setStrategy(template.value)}>
+                        {template.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <Card className="border-border/60 bg-muted/20">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Пример ответа ИИ</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="whitespace-pre-line text-sm text-muted-foreground">{previewReply}</p>
+                  </CardContent>
+                </Card>
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap items-center gap-2 pt-2">
+              {currentStep > 1 ? (
+                <Button type="button" variant="outline" onClick={() => setCurrentStep((prev) => (prev > 1 ? ((prev - 1) as 1 | 2 | 3) : prev))}>
+                  Назад
+                </Button>
+              ) : null}
+
+              {currentStep < 3 ? (
+                <Button type="button" onClick={() => setCurrentStep((prev) => (prev < 3 ? ((prev + 1) as 1 | 2 | 3) : prev))}>
+                  Далее
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleSaveBrain}
+                  disabled={actions.saveReplyPolicy.isPending || actions.updateKnowledge.isPending || actions.createKnowledge.isPending}
+                >
+                  {actions.saveReplyPolicy.isPending || actions.updateKnowledge.isPending || actions.createKnowledge.isPending
+                    ? "Сохранение..."
+                    : "Сохранить"}
+                </Button>
+              )}
+
+              {saveOk ? <p className="text-sm text-emerald-600">{saveOk}</p> : null}
+              {error ? <p className="text-sm text-destructive">{error}</p> : null}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="pt-6">
-          <details>
+          <details
+            ref={advancedRef}
+            open={advancedOpen}
+            onToggle={(event) => setAdvancedOpen((event.currentTarget as HTMLDetailsElement).open)}
+          >
             <summary className="cursor-pointer list-none text-base font-medium">
-              <span>Advanced knowledge for AI</span>
+              <span>Расширенные настройки (необязательно)</span>
             </summary>
-            <p className="mt-1 text-sm text-muted-foreground">Used by AI as supporting arguments in conversations</p>
+            <p className="mt-1 text-sm text-muted-foreground">Эти блоки ИИ использует как дополнительные аргументы в диалоге.</p>
 
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               {grouped.map((group) => (
@@ -319,12 +383,12 @@ export default function AIBrainSettingsPage() {
                         <div key={item.id} className="rounded-md border border-border/70 p-2">
                           <div className="mb-1 flex items-center justify-between gap-2">
                             <div className="truncate text-sm font-medium">{item.title}</div>
-                            <Badge variant={item.isActive ? "success" : "warning"}>{item.isActive ? "active" : "inactive"}</Badge>
+                            <Badge variant={item.isActive ? "success" : "warning"}>{item.isActive ? "активно" : "выключено"}</Badge>
                           </div>
                           <p className="line-clamp-2 text-xs text-muted-foreground">{item.content}</p>
                           <div className="mt-2 flex gap-2">
                             <Button size="sm" variant="outline" onClick={() => setEditing(item)}>
-                              Edit
+                              Изменить
                             </Button>
                             <Button
                               size="sm"
@@ -337,20 +401,20 @@ export default function AIBrainSettingsPage() {
                                     payload: { isActive: !item.isActive }
                                   });
                                 } catch (toggleError) {
-                                  setError(toggleError instanceof Error ? toggleError.message : "Failed to update status");
+                                  setError(toggleError instanceof Error ? toggleError.message : "Не удалось изменить статус");
                                 }
                               }}
                             >
-                              {item.isActive ? "Disable" : "Enable"}
+                              {item.isActive ? "Выключить" : "Включить"}
                             </Button>
                           </div>
                         </div>
                       ))
                     ) : (
-                      <EmptyState title={group.empty} description="Add a block and use it in AI Brain." />
+                      <EmptyState title={group.empty} description="Добавьте блок, чтобы ИИ мог использовать его в ответах." />
                     )}
                     <Button size="sm" variant="secondary" onClick={() => setCreateGroup(group.id)}>
-                      Add {group.title}
+                      Добавить {group.title}
                     </Button>
                   </CardContent>
                 </Card>
@@ -363,7 +427,7 @@ export default function AIBrainSettingsPage() {
       {createGroup ? (
         <Card>
           <CardHeader>
-            <CardTitle>Add knowledge block</CardTitle>
+            <CardTitle>Добавить блок знаний</CardTitle>
           </CardHeader>
           <CardContent>
             <KnowledgeItemForm
@@ -376,7 +440,7 @@ export default function AIBrainSettingsPage() {
                 priority: 50,
                 version: 1
               }}
-              submitLabel={actions.createKnowledge.isPending ? "Saving..." : "Save"}
+              submitLabel={actions.createKnowledge.isPending ? "Сохранение..." : "Сохранить"}
               disabled={actions.createKnowledge.isPending}
               onCancel={() => setCreateGroup(null)}
               onSubmit={async (payload) => {
@@ -385,7 +449,7 @@ export default function AIBrainSettingsPage() {
                   await actions.createKnowledge.mutateAsync(payload);
                   setCreateGroup(null);
                 } catch (createError) {
-                  setError(createError instanceof Error ? createError.message : "Failed to create");
+                  setError(createError instanceof Error ? createError.message : "Не удалось создать блок");
                 }
               }}
             />
@@ -396,12 +460,12 @@ export default function AIBrainSettingsPage() {
       {editing ? (
         <Card>
           <CardHeader>
-            <CardTitle>Edit knowledge block</CardTitle>
+            <CardTitle>Редактировать блок знаний</CardTitle>
           </CardHeader>
           <CardContent>
             <KnowledgeItemForm
               initial={editing}
-              submitLabel={actions.updateKnowledge.isPending ? "Saving..." : "Save"}
+              submitLabel={actions.updateKnowledge.isPending ? "Сохранение..." : "Сохранить"}
               disabled={actions.updateKnowledge.isPending}
               onCancel={() => setEditing(null)}
               onSubmit={async (payload) => {
@@ -410,7 +474,7 @@ export default function AIBrainSettingsPage() {
                   await actions.updateKnowledge.mutateAsync({ id: editing.id, payload });
                   setEditing(null);
                 } catch (updateError) {
-                  setError(updateError instanceof Error ? updateError.message : "Failed to update");
+                  setError(updateError instanceof Error ? updateError.message : "Не удалось обновить блок");
                 }
               }}
             />
