@@ -30,6 +30,23 @@ const tryParseJson = (raw: string): unknown => {
   return JSON.parse(unfenced);
 };
 
+const SALESY_TRIGGERS = [
+  "у меня есть инструмент",
+  "у меня есть решение",
+  "я могу предложить",
+  "ты пробовал ai",
+  "ты пробовал ии",
+  "могу помочь",
+  "оптимизировать процессы",
+  "увеличить конверсию"
+] as const;
+
+const isSalesyOutreach = (text: string): boolean => {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) return false;
+  return SALESY_TRIGGERS.some((p) => normalized.includes(p));
+};
+
 export class LeadRadarOutreachService {
   constructor(private readonly app: FastifyInstance) {}
 
@@ -235,7 +252,45 @@ export class LeadRadarOutreachService {
         ],
         { temperature: 0.6, maxTokens: 160 }
       );
-      const text = (raw ?? "").trim();
+      let text = (raw ?? "").trim();
+
+      let regenerated = false;
+      let warningSalesy = false;
+
+      if (isSalesyOutreach(text)) {
+        regenerated = true;
+        this.app.log.info(
+          { leadRadarLeadId: params.leadId, outreach_first_message_regenerated: true },
+          "outreach_first_message_regenerated"
+        );
+
+        const retry = await this.completeText(
+          [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content:
+                userPrompt +
+                "\n\nCRITICAL: Rewrite the message to be non-salesy. Do NOT mention product/tool/solution. No 'могу помочь'. No AI mention. Keep 1–2 short sentences and end with one simple relevant question."
+            }
+          ],
+          { temperature: 0.4, maxTokens: 160 }
+        );
+        text = (retry ?? "").trim();
+
+        if (isSalesyOutreach(text)) {
+          warningSalesy = true;
+          this.app.log.warn(
+            { leadRadarLeadId: params.leadId, outreach_first_message_warning_salesy: true },
+            "outreach_first_message_warning_salesy"
+          );
+        }
+      } else {
+        this.app.log.info(
+          { leadRadarLeadId: params.leadId, outreach_first_message_regenerated: false },
+          "outreach_first_message_regenerated"
+        );
+      }
 
       await this.app.prisma.aiRun.update({
         where: { id: run.id },
@@ -246,7 +301,9 @@ export class LeadRadarOutreachService {
           outputTokens: 0,
           metadata: {
             ...(run.metadata as any),
-            outputChars: text.length
+            outputChars: text.length,
+            outreach_first_message_regenerated: regenerated,
+            outreach_first_message_warning_salesy: warningSalesy
           }
         }
       });

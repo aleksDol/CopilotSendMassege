@@ -98,7 +98,9 @@ No markdown. No explanations.`;
     "- Use 'buyer_direct' when lead is directly looking for an исполнителя/решение (\"кто сделает...\", \"нужен специалист\").",
     "- Use 'business_owner_with_problem' when lead describes a business pain (no leads, manual work, no site, etc.).",
     "- Use 'unclear' if you can't tell.",
-    "- relevantOfferAngle must be grounded in AI Brain context (what we can realistically offer)."
+    "- relevantOfferAngle must be grounded in AI Brain context (what we can realistically offer).",
+    "- IMPORTANT: first touch message should NOT pitch the product. Prefer a natural conversation opener + one simple question.",
+    "- relevantOfferAngle is for internal strategy; do not assume it must be mentioned explicitly in the first message."
   ].join("\n");
 
   return { systemPrompt, userPrompt };
@@ -132,17 +134,26 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
 
   const systemPrompt = `Ты пишешь первое сообщение человеку в Telegram.
 
+Цель первого сообщения: получить ответ и начать диалог, а не продавать.
+
 Стиль:
-- 1–3 предложения максимум
+- 1–2 коротких предложения (3 только если без воды)
 - живо и естественно, без канцелярита
 - без "Здравствуйте/Добрый день/Уважаемый"
 - без "Я эксперт", "Предлагаю услуги", "Готов помочь вам"
 - без агрессивной продажи
 - максимум 1 простой вопрос в конце
 
+Строго запрещено в первом сообщении:
+- пустые комплименты ("Здорово, что ты...", "Классно, что ты...", "Вижу, что ты...")
+- упоминать продукт/инструмент/решение без сильной необходимости
+- фразы: "у меня есть инструмент", "у меня есть решение", "я могу предложить", "ты пробовал AI", "могу помочь",
+  "оптимизировать процессы", "увеличить конверсию"
+- длинные вступления, формальный питч, очевидный sales tone
+
 Важно:
 - Сообщение должно зависеть от leadType.
-- Ты используешь AI Brain контекст, чтобы выбрать релевантный угол оффера.
+- Ты используешь AI Brain контекст, чтобы понять контекст продукта, но в первом сообщении НЕ продаёшь.
 - Не выдумывай детали — только по контексту.
 
 Выведи только текст сообщения. Без пояснений.`;
@@ -161,11 +172,16 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
     "Результат анализа (используй это, чтобы выбрать правильный оффер/угол):",
     JSON.stringify(params.analysis),
     "",
-    "Инструкция по leadType:",
-    "- buyer_direct: человек ищет исполнителя/решение → мягко показать, что можем помочь с задачей, уточнить деталь.",
-    "- service_provider: человек сам продаёт услуги → показать, что наш продукт может помочь находить/обрабатывать клиентов в Telegram (без кринжа).",
-    "- business_owner_with_problem: показать, что поняли боль, предложить релевантный подход/решение через продукт.",
-    "- unclear: нейтрально и коротко, 1 вопрос чтобы прояснить."
+    "Инструкция по leadType (пиши максимально естественно, без продажи):",
+    "- buyer_direct: уточни 1 деталь по задаче (срок/объём/формат), без самопрезентации.",
+    "- service_provider: зацепись за контекст и задай простой вопрос про текущий поток клиентов/как они сейчас это делают.",
+    "- business_owner_with_problem: отзеркаль боль коротко и спроси, где сейчас самое узкое место/что пробовали.",
+    "- unclear: нейтральный короткий заход + 1 вопрос, чтобы понять, что именно нужно/актуально.",
+    "",
+    "Требования к выходу:",
+    "- 1–2 коротких предложения",
+    "- 0–1 вопрос (лучше 1)",
+    "- без комплиментов и без упоминания продукта/инструмента"
   ].join("\n");
 
   return { systemPrompt, userPrompt };
