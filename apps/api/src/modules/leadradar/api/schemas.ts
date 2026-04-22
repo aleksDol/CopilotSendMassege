@@ -115,3 +115,25 @@ export const sendLeadFirstMessageBodySchema = z.object({
   text: z.string().trim().min(1).max(4096)
 });
 
+export const createManualLeadBodySchema = z
+  .object({
+    name: z.union([z.string(), z.null()]).optional(),
+    username: z.string(),
+    comment: z.string()
+  })
+  .transform((v) => {
+    const nameRaw = v.name;
+    const name =
+      typeof nameRaw === "string" && nameRaw.trim().length > 0 ? nameRaw.trim().slice(0, 255) : null;
+    const username = v.username.trim().replace(/^@+/u, "").toLowerCase();
+    const comment = v.comment.trim();
+    return { name, username, comment };
+  })
+  .pipe(
+    z.object({
+      name: z.string().max(255).nullable(),
+      username: z.string().min(1).max(255),
+      comment: z.string().min(1).max(10_000)
+    })
+  );
+

@@ -77,6 +77,7 @@ export function LeadDrawer({
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerText, setComposerText] = useState("");
   const [composerError, setComposerError] = useState<string | null>(null);
+  const [composerSentAt, setComposerSentAt] = useState<Date | null>(null);
 
   useEffect(() => {
     if (!leadId) return;
@@ -85,6 +86,7 @@ export function LeadDrawer({
     setComposerOpen(false);
     setComposerText("");
     setComposerError(null);
+    setComposerSentAt(null);
   }, [leadId, lead?.notes]);
 
   const status = lead?.status ?? "new";
@@ -113,6 +115,7 @@ export function LeadDrawer({
     if (!lead) return;
     if (actions.generateFirstMessage.isPending) return;
     setComposerError(null);
+    setComposerSentAt(null);
     setComposerOpen(true);
     try {
       const res = await actions.generateFirstMessage.mutateAsync(lead.id);
@@ -126,6 +129,25 @@ export function LeadDrawer({
       setComposerError(msg);
     }
   };
+
+  const sendFirstMessage = async () => {
+    if (!lead) return;
+    if (actions.sendFirstMessage.isPending) return;
+    const text = composerText.trim();
+    if (!text) return;
+    setComposerError(null);
+    try {
+      await actions.sendFirstMessage.mutateAsync({ leadId: lead.id, text });
+      setComposerSentAt(new Date());
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Не удалось отправить сообщение";
+      setComposerError(msg);
+    }
+  };
+
+  const genPending = actions.generateFirstMessage.isPending;
+  const sendPending = actions.sendFirstMessage.isPending;
+  const composerBusy = genPending || sendPending;
 
   return (
     <aside className="fixed right-0 top-0 z-40 flex h-dvh w-full max-w-[520px] flex-col border-l border-border bg-background shadow-xl">
@@ -254,7 +276,7 @@ export function LeadDrawer({
                     <Button
                       variant="secondary"
                       size="sm"
-                      disabled={!lead || !canMessageLead || actions.generateFirstMessage.isPending}
+                      disabled={!lead || !canMessageLead || composerBusy}
                       title={!canMessageLead ? "Нет username или Telegram ID" : undefined}
                       onClick={generateFirstMessage}
                     >
@@ -271,18 +293,30 @@ export function LeadDrawer({
                       onChange={(e) => setComposerText(e.target.value)}
                       placeholder="Текст сообщения…"
                       rows={4}
-                      disabled={actions.generateFirstMessage.isPending}
+                      disabled={composerBusy}
                     />
-                    {actions.generateFirstMessage.isPending ? (
-                      <div className="text-xs text-muted-foreground">Генерируем…</div>
-                    ) : null}
+                    {genPending ? <div className="text-xs text-muted-foreground">Генерируем…</div> : null}
+                    {sendPending ? <div className="text-xs text-muted-foreground">Отправляем…</div> : null}
                     {composerError ? <div className="text-xs text-destructive">{composerError}</div> : null}
+                    {composerSentAt ? (
+                      <div className="text-xs text-emerald-700 dark:text-emerald-400">
+                        ✓ Сообщение отправлено · {formatDate(composerSentAt.toISOString())}
+                      </div>
+                    ) : null}
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <Button
+                          size="sm"
+                          disabled={!composerText.trim() || !canMessageLead || composerBusy}
+                          title={!canMessageLead ? "Нет username или Telegram ID для отправки" : undefined}
+                          onClick={sendFirstMessage}
+                        >
+                          Отправить
+                        </Button>
+                        <Button
                           variant="secondary"
                           size="sm"
-                          disabled={actions.generateFirstMessage.isPending}
+                          disabled={composerBusy}
                           onClick={generateFirstMessage}
                         >
                           Сгенерировать заново
@@ -291,10 +325,11 @@ export function LeadDrawer({
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={actions.generateFirstMessage.isPending}
+                        disabled={composerBusy}
                         onClick={() => {
                           setComposerOpen(false);
                           setComposerError(null);
+                          setComposerSentAt(null);
                         }}
                       >
                         Отмена

@@ -25,8 +25,10 @@ import {
   updateNegativeKeywordBodySchema,
   updateSettingsBodySchema,
   updateSourceBodySchema,
-  testIngestionBodySchema
+  testIngestionBodySchema,
+  createManualLeadBodySchema
 } from "./schemas.js";
+import { buildManualLeadCreateInput } from "../application/manual-lead.js";
 
 /**
  * LeadRadar API controller (skeleton).
@@ -588,6 +590,9 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     telegram_user_id: string | null;
     chat_id: string;
     chat_title: string | null;
+    source_type?: string | null;
+    related_post_id?: string | null;
+    context_preview?: string | null;
     message_id: string;
     message_text: string | null;
     message_date: Date;
@@ -606,6 +611,9 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     telegramUserId: lead.telegram_user_id,
     chatId: lead.chat_id,
     chatTitle: lead.chat_title,
+    sourceType: lead.source_type ?? null,
+    relatedPostId: lead.related_post_id ?? null,
+    contextPreview: lead.context_preview ?? null,
     messageId: lead.message_id,
     messageText: lead.message_text,
     messageDate: lead.message_date.toISOString(),
@@ -617,6 +625,30 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     contactedAt: lead.contacted_at ? lead.contacted_at.toISOString() : null,
     createdAt: lead.created_at.toISOString(),
     updatedAt: lead.updated_at.toISOString()
+  });
+
+  app.post("/api/leadradar/leads/manual", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
+    const scope = getCompanyScope(request);
+    const body = parseWithSchema(createManualLeadBodySchema, request.body);
+
+    if (!request.server.leadradar) {
+      throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
+    }
+
+    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const repo = request.server.leadradar.repositories.lead;
+
+    const created = await repo.createLead(
+      buildManualLeadCreateInput({
+        user_id: scope.userId,
+        telegram_account_id,
+        display_name: body.name,
+        username: body.username,
+        comment: body.comment
+      })
+    );
+
+    return toLeadItem(created);
   });
 
   app.get("/api/leadradar/leads", { preHandler: [app.authenticate, requireAccess] }, async (request) => {

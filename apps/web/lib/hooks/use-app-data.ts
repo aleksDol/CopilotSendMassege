@@ -222,6 +222,13 @@ export const useLeadRadarActions = () => {
         invalidateList();
         void qc.invalidateQueries({ queryKey: ["leadradar-lead", scope, leadId] });
       }
+    }),
+    createManualLead: useMutation({
+      mutationFn: (input: { name?: string | null; username: string; comment: string }) =>
+        leadradarApi.createManualLead(token ?? "", input),
+      onSuccess: () => {
+        invalidateList();
+      }
     })
   };
 };

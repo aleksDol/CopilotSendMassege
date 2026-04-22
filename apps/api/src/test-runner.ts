@@ -4,4 +4,5 @@ import "./modules/conversations/service.test.js";
 import "./modules/messages/service.test.js";
 import "./modules/auth/service.test.js";
 import "./modules/leadradar/application/services/lead-radar-ingestion-service.test.js";
+import "./modules/leadradar/application/manual-lead.test.js";
 

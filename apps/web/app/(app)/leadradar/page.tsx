@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@/components/common/empty-state";
 import { LoadingState } from "@/components/common/loading-state";
 import { TrialPaywallCard } from "@/components/billing/trial-paywall-card";
@@ -13,6 +13,148 @@ import { LeadDrawer } from "@/components/leadradar/lead-drawer";
 import { LeadRadarNav } from "@/components/leadradar/leadradar-nav";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth/context";
+import { ApiError } from "@/lib/api/errors";
+import type { UseMutationResult } from "@tanstack/react-query";
+
+function isManualLead(lead: LeadRadarLeadItem): boolean {
+  return lead.sourceType === "manual";
+}
+
+function ManualLeadAddModal({
+  open,
+  onClose,
+  mutation
+}: {
+  open: boolean;
+  onClose: () => void;
+  mutation: UseMutationResult<
+    LeadRadarLeadItem,
+    Error,
+    { name?: string | null; username: string; comment: string },
+    unknown
+  >;
+}) {
+  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
+  const [comment, setComment] = useState("");
+  const [fieldError, setFieldError] = useState<{ username?: string; comment?: string }>({});
+  const [requestError, setRequestError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setFieldError({});
+    setRequestError(null);
+  }, [open]);
+
+  if (!open) return null;
+
+  const submit = async () => {
+    setFieldError({});
+    setRequestError(null);
+    const u = username.trim();
+    const c = comment.trim();
+    const next: { username?: string; comment?: string } = {};
+    if (!u) next.username = "Укажите username";
+    if (!c) next.comment = "Укажите комментарий";
+    if (Object.keys(next).length) {
+      setFieldError(next);
+      return;
+    }
+    try {
+      await mutation.mutateAsync({
+        name: name.trim() ? name.trim() : null,
+        username: u,
+        comment: c
+      });
+      setName("");
+      setUsername("");
+      setComment("");
+      onClose();
+    } catch (err) {
+      const msg =
+        err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Не удалось создать лида";
+      setRequestError(msg);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="manual-lead-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !mutation.isPending) onClose();
+      }}
+    >
+      <div
+        className="w-full max-w-md rounded-lg border border-border bg-background p-4 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <h2 id="manual-lead-title" className="text-lg font-semibold">
+            Добавить лида
+          </h2>
+          <button
+            type="button"
+            className="rounded px-2 py-1 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+            onClick={onClose}
+            disabled={mutation.isPending}
+          >
+            Закрыть
+          </button>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">Лид из контактов вне автоматического мониторинга Telegram.</p>
+
+        <div className="mt-4 grid gap-3">
+          <label className="grid gap-1 text-sm">
+            <span className="text-muted-foreground">Имя (необязательно)</span>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Как к вам обращаться"
+              className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+              disabled={mutation.isPending}
+            />
+          </label>
+          <label className="grid gap-1 text-sm">
+            <span className="text-muted-foreground">Username *</span>
+            <input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="@username или username"
+              className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+              disabled={mutation.isPending}
+            />
+            {fieldError.username ? <span className="text-xs text-destructive">{fieldError.username}</span> : null}
+          </label>
+          <label className="grid gap-1 text-sm">
+            <span className="text-muted-foreground">Комментарий *</span>
+            <textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Откуда лид, контекст, договорённости"
+              rows={4}
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm"
+              disabled={mutation.isPending}
+            />
+            {fieldError.comment ? <span className="text-xs text-destructive">{fieldError.comment}</span> : null}
+          </label>
+          {requestError ? <div className="text-sm text-destructive">{requestError}</div> : null}
+        </div>
+
+        <div className="mt-4 flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose} disabled={mutation.isPending}>
+            Отмена
+          </Button>
+          <Button type="button" onClick={() => void submit()} disabled={mutation.isPending}>
+            {mutation.isPending ? "Добавляем…" : "Добавить"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const STATUSES: Array<{ label: string; value: LeadRadarLeadStatus | "all" }> = [
   { label: "Все статусы", value: "all" },
@@ -88,6 +230,7 @@ export default function LeadRadarInboxPage() {
   const [page, setPage] = useState(1);
   const limit = 20;
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+  const [manualModalOpen, setManualModalOpen] = useState(false);
 
   const leads = useLeadRadarLeads({
     status: filters.status,
@@ -132,12 +275,17 @@ export default function LeadRadarInboxPage() {
     const isFiltered = filters.status !== "all" || Boolean(filters.search.trim());
     return (
       <div className="space-y-4">
-        <div>
-          <h1 className="text-2xl font-semibold">LeadRadar</h1>
-          <p className="text-sm text-muted-foreground">Inbox лидов (первые результаты работы LeadRadar).</p>
-          <div className="pt-2">
-            <LeadRadarNav />
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold">LeadRadar</h1>
+            <p className="text-sm text-muted-foreground">Inbox лидов (первые результаты работы LeadRadar).</p>
+            <div className="pt-2">
+              <LeadRadarNav />
+            </div>
           </div>
+          <Button type="button" variant="outline" onClick={() => setManualModalOpen(true)}>
+            Добавить лида
+          </Button>
         </div>
         <Card>
           <CardHeader>
@@ -204,6 +352,11 @@ export default function LeadRadarInboxPage() {
             Settings
           </Link>
         </div>
+        <ManualLeadAddModal
+          open={manualModalOpen}
+          onClose={() => setManualModalOpen(false)}
+          mutation={actions.createManualLead}
+        />
       </div>
     );
   }
@@ -218,7 +371,12 @@ export default function LeadRadarInboxPage() {
             <LeadRadarNav />
           </div>
         </div>
-        <div className="text-sm text-muted-foreground">Всего: {data.total}</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" onClick={() => setManualModalOpen(true)}>
+            Добавить лида
+          </Button>
+          <div className="text-sm text-muted-foreground">Всего: {data.total}</div>
+        </div>
       </div>
 
       <Card>
@@ -277,7 +435,9 @@ export default function LeadRadarInboxPage() {
                   </td>
                   <td className="py-3 pr-3">
                     <div className="font-medium">{lead.chatTitle ?? lead.chatId}</div>
-                    <div className="text-xs text-muted-foreground">{lead.chatId}</div>
+                    {!isManualLead(lead) ? (
+                      <div className="text-xs text-muted-foreground">{lead.chatId}</div>
+                    ) : null}
                   </td>
                   <td className="py-3 pr-3">
                     <div className="max-w-[420px] whitespace-pre-wrap text-foreground/90">{truncate(lead.messageText, 160) || "—"}</div>
@@ -343,6 +503,11 @@ export default function LeadRadarInboxPage() {
         onClose={() => {
           setSelectedLeadId(null);
         }}
+      />
+      <ManualLeadAddModal
+        open={manualModalOpen}
+        onClose={() => setManualModalOpen(false)}
+        mutation={actions.createManualLead}
       />
     </div>
   );

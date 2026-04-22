@@ -1,6 +1,7 @@
 import { apiClient } from "./client";
 import type {
   LeadRadarLeadDetailsResponse,
+  LeadRadarLeadItem,
   LeadRadarLeadListResponse,
   LeadRadarLeadStatus,
   LeadRadarListKeywordsResponse,
@@ -40,9 +41,10 @@ export const leadradarApi = {
   getLead: (token: string, leadId: string) => apiClient.get<LeadRadarLeadDetailsResponse>(`/leadradar/leads/${leadId}`, { token }),
 
   updateLeadNotes: (token: string, leadId: string, notes: string | null) =>
-    apiClient.patch(`/leadradar/leads/${leadId}/notes`, { notes }, { token })
+    apiClient.patch(`/leadradar/leads/${leadId}/notes`, { notes }, { token }),
 
-  ,
+  createManualLead: (token: string, input: { name?: string | null; username: string; comment: string }) =>
+    apiClient.post<LeadRadarLeadItem>("/leadradar/leads/manual", input, { token }),
 
   generateFirstMessage: (token: string, leadId: string) =>
     apiClient.post<{ text: string }>(`/leadradar/leads/${leadId}/first-message/generate`, {}, { token }),
