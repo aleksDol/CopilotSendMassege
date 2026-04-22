@@ -124,7 +124,7 @@ export default function ChatsPage() {
       }
     }
     setUnreadByConversationId({});
-  }, [isTelegramConnected, selectedStorageKey, unreadStorageKey]);
+  }, [isTelegramConnected, queryClient, selectedStorageKey, unreadStorageKey]);
 
   // If the connected Telegram account changed (channelAccountId switch), we must not keep
   // selected conversation from previous Telegram in URL/local state; it causes “chat mix” UI.
@@ -147,7 +147,7 @@ export default function ChatsPage() {
     const next = new URLSearchParams(params.toString());
     next.delete("conversationId");
     router.replace(`${pathname}?${next.toString()}`, { scroll: false });
-  }, [channelAccountId, isTelegramConnected, params, pathname, router]);
+  }, [channelAccountId, isTelegramConnected, params, pathname, queryClient, router]);
 
   const setSelectedConversationId = useCallback((id: string | null) => {
     setSelectedConversationIdState(id);

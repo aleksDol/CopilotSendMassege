@@ -141,7 +141,7 @@ export default function AIBrainSettingsPage() {
   const [editing, setEditing] = useState<KnowledgeItem | null>(null);
   const [createGroup, setCreateGroup] = useState<KnowledgeGroup["id"] | null>(null);
 
-  const items = knowledge.data?.items ?? [];
+  const items = useMemo(() => knowledge.data?.items ?? [], [knowledge.data?.items]);
   const primaryProductItem = useMemo(() => {
     const productItems = items.filter((item) => item.kind === "product");
     return (
@@ -150,6 +150,13 @@ export default function AIBrainSettingsPage() {
       null
     );
   }, [items]);
+
+  const previewReply = useMemo(() => {
+    const cleanGoal = goal.trim() || "the next agreed step";
+    const cleanProduct = product.trim() || "your offer";
+    const cleanStrategy = strategy.trim() || "ask clarifying questions and explain simply";
+    return `Great question. ${cleanProduct} can help here.\n\nTo suggest the best option, may I ask 1-2 details about your case?\n\nThen I will guide you to ${cleanGoal}. (${cleanStrategy.slice(0, 90)}${cleanStrategy.length > 90 ? "..." : ""})`;
+  }, [goal, product, strategy]);
 
   useEffect(() => {
     setProduct(primaryProductItem?.content ?? "");
@@ -169,13 +176,6 @@ export default function AIBrainSettingsPage() {
     ...group,
     items: items.filter((item) => group.match(item, primaryProductItem?.id ?? null))
   }));
-
-  const previewReply = useMemo(() => {
-    const cleanGoal = goal.trim() || "the next agreed step";
-    const cleanProduct = product.trim() || "your offer";
-    const cleanStrategy = strategy.trim() || "ask clarifying questions and explain simply";
-    return `Great question. ${cleanProduct} can help here.\n\nTo suggest the best option, may I ask 1-2 details about your case?\n\nThen I will guide you to ${cleanGoal}. (${cleanStrategy.slice(0, 90)}${cleanStrategy.length > 90 ? "..." : ""})`;
-  }, [goal, product, strategy]);
 
   const handleSaveBrain = async () => {
     setError(null);
