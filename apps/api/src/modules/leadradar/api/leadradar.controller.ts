@@ -8,6 +8,7 @@ import { TelegramWorkerClient } from "../../../lib/telegram-worker-client.js";
 import { parseWithSchema } from "../../../lib/validation.js";
 import { invalidateConversationCaches } from "../../conversations/service.js";
 import { LeadRadarFirstMessageService } from "../../ai/leadradar-first-message-service.js";
+import { LeadStatus } from "../domain/enums/lead-status.js";
 import {
   createSourceBodySchema,
   createSourceByLinkBodySchema,
@@ -804,7 +805,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
         lead_id: lead.id,
         user_id: scope.userId,
         telegram_account_id,
-        status: "contacted"
+        status: LeadStatus.CONTACTED
       });
 
       await invalidateConversationCaches(app, scope.companyId);
