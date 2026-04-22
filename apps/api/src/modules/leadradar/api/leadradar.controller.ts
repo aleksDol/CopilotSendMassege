@@ -7,7 +7,7 @@ import { getCompanyScope } from "../../../lib/request-context.js";
 import { TelegramWorkerClient } from "../../../lib/telegram-worker-client.js";
 import { parseWithSchema } from "../../../lib/validation.js";
 import { invalidateConversationCaches } from "../../conversations/service.js";
-import { LeadRadarFirstMessageService } from "../../ai/leadradar-first-message-service.js";
+import { LeadRadarOutreachService } from "../../ai/leadradar-outreach-service.js";
 import { LeadStatus } from "../domain/enums/lead-status.js";
 import {
   createSourceBodySchema,
@@ -718,7 +718,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     };
   });
 
-  const firstMessageService = new LeadRadarFirstMessageService(app);
+  const outreachService = new LeadRadarOutreachService(app);
 
   app.post(
     "/api/leadradar/leads/:id/first-message/generate",
@@ -744,13 +744,16 @@ const leadradarController: FastifyPluginAsync = async (app) => {
         throw new AppError(404, "LEAD_NOT_FOUND", "Lead not found");
       }
 
-      return firstMessageService.generate({
+      const result = await outreachService.generate({
         companyId: scope.companyId,
         userId: scope.userId,
         leadId: lead.id,
         leadMessage: lead.message_text ?? null,
         leadName: lead.display_name ?? null
       });
+
+      // Keep API response shape minimal for UI: it only needs text.
+      return { text: result.text };
     }
   );
 
