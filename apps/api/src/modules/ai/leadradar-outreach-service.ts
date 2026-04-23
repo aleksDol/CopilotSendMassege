@@ -98,6 +98,8 @@ const extractPlaybookRequirements = (playbook: string | null | undefined): {
   };
 };
 
+const pickOne = <T,>(items: T[]): T => items[Math.floor(Math.random() * items.length)]!;
+
 const violatesPlaybook = (params: {
   text: string;
   playbook: string | null | undefined;
@@ -510,10 +512,16 @@ export class LeadRadarOutreachService {
 
         if (playbookCheckAfter.violated) {
           const req = extractPlaybookRequirements(coldFirstTouchPlaybook);
+          const tryQuestionVariants = [
+            "Интересно попробовать?",
+            "Интересно протестить?",
+            "Хочешь попробовать?",
+            "Хотите попробовать?"
+          ];
           const mustInclude = [
             ...(req.requireBot ? ["бот"] : []),
             ...(req.requireFree ? ["бесплатно"] : []),
-            ...(req.requireTryQuestion ? ["интересно попробовать?"] : [])
+            ...(req.requireTryQuestion ? [pickOne(tryQuestionVariants)] : [])
           ];
 
           const hardRetry = await this.completeText(
