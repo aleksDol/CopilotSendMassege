@@ -339,4 +339,5 @@ export type LeadRadarSettingsResponse = {
   contextBeforeCount: number;
   contextAfterCount: number;
   dedupeWindowHours: number;
+  coldFirstTouchPlaybook: string | null;
 };

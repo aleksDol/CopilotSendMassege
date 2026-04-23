@@ -106,6 +106,7 @@ export const leadradarApi = {
       contextBeforeCount: number;
       contextAfterCount: number;
       dedupeWindowHours: number;
+      coldFirstTouchPlaybook: string | null;
     }>
   ) => apiClient.patch<LeadRadarSettingsResponse>("/leadradar/settings", patch, { token })
 };

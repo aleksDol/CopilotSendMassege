@@ -10,12 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useKnowledgeItems, useReplyPolicy, useSettingsActions } from "@/lib/hooks/use-app-data";
+import { useKnowledgeItems, useLeadRadarConfigActions, useLeadRadarSettings, useReplyPolicy, useSettingsActions } from "@/lib/hooks/use-app-data";
 import type { KnowledgeItem, ReplyPolicy } from "@/lib/api/types";
 
 const AI_BRAIN_PRODUCT_TITLE = "AI Brain Product";
 const AI_BRAIN_GOAL_KEY = "aiBrainGoal";
 const AI_BRAIN_STRATEGY_KEY = "aiBrainStrategy";
+const AI_BRAIN_COLD_FIRST_TOUCH_KEY = "aiBrainColdFirstTouch";
 
 const STRATEGY_TEMPLATES = [
   {
@@ -134,11 +135,14 @@ export default function AIBrainSettingsPage() {
   const knowledge = useKnowledgeItems();
   const policy = useReplyPolicy();
   const actions = useSettingsActions();
+  const leadradarSettings = useLeadRadarSettings();
+  const leadradarActions = useLeadRadarConfigActions();
 
   const [product, setProduct] = useState("");
   const [goal, setGoal] = useState("");
   const [strategy, setStrategy] = useState("");
-  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
+  const [coldFirstTouch, setColdFirstTouch] = useState("");
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
   const [saved, setSaved] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -174,7 +178,7 @@ export default function AIBrainSettingsPage() {
     setStrategy(values.strategy);
   }, [policy.data?.policy]);
 
-  if (knowledge.isLoading || policy.isLoading) {
+  if (knowledge.isLoading || policy.isLoading || leadradarSettings.isLoading) {
     return <LoadingState label="Загрузка настроек..." />;
   }
 
@@ -182,6 +186,10 @@ export default function AIBrainSettingsPage() {
     ...group,
     items: items.filter((item) => group.match(item, primaryProductItem?.id ?? null))
   }));
+
+  useEffect(() => {
+    setColdFirstTouch(leadradarSettings.data?.coldFirstTouchPlaybook ?? "");
+  }, [leadradarSettings.data?.coldFirstTouchPlaybook]);
 
   const handleSaveBrain = async () => {
     setError(null);
@@ -219,6 +227,10 @@ export default function AIBrainSettingsPage() {
         toneRules: nextToneRules
       });
 
+      await leadradarActions.updateSettings.mutateAsync({
+        coldFirstTouchPlaybook: coldFirstTouch.trim().length ? coldFirstTouch.trim() : null
+      });
+
       setSaveOk("Настройки сохранены.");
       setSaved(true);
     } catch (saveError) {
@@ -234,13 +246,13 @@ export default function AIBrainSettingsPage() {
     }, 0);
   };
 
-  const progress = (currentStep / 3) * 100;
+  const progress = (currentStep / 4) * 100;
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <div>
         <h1 className="text-2xl font-semibold">Как ИИ общается с клиентами</h1>
-        <p className="text-sm text-muted-foreground">Ответьте на 3 вопроса. Это поможет ИИ вести диалог понятнее и эффективнее.</p>
+        <p className="text-sm text-muted-foreground">Ответьте на 4 вопроса. Это поможет ИИ вести диалог понятнее и эффективнее.</p>
       </div>
 
       {saved ? (
@@ -261,7 +273,7 @@ export default function AIBrainSettingsPage() {
           <CardHeader className="space-y-3">
             <div>
               <CardTitle>Пошаговая настройка</CardTitle>
-              <CardDescription>Шаг {currentStep} из 3</CardDescription>
+              <CardDescription>Шаг {currentStep} из 4</CardDescription>
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
               <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
@@ -329,23 +341,52 @@ export default function AIBrainSettingsPage() {
               </div>
             ) : null}
 
+            {currentStep === 4 ? (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Холодное первое сообщение (в личку)</label>
+                <p className="text-xs text-muted-foreground">
+                  Это используется только для генерации первого сообщения новому контакту. Коротко: что делаем + главный плюс + что важно уточнить.
+                </p>
+                <Textarea
+                  rows={7}
+                  value={coldFirstTouch}
+                  onChange={(event) => setColdFirstTouch(event.target.value)}
+                  placeholder={
+                    "Пример:\n- В первом сообщении коротко скажи, чем мы занимаемся (1 фраза) и в чем главный плюс (1 фраза).\n- Затем задай 1 квалифицирующий вопрос: как сейчас решают задачу / откуда приходят клиенты / какой канал важнее (с 2 вариантами ответа).\n- Без предположений про человека и без длинных объяснений.\n"
+                  }
+                />
+              </div>
+            ) : null}
+
             <div className="flex flex-wrap items-center gap-2 pt-2">
               {currentStep > 1 ? (
-                <Button type="button" variant="outline" onClick={() => setCurrentStep((prev) => (prev > 1 ? ((prev - 1) as 1 | 2 | 3) : prev))}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setCurrentStep((prev) => (prev > 1 ? ((prev - 1) as 1 | 2 | 3 | 4) : prev))}
+                >
                   Назад
                 </Button>
               ) : null}
 
-              {currentStep < 3 ? (
-                <Button type="button" onClick={() => setCurrentStep((prev) => (prev < 3 ? ((prev + 1) as 1 | 2 | 3) : prev))}>
+              {currentStep < 4 ? (
+                <Button type="button" onClick={() => setCurrentStep((prev) => (prev < 4 ? ((prev + 1) as 1 | 2 | 3 | 4) : prev))}>
                   Далее
                 </Button>
               ) : (
                 <Button
                   onClick={handleSaveBrain}
-                  disabled={actions.saveReplyPolicy.isPending || actions.updateKnowledge.isPending || actions.createKnowledge.isPending}
+                  disabled={
+                    actions.saveReplyPolicy.isPending ||
+                    actions.updateKnowledge.isPending ||
+                    actions.createKnowledge.isPending ||
+                    leadradarActions.updateSettings.isPending
+                  }
                 >
-                  {actions.saveReplyPolicy.isPending || actions.updateKnowledge.isPending || actions.createKnowledge.isPending
+                  {actions.saveReplyPolicy.isPending ||
+                  actions.updateKnowledge.isPending ||
+                  actions.createKnowledge.isPending ||
+                  leadradarActions.updateSettings.isPending
                     ? "Сохранение..."
                     : "Сохранить"}
                 </Button>

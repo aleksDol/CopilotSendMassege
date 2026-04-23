@@ -934,6 +934,7 @@ model LeadRadarSettings {
   contextBeforeCount  Int      @default(0) @map("context_before_count")
   contextAfterCount   Int      @default(0) @map("context_after_count")
   dedupeWindowHours   Int      @default(24) @map("dedupe_window_hours")
+  coldFirstTouchPlaybook String? @map("cold_first_touch_playbook")
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 

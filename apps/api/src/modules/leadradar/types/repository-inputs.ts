@@ -198,6 +198,7 @@ export type UpdateLeadSettingsInput = {
     context_before_count: number;
     context_after_count: number;
     dedupe_window_hours: number;
+    cold_first_touch_playbook: string | null;
   }>;
 };
 

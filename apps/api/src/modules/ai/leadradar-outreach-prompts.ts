@@ -122,6 +122,15 @@ No markdown. No explanations.`;
     "- Use 'buyer_direct' when lead is directly looking for an исполнителя/решение (\"кто сделает...\", \"нужен специалист\").",
     "- Use 'business_owner_with_problem' when lead describes a business pain (no leads, manual work, no site, etc.).",
     "- Use 'unclear' if you can't tell.",
+    "- If the lead message is empty/very short/only a link OR you have no real info about the person: DO NOT guess their niche or activity.",
+    "  In that case set:",
+    "  - detectedRole = \"—\"",
+    "  - detectedActivity = \"—\"",
+    "  - detectedNeedOrPain = \"—\"",
+    "  - confidence = \"low\"",
+    "  - contactReason: neutral, depends on sourceType (DM vs chat) without claiming you \"saw\" anything",
+    "  - relevantOfferAngle: 1 short generic value angle based on AI Brain (no hardcoded product names)",
+    "  - bestQuestion: 1 qualifying question about their current process/status quo (two options if possible).",
     "- relevantOfferAngle must be grounded in AI Brain context (what we can realistically offer).",
     "- keyTopic: extract ONE primary obvious topic from the lead message (1-2 words max). Examples: \"таргет\", \"воронки\", \"сайт\", \"дизайн\", \"клиенты\".",
     "- If no clear topic, set keyTopic to null.",
@@ -145,6 +154,7 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
   leadName?: string | null | undefined;
   sourceType?: string | null | undefined;
   chatTitle?: string | null | undefined;
+  coldFirstTouchPlaybook?: string | null | undefined;
   analysis: OutreachLeadAnalysis;
   knowledgeItems: Array<Pick<KnowledgeItem, "kind" | "title" | "content">>;
   replyPolicy: Pick<ReplyPolicy, "toneRules" | "pricingRules" | "forbiddenPromises" | "forbiddenTopics"> | null;
@@ -170,6 +180,10 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
       )
     : "—";
 
+  const coldFirstTouchBlock = params.coldFirstTouchPlaybook?.trim()
+    ? clip(params.coldFirstTouchPlaybook.trim(), 1200)
+    : "—";
+
   const systemPrompt = `Ты пишешь первое сообщение человеку в Telegram.
 
 Цель: быстро заинтересовать и начать диалог (первый контакт), чтобы получить ответ и перейти к дальнейшему сотрудничеству.
@@ -193,7 +207,7 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
 Если analysis.productFit = true, сообщение ДОЛЖНО следовать структуре:
 1) короткое приветствие: "Привет."
 2) причина написать: используй analysis.contactReason (коротко, естественно)
-3) понимание, чем человек занимается: используй analysis.detectedActivity (вставь буквально, без пересказа сообщения)
+3) если analysis.confidence НЕ "low": понимание, чем человек занимается: используй analysis.detectedActivity (вставь буквально, без пересказа сообщения)
 4) короткий релевантный “угол” (1 фраза): используй analysis.relevantOfferAngle (и/или 1 мысль из AI Brain) без хардкора под конкретный продукт
 5) один вопрос: используй analysis.bestQuestion (или близко к нему)
 
@@ -229,6 +243,9 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
     "AI Brain / product context (knowledge base):",
     brain,
     "",
+    "Playbook: cold first touch (outreach only, may be empty):",
+    coldFirstTouchBlock,
+    "",
     "Reply policy (may be empty):",
     policyBlock,
     "",
@@ -243,7 +260,9 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
     "- НЕ делай объяснялок/обучения (не пиши: \"это позволит...\", \"может помочь...\", \"вы получите...\").",
     "- Для Личка/manual: не используй формулировки \"вижу/заметил/судя по\" — не утверждай, что ты что-то наблюдал(а).",
     "- Вместо \"у нас есть X\" сразу формулируй 1 конкретную ценность/механику из AI Brain (например: \"подбираем релевантных партнёров\", \"автоматизируем поиск\", \"соединяем в мини-подборки\"), одной короткой фразой.",
-    "- Если leadMessage пустое/\"—\" ИЛИ analysis.confidence=\"low\": пиши как для нового контакта без контекста — 1 фраза \"что делаем\" + 1 фраза \"главный плюс\" из AI Brain, затем 1 квалифицирующий вопрос.",
+    "- Если leadMessage пустое/\"—\" ИЛИ analysis.confidence=\"low\": пиши как для нового контакта без контекста.",
+    "  - Если Playbook НЕ \"—\": строго следуй Playbook (это главный приоритет).",
+    "  - Если Playbook = \"—\": 1 фраза \"что делаем\" + 1 фраза \"главный плюс\" из AI Brain, затем 1 квалифицирующий вопрос.",
     "- Не пересказывай lead message и не цитируй его.",
     "- Должен быть ровно один вопрос.",
     "- Вопрос должен быть квалифицирующим и конкретным (2 варианта ответа или чёткий параметр), чтобы продолжить диалог и потом предложить релевантный оффер — но без продажи в лоб.",

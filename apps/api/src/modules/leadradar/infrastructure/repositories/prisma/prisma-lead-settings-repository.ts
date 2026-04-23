@@ -10,7 +10,8 @@ const DEFAULTS = {
   store_context_enabled: true,
   context_before_count: 3,
   context_after_count: 0,
-  dedupe_window_hours: 72
+  dedupe_window_hours: 72,
+  cold_first_touch_playbook: null as string | null
 } as const;
 
 export class PrismaLeadSettingsRepository implements LeadSettingsRepository {
@@ -39,7 +40,8 @@ export class PrismaLeadSettingsRepository implements LeadSettingsRepository {
         storeContextEnabled: DEFAULTS.store_context_enabled,
         contextBeforeCount: DEFAULTS.context_before_count,
         contextAfterCount: DEFAULTS.context_after_count,
-        dedupeWindowHours: DEFAULTS.dedupe_window_hours
+        dedupeWindowHours: DEFAULTS.dedupe_window_hours,
+        coldFirstTouchPlaybook: DEFAULTS.cold_first_touch_playbook
       }
     });
 
@@ -64,7 +66,11 @@ export class PrismaLeadSettingsRepository implements LeadSettingsRepository {
           : {}),
         ...(typeof input.patch.context_before_count === "number" ? { contextBeforeCount: input.patch.context_before_count } : {}),
         ...(typeof input.patch.context_after_count === "number" ? { contextAfterCount: input.patch.context_after_count } : {}),
-        ...(typeof input.patch.dedupe_window_hours === "number" ? { dedupeWindowHours: input.patch.dedupe_window_hours } : {})
+        ...(typeof input.patch.dedupe_window_hours === "number" ? { dedupeWindowHours: input.patch.dedupe_window_hours } : {}),
+        ...(typeof input.patch.cold_first_touch_playbook === "string"
+          ? { coldFirstTouchPlaybook: input.patch.cold_first_touch_playbook }
+          : {}),
+        ...(input.patch.cold_first_touch_playbook === null ? { coldFirstTouchPlaybook: null } : {})
       }
     });
 

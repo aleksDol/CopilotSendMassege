@@ -139,6 +139,7 @@ export const leadRadarMappers = {
     contextBeforeCount: number;
     contextAfterCount: number;
     dedupeWindowHours: number;
+    coldFirstTouchPlaybook?: string | null;
     createdAt: Date;
     updatedAt: Date;
   }): LeadSettings => ({
@@ -151,6 +152,7 @@ export const leadRadarMappers = {
     context_before_count: row.contextBeforeCount,
     context_after_count: row.contextAfterCount,
     dedupe_window_hours: row.dedupeWindowHours,
+    cold_first_touch_playbook: row.coldFirstTouchPlaybook ?? null,
     created_at: row.createdAt,
     updated_at: row.updatedAt
   })

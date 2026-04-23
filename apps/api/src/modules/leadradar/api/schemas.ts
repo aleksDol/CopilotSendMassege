@@ -75,7 +75,8 @@ export const updateSettingsBodySchema = z
     storeContextEnabled: z.boolean().optional(),
     contextBeforeCount: z.coerce.number().int().min(0).optional(),
     contextAfterCount: z.coerce.number().int().min(0).optional(),
-    dedupeWindowHours: z.coerce.number().int().min(1).optional()
+    dedupeWindowHours: z.coerce.number().int().min(1).optional(),
+    coldFirstTouchPlaybook: z.string().trim().max(10_000).nullable().optional()
   })
   .refine((obj) => Object.keys(obj).length > 0, "Empty patch is not allowed");
 

@@ -506,7 +506,8 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       storeContextEnabled: settings.store_context_enabled,
       contextBeforeCount: settings.context_before_count,
       contextAfterCount: settings.context_after_count,
-      dedupeWindowHours: settings.dedupe_window_hours
+      dedupeWindowHours: settings.dedupe_window_hours,
+      coldFirstTouchPlaybook: settings.cold_first_touch_playbook ?? null
     };
   });
 
@@ -535,7 +536,8 @@ const leadradarController: FastifyPluginAsync = async (app) => {
         ...(typeof body.storeContextEnabled === "boolean" ? { store_context_enabled: body.storeContextEnabled } : {}),
         ...(typeof body.contextBeforeCount === "number" ? { context_before_count: body.contextBeforeCount } : {}),
         ...(typeof body.contextAfterCount === "number" ? { context_after_count: body.contextAfterCount } : {}),
-        ...(typeof body.dedupeWindowHours === "number" ? { dedupe_window_hours: body.dedupeWindowHours } : {})
+        ...(typeof body.dedupeWindowHours === "number" ? { dedupe_window_hours: body.dedupeWindowHours } : {}),
+        ...(body.coldFirstTouchPlaybook !== undefined ? { cold_first_touch_playbook: body.coldFirstTouchPlaybook } : {})
       }
     });
 
@@ -545,7 +547,8 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       storeContextEnabled: updated.store_context_enabled,
       contextBeforeCount: updated.context_before_count,
       contextAfterCount: updated.context_after_count,
-      dedupeWindowHours: updated.dedupe_window_hours
+      dedupeWindowHours: updated.dedupe_window_hours,
+      coldFirstTouchPlaybook: updated.cold_first_touch_playbook ?? null
     };
   });
 
@@ -780,6 +783,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
         companyId: scope.companyId,
         userId: scope.userId,
         leadId: lead.id,
+        telegramAccountId: telegram_account_id,
         leadMessage: lead.message_text ?? null,
         leadName: lead.display_name ?? null,
         sourceType: lead.source_type ?? null,

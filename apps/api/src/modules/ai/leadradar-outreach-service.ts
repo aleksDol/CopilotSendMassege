@@ -53,6 +53,37 @@ const isSalesyOutreach = (text: string): boolean => {
   return SALESY_TRIGGERS.some((p) => normalized.includes(p));
 };
 
+const ASSUMPTION_TRIGGERS_DIRECT = [
+  "занимаешься ",
+  "вы занимаетесь ",
+  "ты занимаешься ",
+  "вижу, что",
+  "вижу что",
+  "заметил, что",
+  "заметил что",
+  "судя по",
+  "возможно,",
+  "скорее всего",
+  "наверное,"
+] as const;
+
+const isAssumptiveForDirect = (text: string): boolean => {
+  const t = text.trim().toLowerCase();
+  if (!t) return false;
+  return ASSUMPTION_TRIGGERS_DIRECT.some((p) => t.includes(p));
+};
+
+const isTooLong = (text: string): boolean => {
+  const t = text.trim();
+  if (!t) return false;
+  // crude sentence count for RU: split by ., !, ?
+  const sentences = t
+    .split(/[.!?]+/g)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return sentences.length > 2;
+};
+
 const hasChatReason = (text: string): boolean => {
   const t = text.trim().toLowerCase();
   if (!t) return false;
@@ -175,6 +206,20 @@ export class LeadRadarOutreachService {
     return { knowledgeItems, replyPolicy };
   }
 
+  private async loadColdFirstTouchPlaybook(params: {
+    userId: string;
+    telegramAccountId: string;
+  }): Promise<string | null> {
+    const row = await this.app.prisma.leadRadarSettings.findFirst({
+      where: {
+        userId: params.userId,
+        telegramAccountId: params.telegramAccountId
+      },
+      select: { coldFirstTouchPlaybook: true }
+    });
+    return row?.coldFirstTouchPlaybook ?? null;
+  }
+
   private async completeText(messages: AIMessage[], opts: { temperature: number; maxTokens: number }) {
     const provider = this.getProvider();
     return provider.complete({
@@ -289,15 +334,21 @@ export class LeadRadarOutreachService {
     leadName?: string | null;
     sourceType?: string | null;
     chatTitle?: string | null;
+    telegramAccountId?: string | null;
     analysis: OutreachLeadAnalysis;
   }): Promise<{ text: string }> {
     const startedAt = Date.now();
     const { knowledgeItems, replyPolicy } = await this.loadBrainContext(params.companyId);
+    const coldFirstTouchPlaybook =
+      params.telegramAccountId && params.userId
+        ? await this.loadColdFirstTouchPlaybook({ userId: params.userId, telegramAccountId: params.telegramAccountId })
+        : null;
     const { systemPrompt, userPrompt } = buildLeadRadarOutreachMessagePrompt({
       leadMessage: params.leadMessage,
       leadName: params.leadName,
       sourceType: params.sourceType,
       chatTitle: params.chatTitle,
+      coldFirstTouchPlaybook,
       analysis: params.analysis,
       knowledgeItems,
       replyPolicy
@@ -345,7 +396,10 @@ export class LeadRadarOutreachService {
       const activityOk = !requiresActivity ? true : hasDetectedActivity(text, detectedActivity);
       const structureOk = !requiresStructure ? true : reasonOk && activityOk;
 
-      const shouldRegenerate = isSalesyOutreach(text) || !structureOk;
+      const shouldRegenerate =
+        isSalesyOutreach(text) ||
+        !structureOk ||
+        (sourceIsDirect && analysisIsLowConfidence && (isAssumptiveForDirect(text) || isTooLong(text)));
 
       if (shouldRegenerate) {
         regenerated = true;
@@ -368,7 +422,9 @@ export class LeadRadarOutreachService {
                     ? "If productFit=true, you MUST include a short chat-based reason (mention 'в чате' or 'сообщение') "
                     : "If productFit=true, keep the reason neutral (no chat claims). ") +
                 (analysisIsLowConfidence || !requiresActivity
-                  ? "Do NOT guess what the person does. Use a short value hook from AI Brain + one qualifying question. "
+                  ? "Do NOT guess what the person does. Follow the provided cold-first-touch playbook if present. " +
+                    "Use 1 short value hook + 1 short key plus from AI Brain, then ONE qualifying question (two options if possible). " +
+                    "Keep it to 1–2 sentences. "
                   : "Include detectedActivity (use its key words). ") +
                 "Do NOT mention product/tool/solution. No 'могу помочь'. No AI mention. Keep 1–2 short sentences and exactly ONE question."
             }
@@ -446,6 +502,7 @@ export class LeadRadarOutreachService {
     leadName?: string | null;
     sourceType?: string | null;
     chatTitle?: string | null;
+    telegramAccountId?: string | null;
   }): Promise<{ text: string; analysis: OutreachLeadAnalysis }> {
     const analysis = await this.analyzeLeadForOutreach(params);
     const msg = await this.generateOutreachMessage({ ...params, analysis });
