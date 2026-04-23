@@ -781,7 +781,9 @@ const leadradarController: FastifyPluginAsync = async (app) => {
         userId: scope.userId,
         leadId: lead.id,
         leadMessage: lead.message_text ?? null,
-        leadName: lead.display_name ?? null
+        leadName: lead.display_name ?? null,
+        sourceType: lead.source_type ?? null,
+        chatTitle: lead.chat_title ?? null
       });
 
       // Keep API response shape minimal for UI: it only needs text.
@@ -816,10 +818,20 @@ const leadradarController: FastifyPluginAsync = async (app) => {
 
       const username = (lead.username ?? "").trim().replace(/^@/, "");
       const telegramUserId = (lead.telegram_user_id ?? "").trim();
-      const externalConversationId = username || telegramUserId;
-      if (!externalConversationId) {
+      if (!username && !telegramUserId) {
         throw new AppError(400, "LEAD_NO_TELEGRAM_ID", "Lead has no Telegram username or id");
       }
+      // IMPORTANT:
+      // Telethon can't message a user by numeric id alone without access_hash (unless already in dialogs/contacts).
+      // Using username is the safe deterministic path for cold outreach.
+      if (!username) {
+        throw new AppError(
+          400,
+          "LEAD_USERNAME_REQUIRED",
+          "Cannot send to this lead: Telegram username is required (numeric id is not enough for cold outreach). Open the profile in Telegram first or enrich the lead with @username."
+        );
+      }
+      const externalConversationId = username;
 
       const channelAccountId = await requireActiveTelegramChannelAccountId(scope);
       const worker = new TelegramWorkerClient(

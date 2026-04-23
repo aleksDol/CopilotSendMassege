@@ -60,6 +60,49 @@ const hasChatReason = (text: string): boolean => {
   return t.includes("в чате") || t.includes("сообщен");
 };
 
+const hasDirectReason = (text: string): boolean => {
+  const t = text.trim().toLowerCase();
+  if (!t) return false;
+  // Ensure we don't accidentally reference chats/groups when this is a DM.
+  const hasForbidden = t.includes("в чате") || t.includes("в группе") || t.includes("в канале");
+  if (hasForbidden) return false;
+  // Neutral reason without chat mention is ok.
+  return true;
+};
+
+const normalize = (value: string | null | undefined): string => (value ?? "").trim().toLowerCase();
+
+const isDirectSource = (params: { sourceType?: string | null; chatTitle?: string | null }): boolean => {
+  const st = normalize(params.sourceType);
+  const ct = normalize(params.chatTitle);
+  // Manual leads are explicitly created for DM outreach in CRM.
+  if (st === "manual") return true;
+  // Common values: direct, private, dm, личка (case-insensitive)
+  if (st === "direct" || st === "private" || st === "dm" || st.includes("лич")) return true;
+  // UI column "ЧАТ" for manual leads is "Личка"
+  if (ct.includes("лич")) return true;
+  return false;
+};
+
+const isChannelOrGroupSource = (params: { sourceType?: string | null; chatTitle?: string | null }): boolean => {
+  const st = normalize(params.sourceType);
+  const ct = normalize(params.chatTitle);
+  if (
+    st === "channel_comments" ||
+    st.includes("group") ||
+    st.includes("channel") ||
+    st.includes("comments") ||
+    st.includes("чат") ||
+    st.includes("групп") ||
+    st.includes("канал")
+  ) {
+    return true;
+  }
+  // If chatTitle is present and not "Личка", treat as chat-ish context.
+  if (ct && !ct.includes("лич")) return true;
+  return false;
+};
+
 const hasDetectedActivity = (text: string, detectedActivity: string): boolean => {
   const t = text.trim().toLowerCase();
   const activity = (detectedActivity || "").trim().toLowerCase();
@@ -147,12 +190,16 @@ export class LeadRadarOutreachService {
     leadId: string;
     leadMessage: string | null;
     leadName?: string | null;
+    sourceType?: string | null;
+    chatTitle?: string | null;
   }): Promise<OutreachLeadAnalysis> {
     const startedAt = Date.now();
     const { knowledgeItems, replyPolicy } = await this.loadBrainContext(params.companyId);
     const { systemPrompt, userPrompt } = buildLeadRadarOutreachAnalysisPrompt({
       leadMessage: params.leadMessage,
       leadName: params.leadName,
+      sourceType: params.sourceType,
+      chatTitle: params.chatTitle,
       knowledgeItems,
       replyPolicy
     });
@@ -240,6 +287,8 @@ export class LeadRadarOutreachService {
     leadId: string;
     leadMessage: string | null;
     leadName?: string | null;
+    sourceType?: string | null;
+    chatTitle?: string | null;
     analysis: OutreachLeadAnalysis;
   }): Promise<{ text: string }> {
     const startedAt = Date.now();
@@ -247,6 +296,8 @@ export class LeadRadarOutreachService {
     const { systemPrompt, userPrompt } = buildLeadRadarOutreachMessagePrompt({
       leadMessage: params.leadMessage,
       leadName: params.leadName,
+      sourceType: params.sourceType,
+      chatTitle: params.chatTitle,
       analysis: params.analysis,
       knowledgeItems,
       replyPolicy
@@ -285,9 +336,10 @@ export class LeadRadarOutreachService {
       let warningStructure = false;
 
       const requiresStructure = Boolean(params.analysis.productFit);
-      const structureOk = !requiresStructure
-        ? true
-        : hasChatReason(text) && hasDetectedActivity(text, params.analysis.detectedActivity);
+      const sourceIsDirect = isDirectSource({ sourceType: params.sourceType, chatTitle: params.chatTitle });
+      const sourceIsChat = isChannelOrGroupSource({ sourceType: params.sourceType, chatTitle: params.chatTitle });
+      const reasonOk = sourceIsDirect ? hasDirectReason(text) : sourceIsChat ? hasChatReason(text) : true;
+      const structureOk = !requiresStructure ? true : reasonOk && hasDetectedActivity(text, params.analysis.detectedActivity);
 
       const shouldRegenerate = isSalesyOutreach(text) || !structureOk;
 
@@ -306,7 +358,12 @@ export class LeadRadarOutreachService {
               content:
                 userPrompt +
                 "\n\nCRITICAL: Rewrite the message to be non-salesy and follow the required structure. " +
-                "If productFit=true, you MUST include a short chat-based reason (mention 'в чате' or 'сообщение') and include detectedActivity (use its key words). " +
+                (sourceIsDirect
+                  ? "If productFit=true, do NOT mention chats/groups/channels. "
+                  : sourceIsChat
+                    ? "If productFit=true, you MUST include a short chat-based reason (mention 'в чате' or 'сообщение') "
+                    : "If productFit=true, keep the reason neutral (no chat claims). ") +
+                "Include detectedActivity (use its key words). " +
                 "Do NOT mention product/tool/solution. No 'могу помочь'. No AI mention. Keep 1–2 short sentences and exactly ONE question."
             }
           ],
@@ -322,9 +379,8 @@ export class LeadRadarOutreachService {
           );
         }
 
-        const structureOkAfter = !requiresStructure
-          ? true
-          : hasChatReason(text) && hasDetectedActivity(text, params.analysis.detectedActivity);
+        const reasonOkAfter = sourceIsDirect ? hasDirectReason(text) : sourceIsChat ? hasChatReason(text) : true;
+        const structureOkAfter = !requiresStructure ? true : reasonOkAfter && hasDetectedActivity(text, params.analysis.detectedActivity);
         if (!structureOkAfter) {
           warningStructure = true;
           this.app.log.warn(
@@ -381,6 +437,8 @@ export class LeadRadarOutreachService {
     leadId: string;
     leadMessage: string | null;
     leadName?: string | null;
+    sourceType?: string | null;
+    chatTitle?: string | null;
   }): Promise<{ text: string; analysis: OutreachLeadAnalysis }> {
     const analysis = await this.analyzeLeadForOutreach(params);
     const msg = await this.generateOutreachMessage({ ...params, analysis });

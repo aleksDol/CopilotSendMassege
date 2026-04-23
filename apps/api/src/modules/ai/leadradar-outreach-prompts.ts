@@ -45,11 +45,15 @@ export type OutreachLeadAnalysis = {
 export const buildLeadRadarOutreachAnalysisPrompt = (params: {
   leadMessage: string | null | undefined;
   leadName?: string | null | undefined;
+  sourceType?: string | null | undefined;
+  chatTitle?: string | null | undefined;
   knowledgeItems: Array<Pick<KnowledgeItem, "kind" | "title" | "content">>;
   replyPolicy: Pick<ReplyPolicy, "toneRules" | "pricingRules" | "forbiddenPromises" | "forbiddenTopics"> | null;
 }) => {
   const leadMessage = clip(params.leadMessage ?? "", 1400);
   const leadName = (params.leadName ?? "").trim();
+  const sourceType = (params.sourceType ?? "").trim();
+  const chatTitle = (params.chatTitle ?? "").trim();
   const brain = pickBrainContext(params.knowledgeItems);
 
   const policyBlock = params.replyPolicy
@@ -89,6 +93,8 @@ No markdown. No explanations.`;
     "Lead message:",
     `"${leadMessage || "—"}"`,
     leadName ? `Lead name: "${clip(leadName, 80)}"` : "Lead name: (unknown)",
+    sourceType ? `Lead sourceType: "${clip(sourceType, 60)}"` : "Lead sourceType: (unknown)",
+    chatTitle ? `Lead chatTitle: "${clip(chatTitle, 80)}"` : "Lead chatTitle: (unknown)",
     "",
     "AI Brain / product context (knowledge base):",
     brain,
@@ -123,9 +129,11 @@ No markdown. No explanations.`;
     "- detectedActivity: what they do, 2-5 words max (e.g. \"занимается таргетом\", \"делает сайты\", \"ищет исполнителя\").",
     "- productFit: true if our product (from AI Brain context) is plausibly relevant to their workflow right now; otherwise false.",
     "- productFitReason: short (max ~8 words), no marketing.",
-    "- contactReason: short (3-7 words), natural reason for writing based on the chat message. Should sound like: \"увидел сообщение в чате\" / \"попалось сообщение в чате\".",
-    "- bestQuestion: ONE short question idea to start a conversation (no sales, no product mention).",
-    "- IMPORTANT: first touch message should NOT pitch the product. Prefer a natural conversation opener + one simple question.",
+    "- contactReason: short (3-8 words), natural reason for writing based on the SOURCE TYPE:",
+    "  - if sourceType indicates DM/private (direct/private/dm/\"личка\") OR sourceType=\"manual\" OR chatTitle contains \"Личка\": NEVER claim you saw a message in a chat. Use a neutral reason like \"пишу в личку по теме\" / \"по вашему вопросу\".",
+    "  - if sourceType indicates group/chat/channel_comments: you may say \"увидел сообщение в чате\" / \"увидел комментарий\" (keep it short).",
+    "- bestQuestion: ONE short qualifying question that helps start a dialogue and moves towards a sale later, grounded in relevantOfferAngle and detectedNeedOrPain (still no product mention).",
+    "- IMPORTANT: first touch message should NOT pitch the product. Prefer a natural opener + one qualifying question.",
     "- relevantOfferAngle is for internal strategy; do not assume it must be mentioned explicitly in the first message."
   ].join("\n");
 
@@ -135,12 +143,16 @@ No markdown. No explanations.`;
 export const buildLeadRadarOutreachMessagePrompt = (params: {
   leadMessage: string | null | undefined;
   leadName?: string | null | undefined;
+  sourceType?: string | null | undefined;
+  chatTitle?: string | null | undefined;
   analysis: OutreachLeadAnalysis;
   knowledgeItems: Array<Pick<KnowledgeItem, "kind" | "title" | "content">>;
   replyPolicy: Pick<ReplyPolicy, "toneRules" | "pricingRules" | "forbiddenPromises" | "forbiddenTopics"> | null;
 }) => {
   const leadMessage = clip(params.leadMessage ?? "", 1400);
   const leadName = (params.leadName ?? "").trim();
+  const sourceType = (params.sourceType ?? "").trim();
+  const chatTitle = (params.chatTitle ?? "").trim();
   const brain = pickBrainContext(params.knowledgeItems);
   const policyBlock = params.replyPolicy
     ? clip(
@@ -161,6 +173,10 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
   const systemPrompt = `Ты пишешь первое сообщение человеку в Telegram.
 
 Цель: начать диалог и получить ответ. НЕ продавать в первом сообщении.
+
+Контекст источника:
+- Если sourceType означает ЛИЧКУ (direct/private/dm/личка) ИЛИ sourceType="manual" ИЛИ chatTitle содержит "Личка": запрещено писать "видел(а) ваше сообщение в чате/группе/канале" и любые отсылки к чату.
+- Если sourceType означает ЧАТ/ГРУППУ/КОММЕНТАРИИ: можно коротко сослаться на сообщение/комментарий.
 
 Если analysis.productFit = true, сообщение ДОЛЖНО следовать структуре:
 1) короткое приветствие: "Привет."
@@ -189,6 +205,8 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
     "Контекст лида:",
     `Сообщение: "${leadMessage || "—"}"`,
     leadName ? `Имя: "${clip(leadName, 80)}"` : "Имя: (неизвестно)",
+    sourceType ? `sourceType: "${clip(sourceType, 60)}"` : "sourceType: (неизвестно)",
+    chatTitle ? `chatTitle: "${clip(chatTitle, 80)}"` : "chatTitle: (неизвестно)",
     "",
     "AI Brain / product context (knowledge base):",
     brain,
@@ -205,6 +223,7 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
     "- Если analysis.keyTopic НЕ null — можно мягко упомянуть тему 1 раз, но не обязательно.",
     "- Не пересказывай lead message и не цитируй его.",
     "- Должен быть ровно один вопрос.",
+    "- Вопрос должен быть квалифицирующим (чтобы понять потребность/ситуацию и потом предложить релевантный оффер), но без продажи в лоб.",
     "- Не делай маркетинговых формулировок."
   ].join("\n");
 
