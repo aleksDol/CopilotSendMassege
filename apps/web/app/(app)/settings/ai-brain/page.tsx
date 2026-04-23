@@ -178,6 +178,10 @@ export default function AIBrainSettingsPage() {
     setStrategy(values.strategy);
   }, [policy.data?.policy]);
 
+  useEffect(() => {
+    setColdFirstTouch(leadradarSettings.data?.coldFirstTouchPlaybook ?? "");
+  }, [leadradarSettings.data?.coldFirstTouchPlaybook]);
+
   if (knowledge.isLoading || policy.isLoading || leadradarSettings.isLoading) {
     return <LoadingState label="Загрузка настроек..." />;
   }
@@ -186,10 +190,6 @@ export default function AIBrainSettingsPage() {
     ...group,
     items: items.filter((item) => group.match(item, primaryProductItem?.id ?? null))
   }));
-
-  useEffect(() => {
-    setColdFirstTouch(leadradarSettings.data?.coldFirstTouchPlaybook ?? "");
-  }, [leadradarSettings.data?.coldFirstTouchPlaybook]);
 
   const handleSaveBrain = async () => {
     setError(null);
