@@ -501,6 +501,46 @@ export class LeadRadarOutreachService {
         );
         text = (retry ?? "").trim();
 
+        const playbookCheckAfter = violatesPlaybook({
+          text,
+          playbook: coldFirstTouchPlaybook,
+          sourceIsDirect,
+          analysisIsLowConfidence
+        });
+
+        if (playbookCheckAfter.violated) {
+          const req = extractPlaybookRequirements(coldFirstTouchPlaybook);
+          const mustInclude = [
+            ...(req.requireBot ? ["бот"] : []),
+            ...(req.requireFree ? ["бесплатно"] : []),
+            ...(req.requireTryQuestion ? ["интересно попробовать?"] : [])
+          ];
+
+          const hardRetry = await this.completeText(
+            [
+              { role: "system", content: systemPrompt },
+              {
+                role: "user",
+                content:
+                  userPrompt +
+                  "\n\nCRITICAL: Your rewrite still does NOT follow the playbook. Rewrite again with these hard requirements:\n" +
+                  "- Keep it 1–2 short sentences.\n" +
+                  "- Exactly ONE question.\n" +
+                  "- Do NOT guess what the person does.\n" +
+                  (sourceIsDirect ? "- Do NOT mention chats/groups/channels.\n" : "") +
+                  (mustInclude.length
+                    ? `- MUST include these exact words/phrases somewhere in the message: ${mustInclude
+                        .map((x) => `"${x}"`)
+                        .join(", ")}.\n`
+                    : "") +
+                  "- Output ONLY the message text."
+              }
+            ],
+            { temperature: 0.2, maxTokens: 160 }
+          );
+          text = (hardRetry ?? "").trim();
+        }
+
         if (isSalesyOutreach(text)) {
           warningSalesy = true;
           this.app.log.warn(
