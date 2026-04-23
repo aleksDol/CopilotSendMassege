@@ -84,6 +84,54 @@ const isTooLong = (text: string): boolean => {
   return sentences.length > 2;
 };
 
+const extractPlaybookRequirements = (playbook: string | null | undefined): {
+  requireFree: boolean;
+  requireBot: boolean;
+  requireTryQuestion: boolean;
+} => {
+  const p = (playbook ?? "").toLowerCase();
+  if (!p.trim()) return { requireFree: false, requireBot: false, requireTryQuestion: false };
+  return {
+    requireFree: p.includes("бесплат"),
+    requireBot: p.includes("бот"),
+    requireTryQuestion: p.includes("интерес") && (p.includes("попроб") || p.includes("пробова"))
+  };
+};
+
+const violatesPlaybook = (params: {
+  text: string;
+  playbook: string | null | undefined;
+  sourceIsDirect: boolean;
+  analysisIsLowConfidence: boolean;
+}): { violated: boolean; reasons: string[] } => {
+  const t = params.text.trim().toLowerCase();
+  const reasons: string[] = [];
+  if (!t) return { violated: true, reasons: ["empty_text"] };
+
+  const req = extractPlaybookRequirements(params.playbook);
+
+  if (params.sourceIsDirect && params.analysisIsLowConfidence && isAssumptiveForDirect(t)) {
+    reasons.push("assumptive_for_direct_low_confidence");
+  }
+
+  // If playbook explicitly asks to mention "free", enforce it.
+  if (req.requireFree && !t.includes("бесплат")) {
+    reasons.push("missing_free");
+  }
+
+  // If playbook explicitly asks to say it's a bot, enforce "бот".
+  if (req.requireBot && !t.includes("бот")) {
+    reasons.push("missing_bot");
+  }
+
+  // If playbook asks to end with "интересно попробовать?" enforce try/interest question hint.
+  if (req.requireTryQuestion && !(t.includes("интерес") && (t.includes("попроб") || t.includes("пробова")))) {
+    reasons.push("missing_try_interest_question");
+  }
+
+  return { violated: reasons.length > 0, reasons };
+};
+
 const hasChatReason = (text: string): boolean => {
   const t = text.trim().toLowerCase();
   if (!t) return false;
@@ -210,14 +258,15 @@ export class LeadRadarOutreachService {
     userId: string;
     telegramAccountId: string;
   }): Promise<string | null> {
-    const row = await this.app.prisma.leadRadarSettings.findFirst({
-      where: {
-        userId: params.userId,
-        telegramAccountId: params.telegramAccountId
-      },
-      select: { coldFirstTouchPlaybook: true }
-    });
-    return row?.coldFirstTouchPlaybook ?? null;
+    // Use raw SQL to avoid tight coupling to generated Prisma typings during deploys.
+    const rows = await this.app.prisma.$queryRaw<Array<{ cold_first_touch_playbook: string | null }>>`
+      SELECT cold_first_touch_playbook
+      FROM lead_settings
+      WHERE user_id = ${params.userId}::uuid
+        AND telegram_account_id = ${params.telegramAccountId}::uuid
+      LIMIT 1
+    `;
+    return rows?.[0]?.cold_first_touch_playbook ?? null;
   }
 
   private async completeText(messages: AIMessage[], opts: { temperature: number; maxTokens: number }) {
@@ -396,10 +445,18 @@ export class LeadRadarOutreachService {
       const activityOk = !requiresActivity ? true : hasDetectedActivity(text, detectedActivity);
       const structureOk = !requiresStructure ? true : reasonOk && activityOk;
 
+      const playbookCheck = violatesPlaybook({
+        text,
+        playbook: coldFirstTouchPlaybook,
+        sourceIsDirect,
+        analysisIsLowConfidence
+      });
+
       const shouldRegenerate =
         isSalesyOutreach(text) ||
         !structureOk ||
-        (sourceIsDirect && analysisIsLowConfidence && (isAssumptiveForDirect(text) || isTooLong(text)));
+        (sourceIsDirect && analysisIsLowConfidence && (isAssumptiveForDirect(text) || isTooLong(text))) ||
+        playbookCheck.violated;
 
       if (shouldRegenerate) {
         regenerated = true;
@@ -426,6 +483,9 @@ export class LeadRadarOutreachService {
                     "Use 1 short value hook + 1 short key plus from AI Brain, then ONE qualifying question (two options if possible). " +
                     "Keep it to 1–2 sentences. "
                   : "Include detectedActivity (use its key words). ") +
+                (playbookCheck.violated
+                  ? `Playbook compliance failed: ${playbookCheck.reasons.join(", ")}. Fix it. `
+                  : "") +
                 "Do NOT mention product/tool/solution. No 'могу помочь'. No AI mention. Keep 1–2 short sentences and exactly ONE question."
             }
           ],
