@@ -132,7 +132,7 @@ No markdown. No explanations.`;
     "- contactReason: short (3-8 words), natural reason for writing based on the SOURCE TYPE:",
     "  - if sourceType indicates DM/private (direct/private/dm/\"личка\") OR sourceType=\"manual\" OR chatTitle contains \"Личка\": NEVER claim you saw a message in a chat. Use a neutral reason like \"пишу в личку по теме\" / \"по вашему вопросу\".",
     "  - if sourceType indicates group/chat/channel_comments: you may say \"увидел сообщение в чате\" / \"увидел комментарий\" (keep it short).",
-    "- bestQuestion: ONE short qualifying question that helps start a dialogue and moves towards a sale later, grounded in relevantOfferAngle and detectedNeedOrPain (still no product mention).",
+    "- bestQuestion: ONE short qualifying question that helps start a dialogue and moves towards a sale later, grounded in relevantOfferAngle and detectedNeedOrPain.",
     "- IMPORTANT: first touch message should NOT pitch the product. Prefer a natural opener + one qualifying question.",
     "- relevantOfferAngle is for internal strategy; do not assume it must be mentioned explicitly in the first message."
   ].join("\n");
@@ -172,7 +172,12 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
 
   const systemPrompt = `Ты пишешь первое сообщение человеку в Telegram.
 
-Цель: начать диалог и получить ответ. НЕ продавать в первом сообщении.
+Цель: быстро заинтересовать и начать диалог (первый контакт), чтобы получить ответ и перейти к дальнейшему сотрудничеству.
+
+Можно (и часто нужно) коротко обозначить, что именно мы предлагаем — но:
+- без цен/условий/скидок
+- без давления и “впаривания”
+- 1 короткая ценность/выгода, основанная на AI Brain и analysis.relevantOfferAngle
 
 Контекст источника:
 - Если sourceType означает ЛИЧКУ (direct/private/dm/личка) ИЛИ sourceType="manual" ИЛИ chatTitle содержит "Личка": запрещено писать "видел(а) ваше сообщение в чате/группе/канале" и любые отсылки к чату.
@@ -182,7 +187,8 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
 1) короткое приветствие: "Привет."
 2) причина написать: используй analysis.contactReason (коротко, естественно)
 3) понимание, чем человек занимается: используй analysis.detectedActivity (вставь буквально, без пересказа сообщения)
-4) один простой вопрос: используй analysis.bestQuestion (или близко к нему)
+4) короткий релевантный “угол” (1 фраза): используй analysis.relevantOfferAngle (и/или 1 мысль из AI Brain) без хардкора под конкретный продукт
+5) один вопрос: используй analysis.bestQuestion (или близко к нему)
 
 Если analysis.productFit = false:
 - коротко и нейтрально, 1 вопрос по теме, без попытки натянуть product-fit.
@@ -194,8 +200,8 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
 
 Запрещено:
 - пустые комплименты
-- "у меня есть инструмент/решение", "могу помочь", "увеличить конверсию", "оптимизировать процессы"
-- раннее упоминание продукта/инструмента
+- "могу помочь", "увеличить конверсию", "оптимизировать процессы"
+- агрессивные обещания результата
 - роботские фразы: "я заметил что ты...", "я увидел что ты...", "ты написал что..."
 - длинные объяснения
 
@@ -218,12 +224,13 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
     JSON.stringify(params.analysis),
     "",
     "Правила сборки сообщения:",
-    "- Если analysis.productFit=true: используй analysis.contactReason + analysis.detectedActivity + analysis.bestQuestion.",
+    "- Если analysis.productFit=true: используй analysis.contactReason + analysis.detectedActivity + analysis.relevantOfferAngle + analysis.bestQuestion.",
     "- detectedActivity вставляй коротко и буквально (чтобы было понятно, что это не шаблон).",
     "- Если analysis.keyTopic НЕ null — можно мягко упомянуть тему 1 раз, но не обязательно.",
     "- Не пересказывай lead message и не цитируй его.",
     "- Должен быть ровно один вопрос.",
     "- Вопрос должен быть квалифицирующим (чтобы понять потребность/ситуацию и потом предложить релевантный оффер), но без продажи в лоб.",
+    "- Можно обозначить 1 ценность из AI Brain коротко (без цен и обещаний), но не превращай это в “презентацию продукта”.",
     "- Не делай маркетинговых формулировок."
   ].join("\n");
 
