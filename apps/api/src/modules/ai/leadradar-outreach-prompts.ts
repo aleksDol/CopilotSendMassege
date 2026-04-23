@@ -34,6 +34,11 @@ export type OutreachLeadAnalysis = {
   detectedNeedOrPain: string;
   relevantOfferAngle: string;
   keyTopic: string | null;
+  detectedActivity: string;
+  productFit: boolean;
+  productFitReason: string;
+  contactReason: string;
+  bestQuestion: string;
   confidence: OutreachConfidence;
 };
 
@@ -65,9 +70,15 @@ export const buildLeadRadarOutreachAnalysisPrompt = (params: {
 
   const systemPrompt = `You are an analyst for CRM outreach in Telegram.
 
-Goal: classify the lead and pick the most relevant offer angle based on:
-- lead message
-- product / AI Brain context (what the user sells and how it helps)
+Goal:
+- understand who the lead is and what they do (based on their message)
+- decide if our product is relevant (productFit)
+- draft short internal "reason for writing" and "best question" to start a dialogue
+
+IMPORTANT:
+- Keep everything SHORT and non-marketing.
+- Do NOT mention AI.
+- The result is internal analysis (not user-facing copy), but keep it natural.
 
 Return ONLY valid JSON.
 No markdown. No explanations.`;
@@ -89,8 +100,13 @@ No markdown. No explanations.`;
     `{`,
     `  "leadType": "buyer_direct" | "service_provider" | "business_owner_with_problem" | "unclear",`,
     `  "detectedRole": string,`,
+    `  "detectedActivity": string,`,
     `  "detectedNeedOrPain": string,`,
     `  "relevantOfferAngle": string,`,
+    `  "productFit": boolean,`,
+    `  "productFitReason": string,`,
+    `  "contactReason": string,`,
+    `  "bestQuestion": string,`,
     `  "keyTopic": string | null,`,
     `  "confidence": "low" | "medium" | "high"`,
     `}`,
@@ -104,6 +120,11 @@ No markdown. No explanations.`;
     "- keyTopic: extract ONE primary obvious topic from the lead message (1-2 words max). Examples: \"таргет\", \"воронки\", \"сайт\", \"дизайн\", \"клиенты\".",
     "- If no clear topic, set keyTopic to null.",
     "- Do NOT extract multiple topics. Do NOT overthink.",
+    "- detectedActivity: what they do, 2-5 words max (e.g. \"занимается таргетом\", \"делает сайты\", \"ищет исполнителя\").",
+    "- productFit: true if our product (from AI Brain context) is plausibly relevant to their workflow right now; otherwise false.",
+    "- productFitReason: short (max ~8 words), no marketing.",
+    "- contactReason: short (3-7 words), natural reason for writing based on the chat message. Should sound like: \"увидел сообщение в чате\" / \"попалось сообщение в чате\".",
+    "- bestQuestion: ONE short question idea to start a conversation (no sales, no product mention).",
     "- IMPORTANT: first touch message should NOT pitch the product. Prefer a natural conversation opener + one simple question.",
     "- relevantOfferAngle is for internal strategy; do not assume it must be mentioned explicitly in the first message."
   ].join("\n");
@@ -117,7 +138,6 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
   analysis: OutreachLeadAnalysis;
   knowledgeItems: Array<Pick<KnowledgeItem, "kind" | "title" | "content">>;
   replyPolicy: Pick<ReplyPolicy, "toneRules" | "pricingRules" | "forbiddenPromises" | "forbiddenTopics"> | null;
-  styleFamilyHint?: "A" | "B" | "C" | "D";
 }) => {
   const leadMessage = clip(params.leadMessage ?? "", 1400);
   const leadName = (params.leadName ?? "").trim();
@@ -140,33 +160,28 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
 
   const systemPrompt = `Ты пишешь первое сообщение человеку в Telegram.
 
-Цель первого сообщения: получить ответ и начать диалог, а не продавать.
+Цель: начать диалог и получить ответ. НЕ продавать в первом сообщении.
 
-Стиль:
-- 1–2 коротких предложения (3 только если без воды)
-- живо и естественно, без канцелярита
-- без "Здравствуйте/Добрый день/Уважаемый"
-- без "Я эксперт", "Предлагаю услуги", "Готов помочь вам"
-- без агрессивной продажи
-- максимум 1 простой вопрос в конце
+Если analysis.productFit = true, сообщение ДОЛЖНО следовать структуре:
+1) короткое приветствие: "Привет."
+2) причина написать: используй analysis.contactReason (коротко, естественно)
+3) понимание, чем человек занимается: используй analysis.detectedActivity (вставь буквально, без пересказа сообщения)
+4) один простой вопрос: используй analysis.bestQuestion (или близко к нему)
 
-Опциональный контекстный заход (если звучит естественно):
-- Можно начать с короткой причины написать (3–6 слов), а потом сразу вопрос.
-- Лучше опираться на analysis.keyTopic (если есть) или общий смысл сообщения, но НЕ пересказывать текст лида.
-- Не делай это каждый раз: иногда начинай сразу с вопроса.
-- Не используй роботские формулировки: "я заметил, что ты...", "я увидел, что ты...", "ты написал, что...".
+Если analysis.productFit = false:
+- коротко и нейтрально, 1 вопрос по теме, без попытки натянуть product-fit.
 
-Строго запрещено в первом сообщении:
-- пустые комплименты ("Здорово, что ты...", "Классно, что ты...", "Вижу, что ты...")
-- упоминать продукт/инструмент/решение без сильной необходимости
-- фразы: "у меня есть инструмент", "у меня есть решение", "я могу предложить", "ты пробовал AI", "могу помочь",
-  "оптимизировать процессы", "увеличить конверсию"
-- длинные вступления, формальный питч, очевидный sales tone
+Ограничения:
+- максимум 2 предложения (3 только если очень коротко)
+- ровно ОДИН вопрос
+- Telegram-стиль, без формальностей
 
-Важно:
-- Сообщение должно зависеть от leadType.
-- Ты используешь AI Brain контекст, чтобы понять контекст продукта, но в первом сообщении НЕ продаёшь.
-- Не выдумывай детали — только по контексту.
+Запрещено:
+- пустые комплименты
+- "у меня есть инструмент/решение", "могу помочь", "увеличить конверсию", "оптимизировать процессы"
+- раннее упоминание продукта/инструмента
+- роботские фразы: "я заметил что ты...", "я увидел что ты...", "ты написал что..."
+- длинные объяснения
 
 Выведи только текст сообщения. Без пояснений.`;
 
@@ -184,30 +199,13 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
     "Результат анализа (используй это, чтобы выбрать правильный оффер/угол):",
     JSON.stringify(params.analysis),
     "",
-    "Вариативность структуры (выбери одну семью и придерживайся её):",
-    `styleFamilyHint: ${params.styleFamilyHint ?? "none"}`,
-    "- A: прямой вопрос по контексту (коротко, сразу к делу).",
-    "- B: вопрос про процесс/узкое место (где больше всего времени/сложности).",
-    "- C: вопрос про канал/источник (откуда сейчас приходят клиенты/заказы/обращения).",
-    "- D: ситуационный заход (руками vs уже есть какой-то процесс), без слова \"автоматизировал\" если звучит неестественно.",
-    "ВАЖНО: не используй одну и ту же форму каждый раз; меняй структуру между A/B/C/D, но не удлиняй сообщение.",
-    "",
-    "Инструкция по leadType (пиши максимально естественно, без продажи):",
-    "- buyer_direct: уточни 1 деталь по задаче (срок/объём/формат), без самопрезентации.",
-    "- service_provider: зацепись за контекст и задай простой вопрос про текущий поток клиентов/как они сейчас это делают.",
-    "- business_owner_with_problem: отзеркаль боль коротко и спроси, где сейчас самое узкое место/что пробовали.",
-    "- unclear: нейтральный короткий заход + 1 вопрос, чтобы понять, что именно нужно/актуально.",
-    "",
-    "Требования к выходу:",
-    "- 1–2 коротких предложения",
-    "- 0–1 вопрос (лучше 1)",
-    "- без комплиментов и без упоминания продукта/инструмента",
-    "",
-    "Лёгкая персонализация по теме:",
-    "- Если analysis.keyTopic НЕ null — аккуратно упомяни эту тему в тексте или вопросе (1 раз).",
-    "- Не пиши \"вижу, что ты...\" и не пересказывай сообщение лида.",
-    "- Не цитируй lead message verbatim — только мягкая отсылка к теме.",
-    "- Если keyTopic нет — пиши нейтрально, как раньше."
+    "Правила сборки сообщения:",
+    "- Если analysis.productFit=true: используй analysis.contactReason + analysis.detectedActivity + analysis.bestQuestion.",
+    "- detectedActivity вставляй коротко и буквально (чтобы было понятно, что это не шаблон).",
+    "- Если analysis.keyTopic НЕ null — можно мягко упомянуть тему 1 раз, но не обязательно.",
+    "- Не пересказывай lead message и не цитируй его.",
+    "- Должен быть ровно один вопрос.",
+    "- Не делай маркетинговых формулировок."
   ].join("\n");
 
   return { systemPrompt, userPrompt };

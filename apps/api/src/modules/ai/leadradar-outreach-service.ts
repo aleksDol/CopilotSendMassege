@@ -15,8 +15,13 @@ import {
 const analysisSchema = z.object({
   leadType: z.enum(["buyer_direct", "service_provider", "business_owner_with_problem", "unclear"]),
   detectedRole: z.string().max(120),
+  detectedActivity: z.string().max(80),
   detectedNeedOrPain: z.string().max(220),
   relevantOfferAngle: z.string().max(220),
+  productFit: z.boolean(),
+  productFitReason: z.string().max(120),
+  contactReason: z.string().max(120),
+  bestQuestion: z.string().max(160),
   keyTopic: z.string().max(32).nullable(),
   confidence: z.enum(["low", "medium", "high"])
 });
@@ -46,6 +51,26 @@ const isSalesyOutreach = (text: string): boolean => {
   const normalized = text.trim().toLowerCase();
   if (!normalized) return false;
   return SALESY_TRIGGERS.some((p) => normalized.includes(p));
+};
+
+const hasChatReason = (text: string): boolean => {
+  const t = text.trim().toLowerCase();
+  if (!t) return false;
+  // lightweight: require a "chat reference" token
+  return t.includes("в чате") || t.includes("сообщен");
+};
+
+const hasDetectedActivity = (text: string, detectedActivity: string): boolean => {
+  const t = text.trim().toLowerCase();
+  const activity = (detectedActivity || "").trim().toLowerCase();
+  if (!t || !activity) return false;
+  // try to match at least one meaningful token from detectedActivity
+  const tokens = activity
+    .split(/[\s,.;:!?()]+/g)
+    .map((x) => x.trim())
+    .filter((x) => x.length >= 4);
+  if (!tokens.length) return false;
+  return tokens.some((tok) => t.includes(tok));
 };
 
 export class LeadRadarOutreachService {
@@ -219,15 +244,12 @@ export class LeadRadarOutreachService {
   }): Promise<{ text: string }> {
     const startedAt = Date.now();
     const { knowledgeItems, replyPolicy } = await this.loadBrainContext(params.companyId);
-    const styleFamilies = ["A", "B", "C", "D"] as const;
-    const styleFamilyHint = styleFamilies[Math.floor(Math.random() * styleFamilies.length)];
     const { systemPrompt, userPrompt } = buildLeadRadarOutreachMessagePrompt({
       leadMessage: params.leadMessage,
       leadName: params.leadName,
       analysis: params.analysis,
       knowledgeItems,
-      replyPolicy,
-      styleFamilyHint
+      replyPolicy
     });
 
     const run = await this.app.prisma.aiRun.create({
@@ -243,8 +265,7 @@ export class LeadRadarOutreachService {
           stage: "message_generation",
           leadRadarLeadId: params.leadId,
           createdByUserId: params.userId,
-          analysis: params.analysis,
-          styleFamilyHint
+          analysis: params.analysis
         }
       }
     });
@@ -261,8 +282,16 @@ export class LeadRadarOutreachService {
 
       let regenerated = false;
       let warningSalesy = false;
+      let warningStructure = false;
 
-      if (isSalesyOutreach(text)) {
+      const requiresStructure = Boolean(params.analysis.productFit);
+      const structureOk = !requiresStructure
+        ? true
+        : hasChatReason(text) && hasDetectedActivity(text, params.analysis.detectedActivity);
+
+      const shouldRegenerate = isSalesyOutreach(text) || !structureOk;
+
+      if (shouldRegenerate) {
         regenerated = true;
         this.app.log.info(
           { leadRadarLeadId: params.leadId, outreach_first_message_regenerated: true },
@@ -276,7 +305,9 @@ export class LeadRadarOutreachService {
               role: "user",
               content:
                 userPrompt +
-                "\n\nCRITICAL: Rewrite the message to be non-salesy. Do NOT mention product/tool/solution. No 'могу помочь'. No AI mention. Keep 1–2 short sentences and end with one simple relevant question."
+                "\n\nCRITICAL: Rewrite the message to be non-salesy and follow the required structure. " +
+                "If productFit=true, you MUST include a short chat-based reason (mention 'в чате' or 'сообщение') and include detectedActivity (use its key words). " +
+                "Do NOT mention product/tool/solution. No 'могу помочь'. No AI mention. Keep 1–2 short sentences and exactly ONE question."
             }
           ],
           { temperature: 0.4, maxTokens: 160 }
@@ -288,6 +319,17 @@ export class LeadRadarOutreachService {
           this.app.log.warn(
             { leadRadarLeadId: params.leadId, outreach_first_message_warning_salesy: true },
             "outreach_first_message_warning_salesy"
+          );
+        }
+
+        const structureOkAfter = !requiresStructure
+          ? true
+          : hasChatReason(text) && hasDetectedActivity(text, params.analysis.detectedActivity);
+        if (!structureOkAfter) {
+          warningStructure = true;
+          this.app.log.warn(
+            { leadRadarLeadId: params.leadId, outreach_first_message_warning_structure: true },
+            "outreach_first_message_warning_structure"
           );
         }
       } else {
@@ -308,7 +350,8 @@ export class LeadRadarOutreachService {
             ...(run.metadata as any),
             outputChars: text.length,
             outreach_first_message_regenerated: regenerated,
-            outreach_first_message_warning_salesy: warningSalesy
+            outreach_first_message_warning_salesy: warningSalesy,
+            outreach_first_message_warning_structure: warningStructure
           }
         }
       });
