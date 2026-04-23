@@ -17,6 +17,7 @@ const analysisSchema = z.object({
   detectedRole: z.string().max(120),
   detectedNeedOrPain: z.string().max(220),
   relevantOfferAngle: z.string().max(220),
+  keyTopic: z.string().max(32).nullable(),
   confidence: z.enum(["low", "medium", "high"])
 });
 
@@ -218,12 +219,15 @@ export class LeadRadarOutreachService {
   }): Promise<{ text: string }> {
     const startedAt = Date.now();
     const { knowledgeItems, replyPolicy } = await this.loadBrainContext(params.companyId);
+    const styleFamilies = ["A", "B", "C", "D"] as const;
+    const styleFamilyHint = styleFamilies[Math.floor(Math.random() * styleFamilies.length)];
     const { systemPrompt, userPrompt } = buildLeadRadarOutreachMessagePrompt({
       leadMessage: params.leadMessage,
       leadName: params.leadName,
       analysis: params.analysis,
       knowledgeItems,
-      replyPolicy
+      replyPolicy,
+      styleFamilyHint
     });
 
     const run = await this.app.prisma.aiRun.create({
@@ -239,7 +243,8 @@ export class LeadRadarOutreachService {
           stage: "message_generation",
           leadRadarLeadId: params.leadId,
           createdByUserId: params.userId,
-          analysis: params.analysis
+          analysis: params.analysis,
+          styleFamilyHint
         }
       }
     });

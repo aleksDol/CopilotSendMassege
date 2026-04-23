@@ -33,6 +33,7 @@ export type OutreachLeadAnalysis = {
   detectedRole: string;
   detectedNeedOrPain: string;
   relevantOfferAngle: string;
+  keyTopic: string | null;
   confidence: OutreachConfidence;
 };
 
@@ -90,6 +91,7 @@ No markdown. No explanations.`;
     `  "detectedRole": string,`,
     `  "detectedNeedOrPain": string,`,
     `  "relevantOfferAngle": string,`,
+    `  "keyTopic": string | null,`,
     `  "confidence": "low" | "medium" | "high"`,
     `}`,
     "",
@@ -99,6 +101,9 @@ No markdown. No explanations.`;
     "- Use 'business_owner_with_problem' when lead describes a business pain (no leads, manual work, no site, etc.).",
     "- Use 'unclear' if you can't tell.",
     "- relevantOfferAngle must be grounded in AI Brain context (what we can realistically offer).",
+    "- keyTopic: extract ONE primary obvious topic from the lead message (1-2 words max). Examples: \"таргет\", \"воронки\", \"сайт\", \"дизайн\", \"клиенты\".",
+    "- If no clear topic, set keyTopic to null.",
+    "- Do NOT extract multiple topics. Do NOT overthink.",
     "- IMPORTANT: first touch message should NOT pitch the product. Prefer a natural conversation opener + one simple question.",
     "- relevantOfferAngle is for internal strategy; do not assume it must be mentioned explicitly in the first message."
   ].join("\n");
@@ -112,6 +117,7 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
   analysis: OutreachLeadAnalysis;
   knowledgeItems: Array<Pick<KnowledgeItem, "kind" | "title" | "content">>;
   replyPolicy: Pick<ReplyPolicy, "toneRules" | "pricingRules" | "forbiddenPromises" | "forbiddenTopics"> | null;
+  styleFamilyHint?: "A" | "B" | "C" | "D";
 }) => {
   const leadMessage = clip(params.leadMessage ?? "", 1400);
   const leadName = (params.leadName ?? "").trim();
@@ -172,6 +178,14 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
     "Результат анализа (используй это, чтобы выбрать правильный оффер/угол):",
     JSON.stringify(params.analysis),
     "",
+    "Вариативность структуры (выбери одну семью и придерживайся её):",
+    `styleFamilyHint: ${params.styleFamilyHint ?? "none"}`,
+    "- A: прямой вопрос по контексту (коротко, сразу к делу).",
+    "- B: вопрос про процесс/узкое место (где больше всего времени/сложности).",
+    "- C: вопрос про канал/источник (откуда сейчас приходят клиенты/заказы/обращения).",
+    "- D: ситуационный заход (руками vs уже есть какой-то процесс), без слова \"автоматизировал\" если звучит неестественно.",
+    "ВАЖНО: не используй одну и ту же форму каждый раз; меняй структуру между A/B/C/D, но не удлиняй сообщение.",
+    "",
     "Инструкция по leadType (пиши максимально естественно, без продажи):",
     "- buyer_direct: уточни 1 деталь по задаче (срок/объём/формат), без самопрезентации.",
     "- service_provider: зацепись за контекст и задай простой вопрос про текущий поток клиентов/как они сейчас это делают.",
@@ -181,7 +195,13 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
     "Требования к выходу:",
     "- 1–2 коротких предложения",
     "- 0–1 вопрос (лучше 1)",
-    "- без комплиментов и без упоминания продукта/инструмента"
+    "- без комплиментов и без упоминания продукта/инструмента",
+    "",
+    "Лёгкая персонализация по теме:",
+    "- Если analysis.keyTopic НЕ null — аккуратно упомяни эту тему в тексте или вопросе (1 раз).",
+    "- Не пиши \"вижу, что ты...\" и не пересказывай сообщение лида.",
+    "- Не цитируй lead message verbatim — только мягкая отсылка к теме.",
+    "- Если keyTopic нет — пиши нейтрально, как раньше."
   ].join("\n");
 
   return { systemPrompt, userPrompt };
