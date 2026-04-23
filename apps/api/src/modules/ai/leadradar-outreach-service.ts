@@ -339,7 +339,11 @@ export class LeadRadarOutreachService {
       const sourceIsDirect = isDirectSource({ sourceType: params.sourceType, chatTitle: params.chatTitle });
       const sourceIsChat = isChannelOrGroupSource({ sourceType: params.sourceType, chatTitle: params.chatTitle });
       const reasonOk = sourceIsDirect ? hasDirectReason(text) : sourceIsChat ? hasChatReason(text) : true;
-      const structureOk = !requiresStructure ? true : reasonOk && hasDetectedActivity(text, params.analysis.detectedActivity);
+      const detectedActivity = (params.analysis.detectedActivity ?? "").trim();
+      const analysisIsLowConfidence = params.analysis.confidence === "low";
+      const requiresActivity = !analysisIsLowConfidence && detectedActivity.length > 0 && detectedActivity !== "—";
+      const activityOk = !requiresActivity ? true : hasDetectedActivity(text, detectedActivity);
+      const structureOk = !requiresStructure ? true : reasonOk && activityOk;
 
       const shouldRegenerate = isSalesyOutreach(text) || !structureOk;
 
@@ -363,7 +367,9 @@ export class LeadRadarOutreachService {
                   : sourceIsChat
                     ? "If productFit=true, you MUST include a short chat-based reason (mention 'в чате' or 'сообщение') "
                     : "If productFit=true, keep the reason neutral (no chat claims). ") +
-                "Include detectedActivity (use its key words). " +
+                (analysisIsLowConfidence || !requiresActivity
+                  ? "Do NOT guess what the person does. Use a short value hook from AI Brain + one qualifying question. "
+                  : "Include detectedActivity (use its key words). ") +
                 "Do NOT mention product/tool/solution. No 'могу помочь'. No AI mention. Keep 1–2 short sentences and exactly ONE question."
             }
           ],
@@ -380,7 +386,8 @@ export class LeadRadarOutreachService {
         }
 
         const reasonOkAfter = sourceIsDirect ? hasDirectReason(text) : sourceIsChat ? hasChatReason(text) : true;
-        const structureOkAfter = !requiresStructure ? true : reasonOkAfter && hasDetectedActivity(text, params.analysis.detectedActivity);
+        const activityOkAfter = !requiresActivity ? true : hasDetectedActivity(text, detectedActivity);
+        const structureOkAfter = !requiresStructure ? true : reasonOkAfter && activityOkAfter;
         if (!structureOkAfter) {
           warningStructure = true;
           this.app.log.warn(
