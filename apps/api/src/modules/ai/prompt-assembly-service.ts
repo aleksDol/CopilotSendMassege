@@ -170,7 +170,16 @@ const buildGoal = (context: AIContext): string => {
 const buildStrategy = (params: { context: AIContext; mode: ReplySuggestionMode }): string => {
   const policy = params.context.replyPolicy;
   const blocks = [`- Mode: ${getModeInstruction(params.mode)}`];
-  if (policy?.toneRules) blocks.push(`- Tone: ${clip(compactJson(policy.toneRules), 120)}`);
+  const toneRulesSanitized =
+    policy?.toneRules && typeof policy.toneRules === "object" && !Array.isArray(policy.toneRules)
+      ? (() => {
+          const copy = { ...(policy.toneRules as Record<string, unknown>) };
+          // Keep chat prompts stable: remove LeadRadar-only outreach playbook.
+          delete (copy as any).aiBrainColdFirstTouch;
+          return copy;
+        })()
+      : policy?.toneRules;
+  if (toneRulesSanitized) blocks.push(`- Tone: ${clip(compactJson(toneRulesSanitized), 120)}`);
   if (policy?.pricingRules) blocks.push(`- Pricing: ${clip(compactJson(policy.pricingRules), 110)}`);
   if (policy?.discountRules) blocks.push(`- Discounts: ${clip(compactJson(policy.discountRules), 110)}`);
   if (policy?.forbiddenPromises) blocks.push("- Respect forbidden promises.");
@@ -279,8 +288,17 @@ Critical behavior:
     ].join("\n");
 
     const policy = params.context.replyPolicy;
+    const toneRulesSanitized =
+      policy?.toneRules && typeof policy.toneRules === "object" && !Array.isArray(policy.toneRules)
+        ? (() => {
+            const copy = { ...(policy.toneRules as Record<string, unknown>) };
+            // Keep chat prompts stable: remove LeadRadar-only outreach playbook.
+            delete (copy as any).aiBrainColdFirstTouch;
+            return copy;
+          })()
+        : policy?.toneRules;
     const policyBlock = [
-      `toneRules: ${JSON.stringify(policy?.toneRules ?? null)}`,
+      `toneRules: ${JSON.stringify(toneRulesSanitized ?? null)}`,
       `pricingRules: ${JSON.stringify(policy?.pricingRules ?? null)}`,
       `discountRules: ${JSON.stringify(policy?.discountRules ?? null)}`,
       `forbiddenPromises: ${JSON.stringify(policy?.forbiddenPromises ?? null)}`,

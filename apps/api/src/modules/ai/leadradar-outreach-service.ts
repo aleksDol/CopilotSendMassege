@@ -198,6 +198,8 @@ const hasDetectedActivity = (text: string, detectedActivity: string): boolean =>
 export class LeadRadarOutreachService {
   constructor(private readonly app: FastifyInstance) {}
 
+  private readonly COLD_FIRST_TOUCH_POLICY_KEY = "aiBrainColdFirstTouch";
+
   private getProvider(): OpenAIProvider {
     if (!this.app.config.env.OPENAI_API_KEY) {
       throw new AppError(503, "AI_UNAVAILABLE", "ai_unavailable");
@@ -254,19 +256,25 @@ export class LeadRadarOutreachService {
     return { knowledgeItems, replyPolicy };
   }
 
-  private async loadColdFirstTouchPlaybook(params: {
-    userId: string;
-    telegramAccountId: string;
-  }): Promise<string | null> {
+  private async loadColdFirstTouchPlaybook(params: { telegramAccountId: string }): Promise<string | null> {
     // Use raw SQL to avoid tight coupling to generated Prisma typings during deploys.
     const rows = await this.app.prisma.$queryRaw<Array<{ cold_first_touch_playbook: string | null }>>`
       SELECT cold_first_touch_playbook
       FROM lead_settings
-      WHERE user_id = ${params.userId}::uuid
-        AND telegram_account_id = ${params.telegramAccountId}::uuid
+      WHERE telegram_account_id = ${params.telegramAccountId}::uuid
       LIMIT 1
     `;
     return rows?.[0]?.cold_first_touch_playbook ?? null;
+  }
+
+  private extractPlaybookFromReplyPolicy(replyPolicy: Pick<ReplyPolicy, "toneRules"> | null): string | null {
+    const toneRules = replyPolicy?.toneRules;
+    if (toneRules && typeof toneRules === "object" && !Array.isArray(toneRules)) {
+      const record = toneRules as Record<string, unknown>;
+      const value = record[this.COLD_FIRST_TOUCH_POLICY_KEY];
+      if (typeof value === "string" && value.trim().length > 0) return value.trim();
+    }
+    return null;
   }
 
   private async completeText(messages: AIMessage[], opts: { temperature: number; maxTokens: number }) {
@@ -388,10 +396,10 @@ export class LeadRadarOutreachService {
   }): Promise<{ text: string }> {
     const startedAt = Date.now();
     const { knowledgeItems, replyPolicy } = await this.loadBrainContext(params.companyId);
+    // Prefer company-scoped playbook from ReplyPolicy (survives Telegram account changes).
     const coldFirstTouchPlaybook =
-      params.telegramAccountId && params.userId
-        ? await this.loadColdFirstTouchPlaybook({ userId: params.userId, telegramAccountId: params.telegramAccountId })
-        : null;
+      this.extractPlaybookFromReplyPolicy(replyPolicy) ??
+      (params.telegramAccountId ? await this.loadColdFirstTouchPlaybook({ telegramAccountId: params.telegramAccountId }) : null);
     const { systemPrompt, userPrompt } = buildLeadRadarOutreachMessagePrompt({
       leadMessage: params.leadMessage,
       leadName: params.leadName,

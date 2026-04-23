@@ -115,6 +115,15 @@ const readAiBrainValues = (policy: ReplyPolicy | undefined): { goal: string; str
   return { goal: "", strategy: "" };
 };
 
+const readAiBrainColdFirstTouch = (policy: ReplyPolicy | undefined): string => {
+  const toneRules = policy?.toneRules;
+  if (toneRules && typeof toneRules === "object" && !Array.isArray(toneRules)) {
+    const record = toneRules as Record<string, unknown>;
+    return typeof record[AI_BRAIN_COLD_FIRST_TOUCH_KEY] === "string" ? String(record[AI_BRAIN_COLD_FIRST_TOUCH_KEY]) : "";
+  }
+  return "";
+};
+
 const kindByGroup = (groupId: KnowledgeGroup["id"]): string => {
   switch (groupId) {
     case "faq":
@@ -179,8 +188,20 @@ export default function AIBrainSettingsPage() {
   }, [policy.data?.policy]);
 
   useEffect(() => {
-    setColdFirstTouch(leadradarSettings.data?.coldFirstTouchPlaybook ?? "");
-  }, [leadradarSettings.data?.coldFirstTouchPlaybook]);
+    // Prefer company-scoped storage (ReplyPolicy.toneRules) so it doesn't depend on Telegram account id.
+    const fromPolicy = readAiBrainColdFirstTouch(policy.data?.policy);
+    setColdFirstTouch(fromPolicy || leadradarSettings.data?.coldFirstTouchPlaybook || "");
+  }, [policy.data?.policy, leadradarSettings.data?.coldFirstTouchPlaybook]);
+
+  useEffect(() => {
+    // Persisted "saved" state: after reload we should still show "Готово" if values exist.
+    const goalVal = readAiBrainValues(policy.data?.policy).goal.trim();
+    const strategyVal = readAiBrainValues(policy.data?.policy).strategy.trim();
+    const coldVal = readAiBrainColdFirstTouch(policy.data?.policy).trim() || (leadradarSettings.data?.coldFirstTouchPlaybook ?? "").trim();
+    const productVal = (primaryProductItem?.content ?? "").trim();
+    const hasAny = Boolean(productVal || goalVal || strategyVal || coldVal);
+    setSaved(hasAny);
+  }, [policy.data?.policy, leadradarSettings.data?.coldFirstTouchPlaybook, primaryProductItem?.content]);
 
   if (knowledge.isLoading || policy.isLoading || leadradarSettings.isLoading) {
     return <LoadingState label="Загрузка настроек..." />;
@@ -199,6 +220,7 @@ export default function AIBrainSettingsPage() {
       const nextToneRules = toneRulesToObject(sourcePolicy?.toneRules);
       nextToneRules[AI_BRAIN_GOAL_KEY] = goal.trim();
       nextToneRules[AI_BRAIN_STRATEGY_KEY] = strategy.trim();
+      nextToneRules[AI_BRAIN_COLD_FIRST_TOUCH_KEY] = coldFirstTouch.trim();
 
       if (product.trim().length > 0) {
         if (primaryProductItem) {
@@ -227,6 +249,7 @@ export default function AIBrainSettingsPage() {
         toneRules: nextToneRules
       });
 
+      // Backward-compatible fallback storage (older deployments/read paths).
       await leadradarActions.updateSettings.mutateAsync({
         coldFirstTouchPlaybook: coldFirstTouch.trim().length ? coldFirstTouch.trim() : null
       });
@@ -287,7 +310,10 @@ export default function AIBrainSettingsPage() {
                 <Textarea
                   rows={6}
                   value={product}
-                  onChange={(event) => setProduct(event.target.value)}
+                  onChange={(event) => {
+                    setSaved(false);
+                    setProduct(event.target.value);
+                  }}
                   placeholder="Например: мы помогаем онлайн-школам автоматически отвечать на заявки и доводить до оплаты"
                 />
               </div>
@@ -298,7 +324,10 @@ export default function AIBrainSettingsPage() {
                 <label className="text-sm font-medium">К чему вести клиента?</label>
                 <Input
                   value={goal}
-                  onChange={(event) => setGoal(event.target.value)}
+                  onChange={(event) => {
+                    setSaved(false);
+                    setGoal(event.target.value);
+                  }}
                   placeholder="например: оставить заявку, записаться на звонок"
                 />
               </div>
@@ -314,7 +343,10 @@ export default function AIBrainSettingsPage() {
                   <Textarea
                     rows={6}
                     value={strategy}
-                    onChange={(event) => setStrategy(event.target.value)}
+                    onChange={(event) => {
+                      setSaved(false);
+                      setStrategy(event.target.value);
+                    }}
                     placeholder={"- не давать цену сразу\n- задавать уточняющие вопросы\n- объяснять простыми словами\n- вести к следующему шагу"}
                   />
                 </div>
@@ -350,7 +382,10 @@ export default function AIBrainSettingsPage() {
                 <Textarea
                   rows={7}
                   value={coldFirstTouch}
-                  onChange={(event) => setColdFirstTouch(event.target.value)}
+                  onChange={(event) => {
+                    setSaved(false);
+                    setColdFirstTouch(event.target.value);
+                  }}
                   placeholder={
                     "Пример:\n- В первом сообщении коротко скажи, чем мы занимаемся (1 фраза) и в чем главный плюс (1 фраза).\n- Затем задай 1 квалифицирующий вопрос: как сейчас решают задачу / откуда приходят клиенты / какой канал важнее (с 2 вариантами ответа).\n- Без предположений про человека и без длинных объяснений.\n"
                   }
