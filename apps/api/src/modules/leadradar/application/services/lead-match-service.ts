@@ -1,6 +1,7 @@
 import type { LeadKeywordRepository } from "../../infrastructure/repositories/lead-keyword-repository.js";
 import type { LeadRadarMessageInput } from "../../types/ingestion.js";
 import { normalizeLeadRadarText } from "../../lib/text-normalization.js";
+import { LeadKeywordTarget } from "../../domain/enums/lead-keyword-target.js";
 
 export type LeadRadarMatchOutput =
   | {
@@ -61,7 +62,9 @@ export class LeadMatchService {
       matched_against: "normalized_text" | "raw_text";
     }> = [];
 
-    const positiveActive = positive.filter((k) => k.is_active);
+    const positiveActive = positive.filter(
+      (k) => k.is_active && (!k.target || k.target === LeadKeywordTarget.MESSAGE)
+    );
     for (const kw of positiveActive) {
       const rule = (kw.keyword ?? "").trim();
       if (!rule) continue;
@@ -109,4 +112,3 @@ export class LeadMatchService {
     return { matched: true, matchedKeywords, categories: [...categories] };
   }
 }
-

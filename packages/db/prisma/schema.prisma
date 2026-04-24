@@ -441,6 +441,7 @@ model TelegramAccount {
   leadRadarNegativeKeywords LeadRadarNegativeKeyword[]
   leadRadarLeads            LeadRadarLead[]
   leadRadarSettings         LeadRadarSettings[]
+  leadRadarAuthorProfileCaches LeadRadarAuthorProfileCache[]
 
   @@index([telegramUserId])
   @@index([loginStatus])
@@ -821,6 +822,7 @@ model LeadRadarKeyword {
   userId            String             @db.Uuid @map("user_id")
   telegramAccountId String             @db.Uuid @map("telegram_account_id")
   keyword           String             @map("keyword")
+  target            String             @default("message") @map("target")
   matchType         LeadRadarMatchType @map("match_type")
   category          LeadRadarCategory  @map("category")
   priority          Int                @default(0) @map("priority")
@@ -834,6 +836,31 @@ model LeadRadarKeyword {
   @@index([telegramAccountId], map: "lead_keywords_telegram_account_id_idx")
   @@index([isActive], map: "lead_keywords_is_active_idx")
   @@map("lead_keywords")
+}
+
+model LeadRadarAuthorProfileCache {
+  id                       String   @id @default(cuid()) @map("id")
+  telegramAccountId        String   @db.Uuid @map("telegram_account_id")
+  telegramUserId           String   @map("telegram_user_id")
+  username                 String?  @map("username")
+  displayName              String?  @map("display_name")
+  bio                      String?  @map("bio")
+  linkedChannelId          String?  @map("linked_channel_id")
+  linkedChannelUsername    String?  @map("linked_channel_username")
+  linkedChannelTitle       String?  @map("linked_channel_title")
+  linkedChannelDescription String?  @map("linked_channel_description")
+  rawProfileJson           Json?    @map("raw_profile_json")
+  fetchedAt                DateTime @map("fetched_at")
+  expiresAt                DateTime @map("expires_at")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  telegramAccount TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Restrict)
+
+  @@unique([telegramAccountId, telegramUserId], map: "lead_author_profile_cache_tg_acc_user_key")
+  @@index([telegramAccountId, expiresAt], map: "lead_author_profile_cache_tg_acc_expires_idx")
+  @@index([username], map: "lead_author_profile_cache_username_idx")
+  @@map("lead_author_profile_cache")
 }
 
 model LeadRadarNegativeKeyword {
@@ -929,6 +956,7 @@ model LeadRadarSettings {
   userId              String   @db.Uuid @map("user_id")
   telegramAccountId   String   @db.Uuid @map("telegram_account_id")
   isEnabled           Boolean  @default(true) @map("is_enabled")
+  authorProfileMatchingEnabled Boolean @default(false) @map("author_profile_matching_enabled")
   minScoreThreshold   Int      @default(0) @map("min_score_threshold")
   storeContextEnabled Boolean  @default(false) @map("store_context_enabled")
   contextBeforeCount  Int      @default(0) @map("context_before_count")

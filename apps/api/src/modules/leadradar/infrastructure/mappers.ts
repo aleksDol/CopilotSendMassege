@@ -1,4 +1,5 @@
 import type { Lead } from "../domain/entities/lead.js";
+import type { AuthorProfileCache } from "../domain/entities/author-profile-cache.js";
 import type { LeadKeyword } from "../domain/entities/lead-keyword.js";
 import type { LeadNegativeKeyword } from "../domain/entities/lead-negative-keyword.js";
 import type { LeadSettings } from "../domain/entities/lead-settings.js";
@@ -6,11 +7,14 @@ import type { LeadSource } from "../domain/entities/lead-source.js";
 import { LeadStatus as DomainLeadStatus } from "../domain/enums/lead-status.js";
 import { LeadMatchType as DomainMatchType } from "../domain/enums/lead-match-type.js";
 import { LeadCategory as DomainCategory } from "../domain/enums/lead-category.js";
+import { LeadKeywordTarget as DomainKeywordTarget } from "../domain/enums/lead-keyword-target.js";
 import type { LeadRadarCategory, LeadRadarLeadStatus, LeadRadarMatchType } from "@prisma/client";
 
 const toDomainLeadStatus = (status: LeadRadarLeadStatus): DomainLeadStatus => status as unknown as DomainLeadStatus;
 const toDomainMatchType = (match: LeadRadarMatchType): DomainMatchType => match as unknown as DomainMatchType;
 const toDomainCategory = (cat: LeadRadarCategory): DomainCategory => cat as unknown as DomainCategory;
+const toDomainKeywordTarget = (target: string | null | undefined): DomainKeywordTarget =>
+  target === DomainKeywordTarget.AUTHOR_PROFILE ? DomainKeywordTarget.AUTHOR_PROFILE : DomainKeywordTarget.MESSAGE;
 
 export const leadRadarMappers = {
   lead: (row: {
@@ -92,6 +96,7 @@ export const leadRadarMappers = {
     userId: string;
     telegramAccountId: string;
     keyword: string;
+    target?: string | null;
     matchType: LeadRadarMatchType;
     category: LeadRadarCategory;
     priority: number;
@@ -103,6 +108,7 @@ export const leadRadarMappers = {
     user_id: row.userId,
     telegram_account_id: row.telegramAccountId,
     keyword: row.keyword,
+    target: toDomainKeywordTarget(row.target),
     match_type: toDomainMatchType(row.matchType),
     category: toDomainCategory(row.category),
     priority: row.priority,
@@ -134,6 +140,7 @@ export const leadRadarMappers = {
     userId: string;
     telegramAccountId: string;
     isEnabled: boolean;
+    authorProfileMatchingEnabled?: boolean;
     minScoreThreshold: number;
     storeContextEnabled: boolean;
     contextBeforeCount: number;
@@ -147,6 +154,7 @@ export const leadRadarMappers = {
     user_id: row.userId,
     telegram_account_id: row.telegramAccountId,
     is_enabled: row.isEnabled,
+    author_profile_matching_enabled: row.authorProfileMatchingEnabled ?? false,
     min_score_threshold: row.minScoreThreshold,
     store_context_enabled: row.storeContextEnabled,
     context_before_count: row.contextBeforeCount,
@@ -155,6 +163,39 @@ export const leadRadarMappers = {
     cold_first_touch_playbook: row.coldFirstTouchPlaybook ?? null,
     created_at: row.createdAt,
     updated_at: row.updatedAt
+  }),
+
+  authorProfileCache: (row: {
+    id: string;
+    telegramAccountId: string;
+    telegramUserId: string;
+    username: string | null;
+    displayName: string | null;
+    bio: string | null;
+    linkedChannelId: string | null;
+    linkedChannelUsername: string | null;
+    linkedChannelTitle: string | null;
+    linkedChannelDescription: string | null;
+    rawProfileJson: unknown | null;
+    fetchedAt: Date;
+    expiresAt: Date;
+    createdAt: Date;
+    updatedAt: Date;
+  }): AuthorProfileCache => ({
+    id: row.id,
+    telegram_account_id: row.telegramAccountId,
+    telegram_user_id: row.telegramUserId,
+    username: row.username,
+    display_name: row.displayName,
+    bio: row.bio,
+    linked_channel_id: row.linkedChannelId,
+    linked_channel_username: row.linkedChannelUsername,
+    linked_channel_title: row.linkedChannelTitle,
+    linked_channel_description: row.linkedChannelDescription,
+    raw_profile_json: row.rawProfileJson ?? null,
+    fetched_at: row.fetchedAt,
+    expires_at: row.expiresAt,
+    created_at: row.createdAt,
+    updated_at: row.updatedAt
   })
 };
-

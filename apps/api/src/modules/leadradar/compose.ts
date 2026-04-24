@@ -1,12 +1,26 @@
 import type { PrismaClient } from "@prisma/client";
-import { PrismaLeadKeywordRepository, PrismaLeadRepository, PrismaLeadSettingsRepository, PrismaLeadSourceRepository } from "./infrastructure/repositories/prisma/index.js";
+import {
+  PrismaLeadAuthorProfileCacheRepository,
+  PrismaLeadKeywordRepository,
+  PrismaLeadRepository,
+  PrismaLeadSettingsRepository,
+  PrismaLeadSourceRepository
+} from "./infrastructure/repositories/prisma/index.js";
 import { LeadDeduplicationService } from "./application/services/lead-deduplication-service.js";
 import { LeadMatchService } from "./application/services/lead-match-service.js";
 import { LeadRadarIngestionService } from "./application/services/lead-radar-ingestion-service.js";
 import { LeadScoringService } from "./application/services/lead-scoring-service.js";
+import { AuthorProfileLeadDedupeService } from "./application/services/author-profile-lead-dedupe-service.js";
+import { LeadRadarAuthorProfileMatchService } from "./application/services/lead-radar-author-profile-match-service.js";
+import {
+  LeadRadarAuthorProfileCheckJobService,
+  type LeadRadarAuthorProfileCheckJobInput,
+  type LeadRadarFetchedAuthorProfile
+} from "./application/services/lead-radar-author-profile-check-job-service.js";
 
 export type LeadRadarLogger = {
   info: (msg: string) => void;
+  warn?: (msg: string, meta?: Record<string, unknown>) => void;
 };
 
 export function createLeadRadarIngestionService(params: {
@@ -41,3 +55,33 @@ export function createLeadRadarIngestionService(params: {
   });
 }
 
+export function createLeadRadarAuthorProfileCheckService(params: {
+  prisma: PrismaClient;
+  logger?: LeadRadarLogger;
+  profileFetcher?: {
+    fetchProfile: (input: {
+      telegramAccountId: string;
+      telegramUserId?: string | null;
+      username?: string | null;
+    }) => Promise<LeadRadarFetchedAuthorProfile | null>;
+  };
+}) {
+  const leadRepo = new PrismaLeadRepository(params.prisma);
+  const keywordRepo = new PrismaLeadKeywordRepository(params.prisma);
+  const profileCacheRepo = new PrismaLeadAuthorProfileCacheRepository(params.prisma);
+
+  const dedupeService = new AuthorProfileLeadDedupeService({ leadRepo });
+  const matcher = new LeadRadarAuthorProfileMatchService({ keywordRepo });
+  const service = new LeadRadarAuthorProfileCheckJobService({
+    dedupeService,
+    cacheRepo: profileCacheRepo,
+    matcher,
+    leadRepo,
+    profileFetcher: params.profileFetcher,
+    logger: params.logger
+  });
+
+  return {
+    process: (input: LeadRadarAuthorProfileCheckJobInput) => service.process(input)
+  };
+}

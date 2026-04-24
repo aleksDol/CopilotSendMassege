@@ -302,10 +302,12 @@ export type LeadRadarListSourcesResponse = {
 
 export type LeadRadarMatchType = "contains" | "exact" | "regex";
 export type LeadRadarCategory = "bot" | "website" | "ai" | "mvp" | "automation" | "general";
+export type LeadRadarKeywordTarget = "message" | "author_profile";
 
 export type LeadRadarKeywordItem = {
   id: string;
   keyword: string;
+  target: LeadRadarKeywordTarget;
   match_type: LeadRadarMatchType;
   category: LeadRadarCategory;
   priority: number;
@@ -334,6 +336,7 @@ export type LeadRadarListNegativeKeywordsResponse = {
 
 export type LeadRadarSettingsResponse = {
   isEnabled: boolean;
+  authorProfileMatchingEnabled: boolean;
   minScoreThreshold: number;
   storeContextEnabled: boolean;
   contextBeforeCount: number;

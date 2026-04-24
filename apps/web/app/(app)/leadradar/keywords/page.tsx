@@ -7,9 +7,13 @@ import { EmptyState } from "@/components/common/empty-state";
 import { LoadingState } from "@/components/common/loading-state";
 import { LeadRadarNav } from "@/components/leadradar/leadradar-nav";
 import { useLeadRadarConfigActions, useLeadRadarKeywords } from "@/lib/hooks/use-app-data";
-import type { LeadRadarKeywordItem, LeadRadarMatchType } from "@/lib/api/types";
+import type { LeadRadarKeywordItem, LeadRadarKeywordTarget, LeadRadarMatchType } from "@/lib/api/types";
 
 const MATCH_TYPES: LeadRadarMatchType[] = ["contains", "exact", "regex"];
+const TARGETS: Array<{ value: LeadRadarKeywordTarget; label: string }> = [
+  { value: "message", label: "Сообщения" },
+  { value: "author_profile", label: "Профили авторов" }
+];
 
 /** Stored for API/DB compatibility; does not affect matching or scoring — only keyword text + match type matter. */
 const DEFAULT_KEYWORD_CATEGORY = "general" as const;
@@ -32,6 +36,7 @@ export default function LeadRadarKeywordsPage() {
 
   const [keyword, setKeyword] = useState("");
   const [matchType, setMatchType] = useState<LeadRadarMatchType>("contains");
+  const [target, setTarget] = useState<LeadRadarKeywordTarget>("message");
   const [priority, setPriority] = useState(0);
 
   const items = useMemo(() => {
@@ -53,7 +58,7 @@ export default function LeadRadarKeywordsPage() {
         <CardHeader>
           <CardTitle>Добавить keyword</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-2 md:grid-cols-4">
+        <CardContent className="grid gap-2 md:grid-cols-5">
           <input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
@@ -71,6 +76,17 @@ export default function LeadRadarKeywordsPage() {
               </option>
             ))}
           </select>
+          <select
+            value={target}
+            onChange={(e) => setTarget(e.target.value as LeadRadarKeywordTarget)}
+            className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+          >
+            {TARGETS.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
           <input
             value={String(priority)}
             onChange={(e) => setPriority(Number(e.target.value || 0))}
@@ -85,11 +101,13 @@ export default function LeadRadarKeywordsPage() {
               onClick={async () => {
                 await actions.addKeyword.mutateAsync({
                   keyword: keyword.trim(),
+                  target,
                   matchType,
                   category: DEFAULT_KEYWORD_CATEGORY,
                   priority
                 });
                 setKeyword("");
+                setTarget("message");
                 setPriority(0);
               }}
             >
@@ -130,6 +148,7 @@ export default function LeadRadarKeywordsPage() {
                   <tr className="border-b border-border text-left text-muted-foreground">
                     <th className="py-2 pr-3">Keyword</th>
                     <th className="py-2 pr-3">Match</th>
+                    <th className="py-2 pr-3">Scope</th>
                     <th className="py-2 pr-3">Priority</th>
                     <th className="py-2 pr-3">Active</th>
                     <th className="py-2 pr-3">Updated</th>
@@ -141,6 +160,9 @@ export default function LeadRadarKeywordsPage() {
                     <tr key={k.id} className="border-b border-border/60 align-top">
                       <td className="py-3 pr-3 font-medium">{k.keyword}</td>
                       <td className="py-3 pr-3">{k.match_type}</td>
+                      <td className="py-3 pr-3">
+                        {(k.target ?? "message") === "author_profile" ? "Профили" : "Сообщения"}
+                      </td>
                       <td className="py-3 pr-3">{k.priority}</td>
                       <td className="py-3 pr-3">{k.is_active ? "yes" : "no"}</td>
                       <td className="py-3 pr-3 text-muted-foreground">{formatDate(k.updated_at)}</td>
@@ -184,4 +206,3 @@ export default function LeadRadarKeywordsPage() {
     </div>
   );
 }
-

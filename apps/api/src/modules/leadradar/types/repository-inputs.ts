@@ -1,6 +1,7 @@
 import type { LeadStatus } from "../domain/enums/lead-status.js";
 import type { LeadCategory } from "../domain/enums/lead-category.js";
 import type { LeadMatchType } from "../domain/enums/lead-match-type.js";
+import type { LeadKeywordTarget } from "../domain/enums/lead-keyword-target.js";
 
 export type PaginationInput = {
   page?: number;
@@ -148,10 +149,17 @@ export type FindSourceByTelegramChatIdInput = {
   telegram_chat_id: string;
 };
 
+export type FindExistingAuthorProfileLeadInput = {
+  telegram_account_id: string;
+  telegram_user_id?: string | null;
+  username_normalized?: string | null;
+};
+
 export type CreateLeadKeywordInput = {
   user_id: string;
   telegram_account_id: string;
   keyword: string;
+  target?: LeadKeywordTarget;
   match_type: LeadMatchType;
   category: LeadCategory;
   priority?: number;
@@ -164,6 +172,7 @@ export type UpdateLeadKeywordInput = {
   telegram_account_id: string;
   patch: Partial<{
     keyword: string;
+    target: LeadKeywordTarget;
     match_type: LeadMatchType;
     category: LeadCategory;
     priority: number;
@@ -193,6 +202,7 @@ export type UpdateLeadSettingsInput = {
   telegram_account_id: string;
   patch: Partial<{
     is_enabled: boolean;
+    author_profile_matching_enabled: boolean;
     min_score_threshold: number;
     store_context_enabled: boolean;
     context_before_count: number;
@@ -202,3 +212,26 @@ export type UpdateLeadSettingsInput = {
   }>;
 };
 
+export type FindAuthorProfileCacheByTelegramUserInput = {
+  telegram_account_id: string;
+  telegram_user_id: string;
+};
+
+export type FindFreshAuthorProfileCacheInput = FindAuthorProfileCacheByTelegramUserInput & {
+  now?: Date;
+};
+
+export type UpsertAuthorProfileCacheInput = {
+  telegram_account_id: string;
+  telegram_user_id: string;
+  username?: string | null;
+  display_name?: string | null;
+  bio?: string | null;
+  linked_channel_id?: string | null;
+  linked_channel_username?: string | null;
+  linked_channel_title?: string | null;
+  linked_channel_description?: string | null;
+  raw_profile_json?: unknown | null;
+  fetched_at: Date;
+  expires_at: Date;
+};

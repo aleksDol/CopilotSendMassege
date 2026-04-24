@@ -5,6 +5,7 @@ import type { LeadRepository } from "../lead-repository.js";
 import type {
   CreateLeadInput,
   ExistsByMessageInput,
+  FindExistingAuthorProfileLeadInput,
   FindLeadByIdInput,
   FindLeadFiltersInput,
   FindRecentLeadMultiChatInput,
@@ -75,6 +76,12 @@ const buildWhere = (input: FindLeadFiltersInput): Prisma.LeadRadarLeadWhereInput
   }
 
   return where;
+};
+
+const normalizeUsername = (raw: string | null | undefined): string | null => {
+  const t = raw?.trim();
+  if (!t) return null;
+  return t.replace(/^@+/u, "").toLowerCase();
 };
 
 export class PrismaLeadRepository implements LeadRepository {
@@ -418,6 +425,34 @@ export class PrismaLeadRepository implements LeadRepository {
     return null;
   }
 
+  async findExistingAuthorProfileLead(input: FindExistingAuthorProfileLeadInput): Promise<Lead | null> {
+    const senderId = input.telegram_user_id?.trim() || null;
+    if (senderId) {
+      const row = await this.prisma.leadRadarLead.findFirst({
+        where: {
+          telegramAccountId: input.telegram_account_id,
+          telegramUserId: senderId,
+          sourceType: "author_profile"
+        },
+        orderBy: { createdAt: "desc" }
+      });
+      return row ? leadRadarMappers.lead(row) : null;
+    }
+
+    const username = normalizeUsername(input.username_normalized);
+    if (!username) return null;
+
+    const row = await this.prisma.leadRadarLead.findFirst({
+      where: {
+        telegramAccountId: input.telegram_account_id,
+        username: { equals: username, mode: "insensitive" },
+        sourceType: "author_profile"
+      },
+      orderBy: { createdAt: "desc" }
+    });
+    return row ? leadRadarMappers.lead(row) : null;
+  }
+
   async mergeMultiChatLead(input: MergeMultiChatLeadInput): Promise<Lead> {
     return this.prisma.$transaction(async (tx) => {
       const current = await tx.leadRadarLead.findFirst({
@@ -475,4 +510,3 @@ export class PrismaLeadRepository implements LeadRepository {
     });
   }
 }
-

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { LeadMatchType } from "../domain/enums/lead-match-type.js";
 import { LeadCategory } from "../domain/enums/lead-category.js";
 import { LeadStatus } from "../domain/enums/lead-status.js";
+import { LeadKeywordTarget } from "../domain/enums/lead-keyword-target.js";
 
 const booleanFromQuery = z.preprocess((value) => {
   if (typeof value === "boolean") return value;
@@ -42,18 +43,43 @@ export const listKeywordsQuerySchema = z.object({
 
 export const createKeywordBodySchema = z.object({
   keyword: z.string().min(1).max(255),
+  target: z.nativeEnum(LeadKeywordTarget).optional().default(LeadKeywordTarget.MESSAGE),
   matchType: z.nativeEnum(LeadMatchType),
   category: z.nativeEnum(LeadCategory),
   priority: z.coerce.number().int().min(0).optional()
+}).superRefine((obj, ctx) => {
+  if (obj.target === LeadKeywordTarget.AUTHOR_PROFILE) {
+    const trimmed = (obj.keyword ?? "").trim();
+    if (trimmed.length < 3) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Ключевое слово для профиля должно быть не короче 3 символов",
+        path: ["keyword"]
+      });
+    }
+  }
 });
 
 export const updateKeywordBodySchema = z
   .object({
     keyword: z.string().min(1).max(255).optional(),
+    target: z.nativeEnum(LeadKeywordTarget).optional(),
     matchType: z.nativeEnum(LeadMatchType).optional(),
     category: z.nativeEnum(LeadCategory).optional(),
     priority: z.coerce.number().int().min(0).optional(),
     isActive: z.boolean().optional()
+  })
+  .superRefine((obj, ctx) => {
+    if (obj.target === LeadKeywordTarget.AUTHOR_PROFILE && typeof obj.keyword === "string") {
+      const trimmed = obj.keyword.trim();
+      if (trimmed.length < 3) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Ключевое слово для профиля должно быть не короче 3 символов",
+          path: ["keyword"]
+        });
+      }
+    }
   })
   .refine((obj) => Object.keys(obj).length > 0, "Empty patch is not allowed");
 
@@ -71,6 +97,7 @@ export const updateNegativeKeywordBodySchema = z
 export const updateSettingsBodySchema = z
   .object({
     isEnabled: z.boolean().optional(),
+    authorProfileMatchingEnabled: z.boolean().optional(),
     minScoreThreshold: z.coerce.number().int().min(0).optional(),
     storeContextEnabled: z.boolean().optional(),
     contextBeforeCount: z.coerce.number().int().min(0).optional(),
@@ -137,4 +164,3 @@ export const createManualLeadBodySchema = z
       comment: z.string().min(1).max(10_000)
     })
   );
-

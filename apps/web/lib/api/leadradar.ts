@@ -4,6 +4,7 @@ import type {
   LeadRadarLeadItem,
   LeadRadarLeadListResponse,
   LeadRadarLeadStatus,
+  LeadRadarKeywordTarget,
   LeadRadarListKeywordsResponse,
   LeadRadarListNegativeKeywordsResponse,
   LeadRadarListSourcesResponse,
@@ -74,15 +75,28 @@ export const leadradarApi = {
         is_active: typeof params?.is_active === "boolean" ? params.is_active : undefined,
         category: params?.category
       }
-    }),
+    }).then((res) => ({
+      ...res,
+      items: (res.items ?? []).map((item) => ({
+        ...item,
+        target: item.target === "author_profile" ? "author_profile" : "message"
+      }))
+    })),
   addKeyword: (
     token: string,
-    input: { keyword: string; matchType: string; category: string; priority?: number }
+    input: { keyword: string; target?: LeadRadarKeywordTarget; matchType: string; category: string; priority?: number }
   ) => apiClient.post("/leadradar/keywords", input, { token }),
   updateKeyword: (
     token: string,
     id: string,
-    patch: Partial<{ keyword: string; matchType: string; category: string; priority: number; isActive: boolean }>
+    patch: Partial<{
+      keyword: string;
+      target: LeadRadarKeywordTarget;
+      matchType: string;
+      category: string;
+      priority: number;
+      isActive: boolean;
+    }>
   ) => apiClient.patch(`/leadradar/keywords/${id}`, patch, { token }),
   removeKeyword: (token: string, id: string) => apiClient.delete(`/leadradar/keywords/${id}`, { token }),
 
@@ -101,6 +115,7 @@ export const leadradarApi = {
     token: string,
     patch: Partial<{
       isEnabled: boolean;
+      authorProfileMatchingEnabled: boolean;
       minScoreThreshold: number;
       storeContextEnabled: boolean;
       contextBeforeCount: number;
@@ -110,4 +125,3 @@ export const leadradarApi = {
     }>
   ) => apiClient.patch<LeadRadarSettingsResponse>("/leadradar/settings", patch, { token })
 };
-

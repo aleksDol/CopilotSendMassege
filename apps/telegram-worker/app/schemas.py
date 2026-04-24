@@ -57,3 +57,9 @@ class ResolveChatByLinkRequest(BaseModel):
     company_id: str = Field(alias="companyId")
     channel_account_id: str = Field(alias="channelAccountId")
     link: str
+
+
+class FetchUserProfileRequest(BaseModel):
+    telegram_account_id: str = Field(alias="telegramAccountId")
+    telegram_user_id: str | None = Field(default=None, alias="telegramUserId")
+    username: str | None = None

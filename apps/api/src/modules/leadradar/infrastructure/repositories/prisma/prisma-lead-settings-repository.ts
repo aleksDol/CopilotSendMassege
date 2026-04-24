@@ -6,6 +6,7 @@ import { leadRadarMappers } from "../../mappers.js";
 
 const DEFAULTS = {
   is_enabled: false,
+  author_profile_matching_enabled: false,
   min_score_threshold: 2,
   store_context_enabled: true,
   context_before_count: 3,
@@ -36,6 +37,7 @@ export class PrismaLeadSettingsRepository implements LeadSettingsRepository {
         userId: input.user_id,
         telegramAccountId: input.telegram_account_id,
         isEnabled: DEFAULTS.is_enabled,
+        authorProfileMatchingEnabled: DEFAULTS.author_profile_matching_enabled,
         minScoreThreshold: DEFAULTS.min_score_threshold,
         storeContextEnabled: DEFAULTS.store_context_enabled,
         contextBeforeCount: DEFAULTS.context_before_count,
@@ -60,6 +62,9 @@ export class PrismaLeadSettingsRepository implements LeadSettingsRepository {
       where: { telegramAccountId: input.telegram_account_id },
       data: {
         ...(typeof input.patch.is_enabled === "boolean" ? { isEnabled: input.patch.is_enabled } : {}),
+        ...(typeof input.patch.author_profile_matching_enabled === "boolean"
+          ? { authorProfileMatchingEnabled: input.patch.author_profile_matching_enabled }
+          : {}),
         ...(typeof input.patch.min_score_threshold === "number" ? { minScoreThreshold: input.patch.min_score_threshold } : {}),
         ...(typeof input.patch.store_context_enabled === "boolean"
           ? { storeContextEnabled: input.patch.store_context_enabled }
@@ -82,4 +87,3 @@ export class PrismaLeadSettingsRepository implements LeadSettingsRepository {
     return leadRadarMappers.settings(row);
   }
 }
-

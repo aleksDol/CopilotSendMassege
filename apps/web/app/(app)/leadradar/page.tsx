@@ -209,6 +209,10 @@ function isChannelCommentLead(lead: LeadRadarLeadItem): boolean {
   return lead.sourceType === "channel_comments";
 }
 
+function isAuthorProfileLead(lead: LeadRadarLeadItem): boolean {
+  return lead.sourceType === "author_profile";
+}
+
 function displayName(lead: LeadRadarLeadItem) {
   if (lead.displayName?.trim()) return lead.displayName.trim();
   if (lead.username?.trim()) return `@${lead.username.trim()}`;
@@ -441,6 +445,11 @@ export default function LeadRadarInboxPage() {
                   </td>
                   <td className="py-3 pr-3">
                     <div className="max-w-[420px] whitespace-pre-wrap text-foreground/90">{truncate(lead.messageText, 160) || "—"}</div>
+                    {isAuthorProfileLead(lead) ? (
+                      <div className="pt-1 text-xs text-muted-foreground">
+                        <span className="rounded border border-border bg-muted/30 px-1.5 py-0.5">Профиль</span>
+                      </div>
+                    ) : null}
                     {isChannelCommentLead(lead) ? (
                       <div className="pt-1 text-xs text-muted-foreground">
                         <span className="rounded border border-border bg-muted/30 px-1.5 py-0.5">Комментарий канала</span>
@@ -512,4 +521,3 @@ export default function LeadRadarInboxPage() {
     </div>
   );
 }
-

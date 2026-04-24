@@ -10,6 +10,7 @@ from app.auth import verify_internal_token
 from app.config import settings
 from app.crypto import SessionCrypto
 from app.schemas import (
+    FetchUserProfileRequest,
     LogoutRequest,
     ResolveChatByLinkRequest,
     PollLoginQrRequest,
@@ -39,6 +40,7 @@ from app.services.sync_service import (
     send_message,
     resolve_public_group_by_link,
 )
+from app.services.profile_service import fetch_user_profile
 from app.services.live_listener import LiveListenerManager
 from app.services.safety import safety_service
 from app.telegram_client import log_telegram_proxy_on_startup
@@ -351,5 +353,37 @@ async def internal_resolve_chat(payload: ResolveChatByLinkRequest) -> dict:
             raise WorkerError(
                 "RESOLVE_CHAT_FAILED",
                 str(exc) or "Failed to resolve chat",
+                502,
+            ) from exc
+
+
+@app.post("/internal/telegram/fetch-user-profile", dependencies=[Depends(verify_internal_token)])
+async def internal_fetch_user_profile(payload: FetchUserProfileRequest) -> dict:
+    logger.info(
+        "fetch-user-profile requested for telegramAccountId=%s telegramUserId=%s username=%s",
+        payload.telegram_account_id,
+        payload.telegram_user_id,
+        payload.username,
+    )
+    async with concurrency_limiter:
+        try:
+            return await fetch_user_profile(
+                telegram_account_id=payload.telegram_account_id,
+                telegram_user_id=payload.telegram_user_id,
+                username=payload.username,
+                crypto=crypto,
+            )
+        except WorkerError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                "fetch-user-profile failed telegramAccountId=%s telegramUserId=%s username=%s",
+                payload.telegram_account_id,
+                payload.telegram_user_id,
+                payload.username,
+            )
+            raise WorkerError(
+                "TELEGRAM_PROFILE_FETCH_FAILED",
+                str(exc) or "Failed to fetch Telegram user profile",
                 502,
             ) from exc

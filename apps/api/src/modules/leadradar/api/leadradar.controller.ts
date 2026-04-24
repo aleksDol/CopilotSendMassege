@@ -335,6 +335,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       user_id: scope.userId,
       telegram_account_id,
       keyword: body.keyword,
+      target: body.target,
       match_type: body.matchType,
       category: body.category,
       priority: body.priority ?? 0,
@@ -362,6 +363,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       telegram_account_id,
       patch: {
         ...(typeof body.keyword === "string" ? { keyword: body.keyword } : {}),
+        ...(body.target ? { target: body.target } : {}),
         ...(body.matchType ? { match_type: body.matchType } : {}),
         ...(body.category ? { category: body.category } : {}),
         ...(typeof body.priority === "number" ? { priority: body.priority } : {}),
@@ -502,6 +504,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
 
     return {
       isEnabled: settings.is_enabled,
+      authorProfileMatchingEnabled: settings.author_profile_matching_enabled,
       minScoreThreshold: settings.min_score_threshold,
       storeContextEnabled: settings.store_context_enabled,
       contextBeforeCount: settings.context_before_count,
@@ -532,6 +535,9 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       telegram_account_id,
       patch: {
         ...(typeof body.isEnabled === "boolean" ? { is_enabled: body.isEnabled } : {}),
+        ...(typeof body.authorProfileMatchingEnabled === "boolean"
+          ? { author_profile_matching_enabled: body.authorProfileMatchingEnabled }
+          : {}),
         ...(typeof body.minScoreThreshold === "number" ? { min_score_threshold: body.minScoreThreshold } : {}),
         ...(typeof body.storeContextEnabled === "boolean" ? { store_context_enabled: body.storeContextEnabled } : {}),
         ...(typeof body.contextBeforeCount === "number" ? { context_before_count: body.contextBeforeCount } : {}),
@@ -543,6 +549,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
 
     return {
       isEnabled: updated.is_enabled,
+      authorProfileMatchingEnabled: updated.author_profile_matching_enabled,
       minScoreThreshold: updated.min_score_threshold,
       storeContextEnabled: updated.store_context_enabled,
       contextBeforeCount: updated.context_before_count,
@@ -936,4 +943,3 @@ const leadradarController: FastifyPluginAsync = async (app) => {
 };
 
 export default leadradarController;
-

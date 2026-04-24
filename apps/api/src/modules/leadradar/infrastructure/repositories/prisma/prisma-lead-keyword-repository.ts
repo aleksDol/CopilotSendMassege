@@ -10,6 +10,7 @@ import type {
   UpdateNegativeKeywordInput
 } from "../../../types/repository-inputs.js";
 import { leadRadarMappers } from "../../mappers.js";
+import { LeadKeywordTarget } from "../../../domain/enums/lead-keyword-target.js";
 
 export class PrismaLeadKeywordRepository implements LeadKeywordRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -31,6 +32,7 @@ export class PrismaLeadKeywordRepository implements LeadKeywordRepository {
         userId: input.user_id,
         telegramAccountId: input.telegram_account_id,
         keyword: input.keyword,
+        target: input.target ?? LeadKeywordTarget.MESSAGE,
         matchType: input.match_type as unknown as never,
         category: input.category as unknown as never,
         priority: input.priority ?? 0,
@@ -57,6 +59,7 @@ export class PrismaLeadKeywordRepository implements LeadKeywordRepository {
       where: { id: existing.id },
       data: {
         ...(typeof input.patch.keyword === "string" ? { keyword: input.patch.keyword } : {}),
+        ...(input.patch.target ? { target: input.patch.target } : {}),
         ...(input.patch.match_type ? { matchType: input.patch.match_type as unknown as never } : {}),
         ...(input.patch.category ? { category: input.patch.category as unknown as never } : {}),
         ...(typeof input.patch.priority === "number" ? { priority: input.patch.priority } : {}),
@@ -170,4 +173,3 @@ export class PrismaLeadKeywordRepository implements LeadKeywordRepository {
     }
   }
 }
-

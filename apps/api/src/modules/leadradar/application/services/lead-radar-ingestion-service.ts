@@ -548,7 +548,99 @@ export class LeadRadarIngestionService {
       log("[LeadRadar] context skipped");
     }
 
-    // 7) Save lead
+    // 7) Same-chat merge: one Telegram user in one chat => one lead.
+    // If the same sender matches again, we update the existing lead instead of creating a new one.
+    const senderExternalIdForSameChat = input.senderId?.trim() || null;
+    const usernameKeyForSameChat = normalizeUsernameForMerge(input.senderUsername);
+    if (senderExternalIdForSameChat || usernameKeyForSameChat) {
+      const existingSameChat = await this.deps.prisma.leadRadarLead.findFirst({
+        where: {
+          userId: input.userId,
+          telegramAccountId: input.telegramAccountId,
+          chatId: source.telegram_chat_id,
+          ...(senderExternalIdForSameChat
+            ? { telegramUserId: senderExternalIdForSameChat }
+            : { username: { equals: usernameKeyForSameChat!, mode: "insensitive" } })
+        },
+        select: { id: true, status: true }
+      });
+
+      if (existingSameChat?.id) {
+        lead_created_from_message_id = input.messageId;
+        await this.deps.prisma.$transaction(async (tx) => {
+          await tx.leadRadarLead.update({
+            where: { id: existingSameChat.id },
+            data: {
+              telegramUserId: input.senderId ?? null,
+              username: input.senderUsername ?? null,
+              displayName: input.senderDisplayName ?? null,
+              chatTitle: input.chatTitle ?? null,
+              sourceType: source.chat_type ?? input.sourceType ?? null,
+              relatedPostId: input.relatedPostId ?? null,
+              contextPreview: input.contextPreview ?? null,
+              messageId: input.messageId,
+              messageText: input.text ?? null,
+              messageDate: input.date,
+              matchedKeywords: {
+                matched: true,
+                matchedKeywords: match.matchedKeywords,
+                categories: match.categories
+              } as any,
+              score,
+              lastSeenAt: input.date
+              // IMPORTANT: do NOT reset status/notes/contactedAt here.
+            }
+          });
+
+          if (settings.store_context_enabled && (contextBefore.length > 0 || contextAfter.length > 0)) {
+            await tx.leadRadarMessageContext.upsert({
+              where: { leadId: existingSameChat.id },
+              create: {
+                leadId: existingSameChat.id,
+                beforeMessages: contextBefore as any,
+                afterMessages: contextAfter as any
+              },
+              update: {
+                beforeMessages: contextBefore as any,
+                afterMessages: contextAfter as any
+              }
+            });
+          }
+        });
+
+        log(`[LeadRadar] Lead updated (same-chat merge) status=${String(existingSameChat.status)}`);
+        log(`[LeadRadar-DEBUG] lead_updated_from_message_id=${lead_created_from_message_id}`);
+        log("[LeadRadar] message processed");
+        dedupe_result = "merged_existing_lead";
+        skip_reason = "merged_existing_lead";
+        final_action = "merged";
+        if (traceEnabled) {
+          log(
+            `[LeadRadar-TRACE] ${JSON.stringify({
+              messageId: input.messageId,
+              leadradar_enabled: true,
+              source_monitored,
+              inbound_message: true,
+              text_message: true,
+              raw_text,
+              normalized_text,
+              positive_keyword_matches,
+              negative_keyword_matches,
+              history_messages_loaded_count,
+              lead_created_from_message_id,
+              score_breakdown: score_breakdown ?? null,
+              threshold_passed,
+              dedupe_result,
+              final_action,
+              skip_reason
+            })}`
+          );
+        }
+        return;
+      }
+    }
+
+    // 8) Save lead (new)
     lead_created_from_message_id = input.messageId;
     await this.deps.leadRepo.createLead({
       user_id: input.userId,

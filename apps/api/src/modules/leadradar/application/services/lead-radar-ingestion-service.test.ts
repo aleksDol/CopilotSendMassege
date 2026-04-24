@@ -115,7 +115,11 @@ function makeService(params?: {
       isHardDuplicate: async () => false,
       isSoftDuplicate: async () => false
     } as any,
-    prisma: {} as any,
+    prisma: {
+      leadRadarLead: {
+        findFirst: async () => null
+      }
+    } as any,
     logger: { info: () => {} },
     multiChatDedupeWindowHours: 3,
     multiChatScoreBonus: 35
@@ -213,4 +217,3 @@ test("Case 5: GROUP falls back to linked channel id when group has no source (di
   assert.deepEqual(lookupOrder, ["-100GROUP", "-100CHAN"]);
   assert.equal(calls.createLead.length, 1);
 });
-

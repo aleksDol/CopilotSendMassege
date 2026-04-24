@@ -9,6 +9,11 @@ import { upsertParticipant } from "../participants/service.js";
 import { ConversationStateService } from "../state/service.js";
 import type { LeadRadarMessageInput } from "../leadradar/types/ingestion.js";
 import { enqueueLeadRadarJob } from "../leadradar/queue/leadradar-queue.js";
+import {
+  enqueueAuthorProfileCheckBestEffort,
+  isLikelyBotOrServiceSender,
+  toAuthorProfileCheckPayload
+} from "./leadradar-author-profile-enqueue.js";
 
 type MessageEventPayload = {
   telegramAccountId: string;
@@ -299,6 +304,22 @@ const maybeMarkLeadReplied = async (
       senderUsername
     );
   }
+};
+
+const isAuthorProfileMatchingEnabledForAccount = async (params: {
+  app: FastifyInstance;
+  userId: string;
+  telegramAccountId: string;
+}): Promise<boolean> => {
+  if (!params.app.config.env.ENABLE_LEADRADAR_AUTHOR_PROFILE_MATCHING_ENABLED) return false;
+  const settings = await params.app.prisma.leadRadarSettings.findFirst({
+    where: {
+      userId: params.userId,
+      telegramAccountId: params.telegramAccountId
+    },
+    select: { authorProfileMatchingEnabled: true }
+  });
+  return Boolean(settings?.authorProfileMatchingEnabled);
 };
 
 export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageEventPayload) => {
@@ -592,6 +613,7 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
     // IMPORTANT: keep ingestion response fast; never await LeadRadar processing here.
     // Default rollout: ENABLE_LEADRADAR_QUEUE=false keeps legacy in-process behavior (if enabled).
     if (app.config.env.ENABLE_LEADRADAR && canTriggerLeadRadar(payload, { fallbackText: existing.text })) {
+      const userId = telegramAccount.channelAccount.createdByUserId;
       if (app.config.env.ENABLE_LEADRADAR_QUEUE) {
         const jobPayload = toLeadRadarJobPayload({ telegramAccountId: telegramAccount.id, payload });
         void enqueueLeadRadarJob(app.config.env, jobPayload).then(
@@ -600,7 +622,6 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
         );
       } else if (app.config.env.ENABLE_LEADRADAR_INGESTION_IN_API && app.leadradar) {
         // Legacy fallback: run in-process (non-blocking).
-        const userId = telegramAccount.channelAccount.createdByUserId;
         if (typeof userId === "string" && userId.length) {
           const conversationTitle = conversation.title ?? payload.conversationTitle ?? null;
           const input = toLeadRadarInput({
@@ -616,6 +637,39 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
             app.log.warn({ err }, "[LeadRadar] in-process ingestion failed");
           });
         }
+      }
+
+      if (
+        typeof userId === "string" &&
+        userId.length > 0 &&
+        !isLikelyBotOrServiceSender(payload)
+      ) {
+        const authorProfileMatchingEnabledForAccount = await isAuthorProfileMatchingEnabledForAccount({
+          app,
+          userId,
+          telegramAccountId: telegramAccount.id
+        });
+        const authorProfilePayload = toAuthorProfileCheckPayload({
+          userId,
+          telegramAccountId: telegramAccount.id,
+          payload: {
+            senderType: payload.senderType,
+            senderExternalId: payload.senderExternalId,
+            senderUsername: payload.senderUsername ?? participant.username ?? null,
+            senderFullName: payload.senderFullName ?? participant.fullName ?? null,
+            externalConversationId: payload.externalConversationId,
+            externalMessageId: payload.externalMessageId,
+            sentAt: payload.sentAt,
+            conversationTitle: conversation.title ?? payload.conversationTitle ?? null,
+            rawPayload: payload.rawPayload
+          }
+        });
+        enqueueAuthorProfileCheckBestEffort({
+          env: app.config.env,
+          logger: app.log,
+          payload: authorProfilePayload,
+          authorProfileMatchingEnabledForAccount
+        });
       }
     }
 
@@ -786,6 +840,7 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
 
   // LeadRadar trigger (async).
   if (app.config.env.ENABLE_LEADRADAR && canTriggerLeadRadar(payload, { fallbackText: message.text })) {
+    const userId = telegramAccount.channelAccount.createdByUserId;
     if (app.config.env.ENABLE_LEADRADAR_QUEUE) {
       const jobPayload = toLeadRadarJobPayload({ telegramAccountId: telegramAccount.id, payload });
       void enqueueLeadRadarJob(app.config.env, jobPayload).then(
@@ -793,7 +848,6 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
         (err: unknown) => app.log.warn({ err }, "[LeadRadar] failed to enqueue job")
       );
     } else if (app.config.env.ENABLE_LEADRADAR_INGESTION_IN_API && app.leadradar) {
-      const userId = telegramAccount.channelAccount.createdByUserId;
       if (typeof userId === "string" && userId.length) {
         const input = toLeadRadarInput({
           userId,
@@ -808,6 +862,39 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
           app.log.warn({ err }, "[LeadRadar] in-process ingestion failed");
         });
       }
+    }
+
+    if (
+      typeof userId === "string" &&
+      userId.length > 0 &&
+      !isLikelyBotOrServiceSender(payload)
+    ) {
+      const authorProfileMatchingEnabledForAccount = await isAuthorProfileMatchingEnabledForAccount({
+        app,
+        userId,
+        telegramAccountId: telegramAccount.id
+      });
+      const authorProfilePayload = toAuthorProfileCheckPayload({
+        userId,
+        telegramAccountId: telegramAccount.id,
+        payload: {
+          senderType: payload.senderType,
+          senderExternalId: payload.senderExternalId,
+          senderUsername: payload.senderUsername ?? participant.username ?? null,
+          senderFullName: payload.senderFullName ?? participant.fullName ?? null,
+          externalConversationId: payload.externalConversationId,
+          externalMessageId: payload.externalMessageId,
+          sentAt: payload.sentAt,
+          conversationTitle: conversation.title ?? payload.conversationTitle ?? null,
+          rawPayload: payload.rawPayload
+        }
+      });
+      enqueueAuthorProfileCheckBestEffort({
+        env: app.config.env,
+        logger: app.log,
+        payload: authorProfilePayload,
+        authorProfileMatchingEnabledForAccount
+      });
     }
   }
 

@@ -5,6 +5,7 @@ import type {
   ExistsByMessageInput,
   FindLeadByIdInput,
   FindLeadFiltersInput,
+  FindExistingAuthorProfileLeadInput,
   FindRecentLeadMultiChatInput,
   MergeMultiChatLeadInput,
   UpdateLeadNotesInput,
@@ -31,8 +32,8 @@ export interface LeadRepository {
   findRecentLeadForMultiChatMerge(input: FindRecentLeadMultiChatInput): Promise<Lead | null>;
 
   mergeMultiChatLead(input: MergeMultiChatLeadInput): Promise<Lead>;
+  findExistingAuthorProfileLead(input: FindExistingAuthorProfileLeadInput): Promise<Lead | null>;
 
   // Optional helper for next steps (not used yet)
   _getSettingsForScope?(input: { user_id: string; telegram_account_id: string }): Promise<LeadSettings | null>;
 }
-

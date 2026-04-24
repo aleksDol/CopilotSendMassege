@@ -14,6 +14,7 @@ export default function LeadRadarSettingsPage() {
 
   const [dirty, setDirty] = useState(false);
   const [isEnabled, setIsEnabled] = useState(false);
+  const [authorProfileMatchingEnabled, setAuthorProfileMatchingEnabled] = useState(false);
   const [minScoreThreshold, setMinScoreThreshold] = useState(2);
   const [storeContextEnabled, setStoreContextEnabled] = useState(true);
   const [contextBeforeCount, setContextBeforeCount] = useState(3);
@@ -24,6 +25,7 @@ export default function LeadRadarSettingsPage() {
     const s = settingsQuery.data;
     if (!s) return;
     setIsEnabled(Boolean(s.isEnabled));
+    setAuthorProfileMatchingEnabled(Boolean(s.authorProfileMatchingEnabled));
     setMinScoreThreshold(Number(s.minScoreThreshold ?? 2));
     setStoreContextEnabled(Boolean(s.storeContextEnabled));
     setContextBeforeCount(Number(s.contextBeforeCount ?? 3));
@@ -65,6 +67,25 @@ export default function LeadRadarSettingsPage() {
               />
               <span className="font-medium">Enable LeadRadar</span>
               <span className="text-muted-foreground">(без этого лиды не будут создаваться)</span>
+            </label>
+
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={authorProfileMatchingEnabled}
+                onChange={(e) => {
+                  setAuthorProfileMatchingEnabled(e.target.checked);
+                  setDirty(true);
+                }}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium">Искать лиды по профилям авторов</span>
+                <span className="block text-muted-foreground">
+                  Находит авторов комментариев по username, имени, описанию профиля или каналу, если эти данные доступны.
+                  Текущий поиск по тексту комментариев продолжит работать отдельно.
+                </span>
+              </span>
             </label>
 
             <div className="grid gap-3 md:grid-cols-2">
@@ -146,6 +167,7 @@ export default function LeadRadarSettingsPage() {
                 onClick={async () => {
                   await actions.updateSettings.mutateAsync({
                     isEnabled,
+                    authorProfileMatchingEnabled,
                     minScoreThreshold,
                     storeContextEnabled,
                     contextBeforeCount,
@@ -164,4 +186,3 @@ export default function LeadRadarSettingsPage() {
     </div>
   );
 }
-

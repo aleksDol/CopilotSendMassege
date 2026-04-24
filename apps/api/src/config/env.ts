@@ -38,6 +38,7 @@ const envSchema = z.object({
    * Default true to preserve existing behavior when queue is disabled.
    */
   ENABLE_LEADRADAR_INGESTION_IN_API: booleanFromEnv.default(true),
+  ENABLE_LEADRADAR_AUTHOR_PROFILE_MATCHING_ENABLED: booleanFromEnv.default(false),
   ENABLE_TG_GROUP_INGESTION: booleanFromEnv.default(false),
   TELEGRAM_WORKER_URL: z.string().url(),
   INTERNAL_API_TOKEN: z.string().min(16),
@@ -89,6 +90,7 @@ const parsedEnv = envSchema.safeParse({
   ENABLE_LEADRADAR: process.env.ENABLE_LEADRADAR,
   ENABLE_LEADRADAR_QUEUE: process.env.ENABLE_LEADRADAR_QUEUE,
   ENABLE_LEADRADAR_INGESTION_IN_API: process.env.ENABLE_LEADRADAR_INGESTION_IN_API,
+  ENABLE_LEADRADAR_AUTHOR_PROFILE_MATCHING_ENABLED: process.env.ENABLE_LEADRADAR_AUTHOR_PROFILE_MATCHING_ENABLED,
   ENABLE_TG_GROUP_INGESTION: process.env.ENABLE_TG_GROUP_INGESTION,
   TELEGRAM_WORKER_URL: process.env.TELEGRAM_WORKER_URL,
   INTERNAL_API_TOKEN: process.env.INTERNAL_API_TOKEN,

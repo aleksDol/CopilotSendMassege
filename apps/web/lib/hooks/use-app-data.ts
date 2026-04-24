@@ -299,14 +299,27 @@ export const useLeadRadarConfigActions = () => {
     }),
 
     addKeyword: useMutation({
-      mutationFn: (input: { keyword: string; matchType: string; category: string; priority?: number }) =>
+      mutationFn: (input: {
+        keyword: string;
+        target?: import("@/lib/api/types").LeadRadarKeywordTarget;
+        matchType: string;
+        category: string;
+        priority?: number;
+      }) =>
         leadradarApi.addKeyword(token ?? "", input),
       onSuccess: () => invalidate("leadradar-keywords")
     }),
     updateKeyword: useMutation({
       mutationFn: (input: {
         id: string;
-        patch: Partial<{ keyword: string; matchType: string; category: string; priority: number; isActive: boolean }>;
+        patch: Partial<{
+          keyword: string;
+          target: import("@/lib/api/types").LeadRadarKeywordTarget;
+          matchType: string;
+          category: string;
+          priority: number;
+          isActive: boolean;
+        }>;
       }) => leadradarApi.updateKeyword(token ?? "", input.id, input.patch),
       onSuccess: () => invalidate("leadradar-keywords")
     }),
