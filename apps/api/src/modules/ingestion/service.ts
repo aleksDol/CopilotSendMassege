@@ -12,6 +12,7 @@ import { enqueueLeadRadarJob } from "../leadradar/queue/leadradar-queue.js";
 import {
   applyInboundRepliedStage,
   applyOutboundContactedStage,
+  ensureCrmLeadForOutbound,
   ensureCrmLeadForInbound
 } from "./crm-lead-stage-automation.js";
 import {
@@ -596,6 +597,16 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
       try {
         const ownerUserId = telegramAccount.channelAccount.createdByUserId;
         if (payload.isOutgoing) {
+          await ensureCrmLeadForOutbound(app.prisma, {
+            companyId,
+            conversationId: conversation.id,
+            ownerUserId: typeof ownerUserId === "string" ? ownerUserId : null,
+            conversationType: toConversationType(payload),
+            peerExternalId: getRawString(payload.rawPayload?.peerExternalId),
+            peerIsBot: Boolean(payload.rawPayload?.peerIsBot),
+            isServiceDialog: Boolean(payload.rawPayload?.isServiceDialog),
+            senderExternalId: getRawString(payload.senderExternalId)
+          });
           await applyOutboundContactedStage(app.prisma, { conversationId: conversation.id });
         } else {
           await ensureCrmLeadForInbound(app.prisma, {
@@ -855,6 +866,16 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
   try {
     const ownerUserId = telegramAccount.channelAccount.createdByUserId;
     if (payload.isOutgoing) {
+      await ensureCrmLeadForOutbound(app.prisma, {
+        companyId,
+        conversationId: conversation.id,
+        ownerUserId: typeof ownerUserId === "string" ? ownerUserId : null,
+        conversationType: toConversationType(payload),
+        peerExternalId: getRawString(payload.rawPayload?.peerExternalId),
+        peerIsBot: Boolean(payload.rawPayload?.peerIsBot),
+        isServiceDialog: Boolean(payload.rawPayload?.isServiceDialog),
+        senderExternalId: getRawString(payload.senderExternalId)
+      });
       await applyOutboundContactedStage(app.prisma, { conversationId: conversation.id });
     } else {
       await ensureCrmLeadForInbound(app.prisma, {

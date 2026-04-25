@@ -117,6 +117,24 @@ test("applyOutboundContactedStage updates NEW -> CONTACTED and syncs state", asy
   assert.equal(calls[1][1].update.leadStage, "CONTACTED");
 });
 
+test("applyOutboundContactedStage does NOT downgrade REPLIED -> CONTACTED", async () => {
+  let updated = false;
+  const prisma = makePrisma({
+    lead: {
+      findUnique: async () => ({ id: "l1", stage: "REPLIED" }),
+      update: async () => {
+        updated = true;
+        return null;
+      }
+    }
+  });
+
+  const res = await applyOutboundContactedStage(prisma, { conversationId: "conv1" });
+  assert.ok(res);
+  assert.equal(res.stage, "REPLIED");
+  assert.equal(updated, false);
+});
+
 test("applyInboundRepliedStage keeps NEW when no prior outbound exists", async () => {
   const prisma = makePrisma({
     lead: {

@@ -14,6 +14,58 @@ const NON_AUTOMATABLE_STAGES = new Set<LeadStage>([
 
 const canAutoUpdateStage = (stage: LeadStage): boolean => !NON_AUTOMATABLE_STAGES.has(stage);
 
+export async function ensureCrmLeadForOutbound(
+  prisma: PrismaClient,
+  params: {
+    companyId: string;
+    conversationId: string;
+    ownerUserId?: string | null;
+    conversationType: "DIRECT" | "GROUP" | "CHANNEL";
+    peerExternalId: string | null;
+    peerIsBot: boolean;
+    isServiceDialog: boolean;
+    senderExternalId: string | null;
+  }
+) {
+  // Be conservative: only create outbound-first leads for DIRECT chats
+  // with a known human peer, and never for service/bot/self dialogs.
+  if (params.conversationType !== "DIRECT") return null;
+  if (!params.peerExternalId) return null;
+  if (params.peerIsBot) return null;
+  if (params.isServiceDialog) return null;
+  if (params.senderExternalId && params.peerExternalId === params.senderExternalId) return null;
+
+  const existing = await prisma.lead.findUnique({
+    where: { conversationId: params.conversationId }
+  });
+  if (existing) return existing;
+
+  try {
+    const created = await prisma.lead.create({
+      data: {
+        companyId: params.companyId,
+        conversationId: params.conversationId,
+        ownerUserId: params.ownerUserId ?? null,
+        source: LeadSource.TELEGRAM,
+        status: LeadStatus.OPEN,
+        stage: LeadStage.CONTACTED
+      }
+    });
+    await syncLeadStageToConversationState(prisma, {
+      conversationId: params.conversationId,
+      stage: LeadStage.CONTACTED
+    });
+    return created;
+  } catch (err) {
+    if (isPrismaUniqueViolation(err)) {
+      return prisma.lead.findUnique({
+        where: { conversationId: params.conversationId }
+      });
+    }
+    throw err;
+  }
+}
+
 export async function ensureCrmLeadForInbound(
   prisma: PrismaClient,
   params: { companyId: string; conversationId: string; ownerUserId?: string | null }

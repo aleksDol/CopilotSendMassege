@@ -10,6 +10,7 @@ import { MessageComposer } from "@/components/chats/message-composer";
 import { AiSuggestionPanel } from "@/components/chats/ai-suggestion-panel";
 import { EmptyState } from "@/components/common/empty-state";
 import { LoadingState } from "@/components/common/loading-state";
+import { Select } from "@/components/ui/select";
 import {
   useAiSuggestions,
   useConversationMessages,
@@ -20,6 +21,7 @@ import {
 } from "@/lib/hooks/use-app-data";
 import { useChatsRealtime, type NewMessagePayload } from "@/lib/hooks/use-chats-realtime";
 import { aiApi } from "@/lib/api/ai";
+import { conversationsApi } from "@/lib/api/conversations";
 import { useAuth } from "@/lib/auth/context";
 import { ApiError } from "@/lib/api/errors";
 
@@ -311,6 +313,34 @@ export default function ChatsPage() {
     return null;
   }, [selectedConversation?.isWaitingForReply, selectedConversation?.leadStage, threadPeer?.participant?.fullName, threadPeer?.participant?.username]);
 
+  const leadStageSelectOptions = useMemo(
+    () => [
+      { label: "Новый", value: "NEW" },
+      { label: "Связались", value: "CONTACTED" },
+      { label: "Ответил", value: "REPLIED" },
+      { label: "Игнор", value: "IGNORED" },
+      { label: "Квалифицирован", value: "QUALIFIED" },
+      { label: "Предложение", value: "PROPOSAL" },
+      { label: "Переговоры", value: "NEGOTIATION" },
+      { label: "Сделка", value: "WON" },
+      { label: "Отказ", value: "LOST" }
+    ],
+    []
+  );
+
+  const selectedLeadStageValue = useMemo(() => {
+    const v = (selectedConversation?.leadStage ?? "").trim().toUpperCase();
+    if (!v) return "NEW";
+    return v;
+  }, [selectedConversation?.leadStage]);
+
+  const updateLeadStageMutation = useMutation({
+    mutationFn: (stage: string) => conversationsApi.updateLeadStage(token ?? "", selectedId ?? "", stage),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    }
+  });
+
   const handleSend = async (text: string) => {
     if (!selectedId?.trim()) return;
     if (isPostTrialLimited) {
@@ -391,10 +421,27 @@ export default function ChatsPage() {
 
       <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-r border-border bg-card">
         <header className="shrink-0 border-b border-border px-4 py-3">
-          <div className="truncate text-sm font-semibold">{selectedConversation?.title ?? "Select a chat"}</div>
-          {activeChatSubtitle ? (
-            <div className="truncate pt-0.5 text-xs text-muted-foreground">{activeChatSubtitle}</div>
-          ) : null}
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold">{selectedConversation?.title ?? "Select a chat"}</div>
+              {activeChatSubtitle ? (
+                <div className="truncate pt-0.5 text-xs text-muted-foreground">{activeChatSubtitle}</div>
+              ) : null}
+            </div>
+
+            {selectedId ? (
+              <div className="w-[210px] shrink-0">
+                <Select
+                  aria-label="Этап лида"
+                  options={leadStageSelectOptions}
+                  value={selectedLeadStageValue}
+                  disabled={!selectedConversation || updateLeadStageMutation.isPending}
+                  onChange={(e) => void updateLeadStageMutation.mutateAsync(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+            ) : null}
+          </div>
         </header>
         <div className="min-h-0 flex-1 overflow-hidden">
           <MessageThread items={messages.data?.items ?? []} />

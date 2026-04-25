@@ -105,6 +105,15 @@ export type ConversationListResponse = {
   nextCursor: string | null;
 };
 
+export type UpdateConversationLeadStageResponse = {
+  leadId: string;
+  conversationId: string;
+  status: string;
+  stage: string;
+  wonAt: string | null;
+  lostAt: string | null;
+};
+
 export type MessageItem = {
   id: string;
   direction: string;

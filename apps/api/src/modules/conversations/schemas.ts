@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LeadStage } from "@prisma/client";
 
 export const listConversationsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -7,4 +8,12 @@ export const listConversationsQuerySchema = z.object({
   assignedUserId: z.string().uuid().optional(),
   waitingForReply: z.coerce.boolean().optional(),
   leadStage: z.string().optional()
+});
+
+export const conversationIdParamsSchema = z.object({
+  conversationId: z.string().uuid()
+});
+
+export const updateConversationLeadStageBodySchema = z.object({
+  stage: z.nativeEnum(LeadStage)
 });

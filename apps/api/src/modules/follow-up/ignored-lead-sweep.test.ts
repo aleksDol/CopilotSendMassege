@@ -18,7 +18,7 @@ function makePrisma(overrides: Partial<any> = {}) {
 
 test("CONTACTED + lastOutboundAt older than threshold + no inbound after outbound -> IGNORED + state sync", async () => {
   const now = new Date("2026-01-02T00:00:00.000Z");
-  const lastOutboundAt = new Date("2026-01-01T00:00:00.000Z"); // 24h
+  const lastOutboundAt = new Date("2025-12-31T00:00:00.000Z"); // 48h+
   const calls: any[] = [];
 
   const prisma = makePrisma({
@@ -45,7 +45,7 @@ test("CONTACTED + lastOutboundAt older than threshold + no inbound after outboun
 
   const result = await markContactedLeadsIgnored(prisma, {
     now,
-    unansweredHours: 24,
+    unansweredHours: 48,
     logger: { info: () => {}, warn: () => {} }
   });
 
@@ -74,7 +74,7 @@ test("CONTACTED + inbound after outbound -> stays CONTACTED (no update)", async 
 
   const res = await markContactedLeadsIgnored(prisma, {
     now,
-    unansweredHours: 24,
+    unansweredHours: 48,
     logger: { info: () => {}, warn: () => {} }
   });
 
@@ -95,7 +95,7 @@ test("CONTACTED + lastOutboundAt too recent -> not selected, no updates", async 
 
   const res = await markContactedLeadsIgnored(prisma, {
     now,
-    unansweredHours: 24,
+    unansweredHours: 48,
     logger: { info: () => {}, warn: () => {} }
   });
 
@@ -127,7 +127,7 @@ test("Advanced/terminal stages not changed because query requires Lead.stage=CON
 
   const res = await markContactedLeadsIgnored(prisma, {
     now,
-    unansweredHours: 24,
+    unansweredHours: 48,
     logger: { info: () => {}, warn: () => {} }
   });
 
@@ -158,11 +158,40 @@ test("WON/LOST status not changed even if stage CONTACTED", async () => {
 
   const res = await markContactedLeadsIgnored(prisma, {
     now,
-    unansweredHours: 24,
+    unansweredHours: 48,
     logger: { info: () => {}, warn: () => {} }
   });
 
   assert.equal(res.markedIgnored, 0);
   assert.equal(calls.length, 0);
+});
+
+test("CONTACTED + lastOutboundAt 25h ago -> NOT ignored when threshold is 48h", async () => {
+  const now = new Date("2026-01-02T00:00:00.000Z");
+  const calls: any[] = [];
+  const prisma = makePrisma({
+    conversationState: {
+      findMany: async (args: any) => {
+        calls.push(["conversationState.findMany", args]);
+        return [];
+      }
+    },
+    lead: {
+      updateMany: async (args: any) => {
+        calls.push(["lead.updateMany", args]);
+        return { count: 1 };
+      }
+    }
+  });
+
+  const res = await markContactedLeadsIgnored(prisma, {
+    now,
+    unansweredHours: 48,
+    logger: { info: () => {}, warn: () => {} }
+  });
+
+  assert.equal(res.markedIgnored, 0);
+  assert.equal(calls.some((c) => c[0] === "lead.updateMany"), false);
+  assert.ok(calls[0][1].where.lastOutboundAt.lte instanceof Date);
 });
 

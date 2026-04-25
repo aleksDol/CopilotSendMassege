@@ -16,7 +16,7 @@ export function startIgnoredLeadSweep(app: FastifyInstance) {
   app.log.info(
     {
       intervalMinutes: app.config.env.CRM_IGNORED_SWEEP_INTERVAL_MINUTES,
-      unansweredHours: app.config.env.FOLLOW_UP_UNANSWERED_HOURS
+      ignoredAfterHours: app.config.env.CRM_IGNORED_AFTER_HOURS
     },
     "ignored_sweep_runner_started"
   );
@@ -24,7 +24,7 @@ export function startIgnoredLeadSweep(app: FastifyInstance) {
   const runOnce = async () => {
     try {
       await markContactedLeadsIgnored(app.prisma, {
-        unansweredHours: app.config.env.FOLLOW_UP_UNANSWERED_HOURS,
+        unansweredHours: app.config.env.CRM_IGNORED_AFTER_HOURS,
         logger: app.log
       });
     } catch (err: unknown) {
