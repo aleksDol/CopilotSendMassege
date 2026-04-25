@@ -17,6 +17,15 @@ export const useDashboardOverview = () => {
   });
 };
 
+export const useDashboardSales = (period: import("@/lib/api/types").SalesDashboardPeriod) => {
+  const { token, company, user } = useAuth();
+  return useQuery({
+    queryKey: ["dashboard-sales", baseScopeKey(company?.id, user?.id), period],
+    queryFn: () => dashboardApi.sales(token ?? "", period),
+    enabled: Boolean(token)
+  });
+};
+
 export const useConversations = (filters: {
   waitingForReply?: boolean;
   leadStage?: string;
@@ -367,6 +376,7 @@ export const useSendMessageMutation = (conversationId: string) => {
       });
       void qc.invalidateQueries({ queryKey: ["conversations", scope] });
       void qc.invalidateQueries({ queryKey: ["dashboard-overview", baseScopeKey(company?.id, user?.id)] });
+      void qc.invalidateQueries({ queryKey: ["dashboard-sales", baseScopeKey(company?.id, user?.id)] });
     }
   });
 };
@@ -396,6 +406,7 @@ export const useTaskActions = () => {
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ["tasks", scope] });
     void qc.invalidateQueries({ queryKey: ["dashboard-overview", scope] });
+    void qc.invalidateQueries({ queryKey: ["dashboard-sales", scope] });
     void qc.invalidateQueries({ queryKey: ["conversations", scope] });
   };
 
@@ -435,6 +446,7 @@ export const useTelegramActions = () => {
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["telegram-account", scope] });
     void qc.invalidateQueries({ queryKey: ["dashboard-overview", scope] });
+    void qc.invalidateQueries({ queryKey: ["dashboard-sales", scope] });
     void qc.invalidateQueries({ queryKey: ["conversations", scope] });
     void qc.invalidateQueries({ queryKey: ["tasks", scope] });
   };

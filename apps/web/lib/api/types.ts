@@ -38,6 +38,57 @@ export type DashboardOverview = {
   avgReplyTimeSeconds: number;
 };
 
+export type SalesDashboardPeriod = "day" | "week" | "month";
+
+export type DashboardMetricDirection = "positive" | "negative" | "neutral";
+
+export type DashboardCountMetric = {
+  label: string;
+  value: number;
+  previousValue: number;
+  deltaValue: number;
+  deltaPercent: number | null;
+  deltaIsInfinite: boolean;
+  direction: DashboardMetricDirection;
+  deltaLabel: string;
+};
+
+export type DashboardTimeMetric = {
+  label: string;
+  value: number;
+  previousValue: number;
+  deltaValue: number;
+  direction: DashboardMetricDirection;
+  deltaLabel: string;
+};
+
+export type DashboardRateMetric = {
+  label: string;
+  value: number; // 0..100
+  previousValue: number; // 0..100
+  deltaValue: number; // percentage points
+  direction: DashboardMetricDirection;
+  deltaLabel: string;
+};
+
+export type DashboardSalesResponse = {
+  period: SalesDashboardPeriod;
+  timezone: string;
+  currentRange: { start: string; end: string };
+  previousRange: { start: string; end: string };
+  comparisonLabelRu: string;
+  metrics: {
+    newLeads: DashboardCountMetric;
+    avgResponseTimeMinutes: DashboardTimeMetric;
+    repliedCount: DashboardCountMetric;
+    ignoredCount: DashboardCountMetric;
+    generatedSuggestions: DashboardCountMetric;
+    wonCount: DashboardCountMetric;
+    leadToReplyRate: DashboardRateMetric;
+    replyToWonRate: DashboardRateMetric;
+  };
+};
+
 export type ConversationListItem = {
   conversationId: string;
   title: string;

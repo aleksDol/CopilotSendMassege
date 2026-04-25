@@ -2,6 +2,7 @@ import { Prisma, SuggestionStatus, SuggestionType, TaskStatus, TaskType, Channel
 import type { FastifyInstance } from "fastify";
 import { readThroughCache } from "../../lib/cache.js";
 import { buildSupportedConversationWhere } from "../conversations/support.js";
+import { buildCountMetric, buildRateMetricPp, buildTimeMetricMinutesLowerIsBetter, getSalesDashboardRanges, type SalesDashboardPeriod } from "./sales-utils.js";
 
 const TG_CONNECTED = "CONNECTED" as unknown as TelegramLoginStatus;
 const TG_ERROR = "ERROR" as unknown as TelegramLoginStatus;
@@ -217,6 +218,243 @@ export const getDashboardOverview = async (
         suggestionsAccepted,
         acceptanceRate,
         avgReplyTimeSeconds
+      };
+    }
+  });
+};
+
+export const getDashboardSales = async (
+  app: FastifyInstance,
+  params: { companyId: string; userId: string; period: SalesDashboardPeriod; timezone: string }
+) => {
+  const activeTelegram = await app.prisma.telegramAccount.findFirst({
+    where: {
+      loginStatus: { in: [TG_CONNECTED, TG_ERROR] },
+      channelAccount: {
+        companyId: params.companyId,
+        channelType: ChannelType.TELEGRAM,
+        createdByUserId: params.userId,
+        status: { not: ChannelAccountStatus.DISCONNECTED }
+      }
+    },
+    orderBy: { updatedAt: "desc" },
+    select: { channelAccountId: true }
+  });
+
+  const activeChannelAccountId = activeTelegram?.channelAccountId ?? null;
+  const ranges = getSalesDashboardRanges({ period: params.period, timezone: params.timezone });
+  const thresholdHours = app.config.env.FOLLOW_UP_UNANSWERED_HOURS || 24;
+
+  const conversationWhereBase: Prisma.ConversationWhereInput = {
+    companyId: params.companyId,
+    isArchived: false,
+    ...(activeChannelAccountId ? { channelAccountId: activeChannelAccountId } : {}),
+    ...buildSupportedConversationWhere()
+  };
+
+  const leadConversationWhereBase: Prisma.ConversationWhereInput = {
+    isArchived: false,
+    ...(activeChannelAccountId ? { channelAccountId: activeChannelAccountId } : {})
+  };
+
+  const aiConversationWhereBase: Prisma.ConversationWhereInput = {
+    isArchived: false,
+    ...(activeChannelAccountId ? { channelAccountId: activeChannelAccountId } : {})
+  };
+
+  return readThroughCache(app, {
+    keyParts: [
+      "cache:dashboard",
+      "sales",
+      params.companyId,
+      params.userId,
+      activeChannelAccountId,
+      params.period,
+      ranges.current.startIso,
+      ranges.current.endIso
+    ],
+    loader: async () => {
+      const computeForRange = async (range: { start: Date; end: Date }) => {
+        const [newLeads, avgReplyRows, repliedCount, ignoredCount, generatedSuggestions, wonCount] = await Promise.all([
+          // 1) New leads: Lead.createdAt in selected period (CRM Lead table)
+          app.prisma.lead.count({
+            where: {
+              companyId: params.companyId,
+              createdAt: { gte: range.start, lt: range.end },
+              conversation: leadConversationWhereBase
+            }
+          }),
+
+          // 2) Average response time: INBOUND -> next OUTBOUND (pairing rule: OUTBOUND where previous is INBOUND)
+          app.prisma.$queryRaw<{ avg_reply_seconds: number | null }[]>(Prisma.sql`
+            WITH ordered AS (
+              SELECT
+                m."conversationId",
+                m."id",
+                m."direction",
+                m."sentAt" AS "sentAt",
+                LAG(m."sentAt") OVER (
+                  PARTITION BY m."conversationId"
+                  ORDER BY m."sentAt", m."id"
+                ) AS "prev_sentAt",
+                LAG(m."direction") OVER (
+                  PARTITION BY m."conversationId"
+                  ORDER BY m."sentAt", m."id"
+                ) AS "prev_direction"
+              FROM "Message" m
+              JOIN "Conversation" c ON c."id" = m."conversationId"
+              WHERE c."companyId" = ${params.companyId}::uuid
+                AND c."isArchived" = false
+                ${activeChannelAccountId
+                  ? Prisma.sql`AND c."channelAccountId" = ${activeChannelAccountId}::uuid`
+                  : Prisma.sql``}
+            )
+            SELECT AVG(EXTRACT(EPOCH FROM ("sentAt" - "prev_sentAt")))::float AS avg_reply_seconds
+            FROM ordered
+            WHERE "direction" = 'OUTBOUND'
+              AND "prev_direction" = 'INBOUND'
+              AND "prev_sentAt" IS NOT NULL
+              AND "sentAt" >= "prev_sentAt"
+              AND "prev_sentAt" >= ${range.start}
+              AND "prev_sentAt" < ${range.end}
+          `),
+
+          // 3) People who replied: distinct conversations where there is an OUTBOUND and later INBOUND,
+          // and inbound reply sentAt in selected period.
+          app.prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
+            SELECT COUNT(DISTINCT m_in."conversationId")::bigint AS count
+            FROM "Message" m_in
+            JOIN "Conversation" c ON c."id" = m_in."conversationId"
+            WHERE c."companyId" = ${params.companyId}::uuid
+              AND c."isArchived" = false
+              ${activeChannelAccountId
+                ? Prisma.sql`AND c."channelAccountId" = ${activeChannelAccountId}::uuid`
+                : Prisma.sql``}
+              AND m_in."direction" = 'INBOUND'
+              AND m_in."sentAt" >= ${range.start}
+              AND m_in."sentAt" < ${range.end}
+              AND EXISTS (
+                SELECT 1
+                FROM "Message" m_out
+                WHERE m_out."conversationId" = m_in."conversationId"
+                  AND m_out."direction" = 'OUTBOUND'
+                  AND m_out."sentAt" < m_in."sentAt"
+              )
+          `).then((rows) => Number(rows[0]?.count ?? 0)),
+
+          // 4) People ignoring / no reply:
+          // distinct conversations where first OUTBOUND/contact in selected period exists,
+          // and no INBOUND exists within threshold after that outbound.
+          app.prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
+            WITH first_out AS (
+              SELECT
+                m."conversationId",
+                MIN(m."sentAt") AS first_out_at
+              FROM "Message" m
+              JOIN "Conversation" c ON c."id" = m."conversationId"
+              WHERE c."companyId" = ${params.companyId}::uuid
+                AND c."isArchived" = false
+                ${activeChannelAccountId
+                  ? Prisma.sql`AND c."channelAccountId" = ${activeChannelAccountId}::uuid`
+                  : Prisma.sql``}
+                AND m."direction" = 'OUTBOUND'
+                AND m."sentAt" >= ${range.start}
+                AND m."sentAt" < ${range.end}
+              GROUP BY m."conversationId"
+            )
+            SELECT COUNT(*)::bigint AS count
+            FROM first_out fo
+            WHERE NOT EXISTS (
+              SELECT 1
+              FROM "Message" mi
+              WHERE mi."conversationId" = fo."conversationId"
+                AND mi."direction" = 'INBOUND'
+                AND mi."sentAt" >= fo.first_out_at
+                AND mi."sentAt" < (fo.first_out_at + (${thresholdHours} * INTERVAL '1 hour'))
+            )
+          `).then((rows) => Number(rows[0]?.count ?? 0)),
+
+          // 5) Generated AI suggestions: AiSuggestion.createdAt in selected period
+          app.prisma.aiSuggestion.count({
+            where: {
+              companyId: params.companyId,
+              suggestionType: SuggestionType.REPLY,
+              createdAt: { gte: range.start, lt: range.end },
+              conversation: aiConversationWhereBase
+            }
+          }),
+
+          // 6) Won clients:
+          // preferred: wonAt in period
+          // fallback: wonAt is null but status=WON and updatedAt in period
+          app.prisma.lead.count({
+            where: {
+              companyId: params.companyId,
+              conversation: leadConversationWhereBase,
+              OR: [
+                { wonAt: { gte: range.start, lt: range.end } },
+                { wonAt: null, status: "WON", updatedAt: { gte: range.start, lt: range.end } }
+              ]
+            }
+          })
+        ]);
+
+        const avgReplySeconds = avgReplyRows[0]?.avg_reply_seconds ?? 0;
+        const avgResponseTimeMinutes = avgReplySeconds ? Math.max(0, Math.round(avgReplySeconds / 60)) : 0;
+
+        return {
+          newLeads,
+          avgResponseTimeMinutes,
+          repliedCount,
+          ignoredCount,
+          generatedSuggestions,
+          wonCount
+        };
+      };
+
+      const [current, previous] = await Promise.all([
+        computeForRange(ranges.current),
+        computeForRange(ranges.previous)
+      ]);
+
+      const currentLeadToReplyRate = current.newLeads > 0 ? (current.repliedCount / current.newLeads) * 100 : 0;
+      const previousLeadToReplyRate = previous.newLeads > 0 ? (previous.repliedCount / previous.newLeads) * 100 : 0;
+
+      const currentReplyToWonRate = current.repliedCount > 0 ? (current.wonCount / current.repliedCount) * 100 : 0;
+      const previousReplyToWonRate = previous.repliedCount > 0 ? (previous.wonCount / previous.repliedCount) * 100 : 0;
+
+      return {
+        period: params.period,
+        timezone: ranges.timezone,
+        currentRange: { start: ranges.current.startIso, end: ranges.current.endIso },
+        previousRange: { start: ranges.previous.startIso, end: ranges.previous.endIso },
+        metrics: {
+          newLeads: buildCountMetric({ label: "Новые лиды", value: current.newLeads, previousValue: previous.newLeads }),
+          avgResponseTimeMinutes: buildTimeMetricMinutesLowerIsBetter({
+            label: "Среднее время ответа",
+            value: current.avgResponseTimeMinutes,
+            previousValue: previous.avgResponseTimeMinutes
+          }),
+          repliedCount: buildCountMetric({ label: "Ответили", value: current.repliedCount, previousValue: previous.repliedCount }),
+          ignoredCount: buildCountMetric({ label: "Игнорируют", value: current.ignoredCount, previousValue: previous.ignoredCount }),
+          generatedSuggestions: buildCountMetric({
+            label: "Сгенерировано подсказок",
+            value: current.generatedSuggestions,
+            previousValue: previous.generatedSuggestions
+          }),
+          wonCount: buildCountMetric({ label: "Клиенты WON", value: current.wonCount, previousValue: previous.wonCount }),
+          leadToReplyRate: buildRateMetricPp({
+            label: "Новые → ответили",
+            value: currentLeadToReplyRate,
+            previousValue: previousLeadToReplyRate
+          }),
+          replyToWonRate: buildRateMetricPp({
+            label: "Ответили → WON",
+            value: currentReplyToWonRate,
+            previousValue: previousReplyToWonRate
+          })
+        },
+        comparisonLabelRu: ranges.comparisonLabelRu
       };
     }
   });
