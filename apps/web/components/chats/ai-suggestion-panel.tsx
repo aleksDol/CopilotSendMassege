@@ -1,13 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import type { AiSuggestion } from "@/lib/api/types";
-
-type Mode = "default" | "shorter" | "more_friendly" | "more_sales" | "handle_objection";
 
 export function AiSuggestionPanel({
   suggestion,
@@ -20,14 +16,12 @@ export function AiSuggestionPanel({
 }: {
   suggestion: AiSuggestion | null;
   context: { leadStage: string | null; leadTemperature: string | null; lastClientIntent: string | null } | null;
-  onSuggest: (mode: Mode) => Promise<void>;
+  onSuggest: () => Promise<void>;
   onAccept: (suggestionId: string) => Promise<void>;
   onReject: (suggestionId: string) => Promise<void>;
   onInsert: (text: string) => void;
   isLoading: boolean;
 }) {
-  const [mode, setMode] = useState<Mode>("default");
-
   return (
     <Card className="h-full border-0 bg-transparent shadow-none">
       <CardHeader>
@@ -36,19 +30,7 @@ export function AiSuggestionPanel({
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <label className="text-xs uppercase text-muted-foreground">Режим</label>
-          <Select
-            value={mode}
-            onChange={(event) => setMode(event.target.value as Mode)}
-            options={[
-              { label: "По умолчанию", value: "default" },
-              { label: "Короче", value: "shorter" },
-              { label: "Дружелюбнее", value: "more_friendly" },
-              { label: "Продажнее", value: "more_sales" },
-              { label: "Работа с возражением", value: "handle_objection" }
-            ]}
-          />
-          <Button className="w-full" onClick={() => onSuggest(mode)} disabled={isLoading}>
+          <Button className="w-full" onClick={() => onSuggest()} disabled={isLoading}>
             {isLoading ? "Генерация..." : "Предложить ответ"}
           </Button>
         </div>
@@ -77,9 +59,6 @@ export function AiSuggestionPanel({
 
                 <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border/60 pt-3">
                   <Badge variant="outline" className="rounded-full border-border/70 bg-muted/10 px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
-                    режим: {suggestion.mode}
-                  </Badge>
-                  <Badge variant="outline" className="rounded-full border-border/70 bg-muted/10 px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
                     статус: {suggestion.status}
                   </Badge>
                   {suggestion.confidence !== null ? (
@@ -103,7 +82,7 @@ export function AiSuggestionPanel({
               </>
             ) : (
               <div className="rounded-lg border border-dashed border-border/80 bg-card/60 px-4 py-5 text-sm leading-relaxed text-muted-foreground">
-                Подсказки пока нет. Выберите режим выше и нажмите «Предложить ответ», чтобы получить аккуратный вариант ответа для клиента.
+                Подсказки пока нет. Нажмите «Предложить ответ», чтобы получить аккуратный вариант ответа для клиента.
               </div>
             )}
           </div>

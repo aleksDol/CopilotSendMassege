@@ -18,6 +18,55 @@ const MAX_PRODUCT_LINE_CHARS = 180;
 
 type KnowledgeIntentType = "pricing" | "objections" | "features" | "cases";
 
+const HIDDEN_SALES_ANALYSIS_BLOCK = `Hidden internal step (do NOT show this to the user):
+
+Before writing the final reply, the assistant must internally determine a sales analysis JSON object with this exact structure:
+
+{
+  "stage": "awareness | interest | consideration | decision | objection | closing",
+  "missing": "clarity | trust | price | examples | simplicity | urgency | none",
+  "strategy": "clarify | reduce_friction | build_trust | move_forward | handle_objection",
+  "confidence": "low | medium | high"
+}
+
+Rules:
+- This JSON is ONLY for internal reasoning.
+- Do NOT include this JSON (or any analysis) in the final reply.
+- Do NOT mention that this step exists.
+- Keep the user-visible reply short (1–3 sentences) and natural.`;
+
+const SALES_STRATEGY_RULES_BLOCK = `Use the internal sales analysis to shape the reply.
+
+ONE ACTION RULE (very important):
+- The final reply must do only ONE main thing: ask ONE question OR handle ONE objection OR reduce friction OR move forward OR clarify.
+- Do NOT combine multiple strategies in one reply.
+
+Strategy-specific rules (pick exactly ONE based on analysis.strategy):
+- clarify:
+  - use when the client's need/scope is unclear
+  - ask ONE short, precise question
+- reduce_friction:
+  - make the next step feel easier
+  - suggest ONE simple low-effort action
+- build_trust:
+  - add ONE small trust-building detail grounded in the provided context/knowledge
+  - use examples/cases ONLY if they exist in the context/knowledge; do NOT invent cases
+- move_forward:
+  - gently move to the next step
+  - propose ONE concrete next action
+- handle_objection:
+  - answer the objection directly
+  - then (only if needed) ask ONE simple follow-up question
+
+Missing-for-decision guidance (use analysis.missing to choose what to emphasize, without adding a second "main action"):
+- clarity: explain simply what the client gets
+- trust: add reassurance/proof only if grounded in context; do not make up proof
+- price: do not avoid price forever; if price is unknown, ask what scope/package they need
+- examples: offer to show an example only if examples exist in context/knowledge
+- simplicity: reduce complexity and suggest a simple next step
+- urgency: avoid fake urgency; mention timing only if it is relevant in context
+- none: proceed naturally with the chosen strategy`;
+
 const PRICE_SIGNALS = [
   "price",
   "pricing",
@@ -194,6 +243,14 @@ const buildRelevantKnowledge = (source: AIContext["knowledgeItems"]): string => 
   return source.map((item) => toKnowledgeLine(item)).join("\n");
 };
 
+const pushSection = (parts: string[], title: string, body: string | null | undefined) => {
+  const value = (body ?? "").trim();
+  if (!value.length) return;
+  parts.push(title, value, "", "---", "");
+};
+
+const isFallback = (value: string, fallback: string) => value.trim() === fallback.trim();
+
 const getLastClientMessage = (context: AIContext): string => {
   for (let i = context.recentMessages.length - 1; i >= 0; i -= 1) {
     const message = context.recentMessages[i];
@@ -237,6 +294,7 @@ Style rules:
 - Avoid formal tone
 - Avoid generic phrases
 - Avoid sounding like documentation or AI
+- Avoid stiff templates like "Здравствуйте"
 
 Strictly avoid starting with:
 - "Р§Р°СЃС‚Рѕ..."
@@ -253,9 +311,11 @@ Instead:
 Output constraints:
 - 1-3 sentences
 - concise and clear
+- preferably under 350 characters
 - no emojis
 - no lists
 - no formatting
+- no prefixes like "Ответ:" or "Сообщение:"
 
 STRICTLY FORBIDDEN:
 - "РЅР°РїРёС€РёС‚Рµ РІ Р»РёС‡РєСѓ"
@@ -268,15 +328,14 @@ Critical behavior:
 - Do NOT over-explain
 - Do NOT try to sound smart
 - Write as if typing quickly in chat
-- The reply must feel natural and believable`;
+- The reply must feel natural and believable
 
-    const limitedRecentMessages = limitRecentMessages(params.context);
+Output guard:
+- The final answer must contain ONLY the message to send to the client.
+- No analysis, no explanations, no labels, no markdown, no multiple options.`;
+
     const selectedKnowledge = selectRelevantKnowledge(params.context);
     const selectedKnowledgeItems = selectedKnowledge.items;
-
-    const knowledgeBlock = selectedKnowledgeItems
-      .map((item) => `- [${item.kind}] ${item.title}: ${clip(item.content, MAX_BLOCK_CHARS)}`)
-      .join("\n");
 
     const state = params.context.state;
     const stateBlock = [
@@ -306,90 +365,39 @@ Critical behavior:
       `humanHandoffRules: ${JSON.stringify(policy?.humanHandoffRules ?? null)}`
     ].join("\n");
 
-    const messagesBlock = serializeMessagesForPrompt(limitedRecentMessages);
-    const conversationSummary = clip(params.context.latestSummary ?? "No summary available.", MAX_SUMMARY_CHARS);
-    const lastClientMessage = getLastClientMessage(params.context);
+    const conversationSummaryRaw = params.context.latestSummary ?? "";
+    const conversationSummary = clip(conversationSummaryRaw.trim().length ? conversationSummaryRaw : "No summary available.", MAX_SUMMARY_CHARS);
     const productDescription = buildProductDescription(params.context);
     const goal = buildGoal(params.context);
     const strategy = buildStrategy({ context: params.context, mode: params.mode });
     const relevantKnowledge = buildRelevantKnowledge(selectedKnowledgeItems);
 
-    const userPrompt = [
-      "Conversation summary:",
-      conversationSummary,
-      "",
-      "---",
-      "",
-      "Recent messages:",
-      messagesBlock || "No recent messages.",
-      "",
-      "---",
-      "",
-      "Client last message:",
-      lastClientMessage,
-      "",
-      "---",
-      "",
-      "AI Brain:",
-      "",
-      "Product:",
-      productDescription,
-      "",
-      "Goal:",
-      goal,
-      "",
-      "Strategy:",
-      strategy,
-      "",
-      "Relevant knowledge:",
-      relevantKnowledge,
-      "",
-      "---",
-      "",
-      "Before writing the reply, think step-by-step:",
-      "",
-      "1. What does the client want right now?",
-      "2. What problem are they trying to solve?",
-      "3. What stage are they in?",
-      "   - cold",
-      "   - interested",
-      "   - considering",
-      "   - objection",
-      "   - ready",
-      "",
-      "4. Identify:",
-      "   - their main pain",
-      "   - possible doubts or fears",
-      "   - approximate level (cheap / medium / premium)",
-      "",
-      "5. Decide what to do next:",
-      "   - ask a question?",
-      "   - clarify the task?",
-      "   - reduce doubt?",
-      "   - give a small insight?",
-      "   - move toward the goal?",
-      "",
-      "6. IMPORTANT:",
-      "   - do NOT rush to give price unless appropriate",
-      "   - do NOT push aggressively",
-      "   - follow the Strategy from AI Brain",
-      "   - move the conversation one step forward",
-      "",
-      "Now write the reply:",
-      "",
-      "- short (1-3 sentences)",
-      "- natural",
-      "- human-like",
-      "- slightly informal",
-      "- no sales pressure",
-      "- no generic phrases",
-      "- no AI tone",
-      "",
-      "The reply must:",
-      "- match the client's level",
-      "- feel like a real chat message",
-      "- help move the conversation toward the Goal"
-    ].join("\n");
+    const userParts: string[] = [];
+    if (!isFallback(conversationSummary, "No summary available.")) {
+      pushSection(userParts, "Conversation summary:", conversationSummary);
+    }
+
+    // AI Brain: keep only meaningful parts to reduce noise.
+    const brainParts: string[] = [];
+    if (!isFallback(productDescription, PRODUCT_FALLBACK)) brainParts.push("Product:", productDescription, "");
+    if (!isFallback(goal, GOAL_FALLBACK)) brainParts.push("Goal:", goal, "");
+    if (!isFallback(strategy, STRATEGY_FALLBACK)) brainParts.push("Strategy:", strategy, "");
+    if (!isFallback(relevantKnowledge, RELEVANT_KNOWLEDGE_FALLBACK)) brainParts.push("Relevant knowledge:", relevantKnowledge, "");
+
+    if (brainParts.length) {
+      userParts.push("AI Brain:", "", ...brainParts, "---", "");
+    }
+
+    userParts.push(HIDDEN_SALES_ANALYSIS_BLOCK, "", SALES_STRATEGY_RULES_BLOCK, "", "---", "");
+
+    // Compact decision reminder (no duplication of history; chat messages are provided separately).
+    userParts.push(
+      "Write the reply as a quick chat message that moves the conversation one step forward.",
+      "Keep it 1–3 sentences, natural Russian, no pressure.",
+      "Return ONLY the message text."
+    );
+
+    const userPrompt = userParts.join("\n");
 
     const systemPrompt = [
       `Prompt version: ${params.promptVersion}`,
@@ -399,17 +407,8 @@ Critical behavior:
       "Conversation state:",
       stateBlock,
       "",
-      "Latest summary:",
-      params.context.latestSummary ?? "No summary available.",
-      "",
-      "Knowledge base:",
-      knowledgeBlock || "No active knowledge items.",
-      "",
       "Reply policy:",
       policyBlock,
-      "",
-      "Recent messages:",
-      messagesBlock || "No recent messages.",
       "",
       "Output requirements:",
       "Return JSON object with fields: suggestion (string), confidence (number optional)."

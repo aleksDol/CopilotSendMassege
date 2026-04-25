@@ -435,7 +435,7 @@ export default function ChatsPage() {
             context={lastSuggestionContext}
             isLoading={suggestMutation.isPending}
             onInsert={(text) => setComposerText((prev) => (prev ? `${prev}\n${text}` : text))}
-            onSuggest={async (mode) => {
+            onSuggest={async () => {
               if (isPostTrialLimited) {
                 setInlinePaywallSource("ai");
                 setAiError("trial_ended");
@@ -443,7 +443,7 @@ export default function ChatsPage() {
               }
               setAiError(null);
               try {
-                const response = await suggestMutation.mutateAsync(mode);
+                const response = await suggestMutation.mutateAsync("default");
                 setLastSuggestionContext(response.context);
               } catch (error) {
                 const message = error instanceof Error ? error.message : "Failed to generate suggestion";

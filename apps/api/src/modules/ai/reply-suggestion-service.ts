@@ -75,15 +75,41 @@ const shouldRegenerateCopilotReply = (text: string): boolean => {
   return REGEN_TRIGGER_PHRASES.some((phrase) => normalized.includes(phrase));
 };
 
-const MAX_RECENT_MESSAGES_FOR_COMPLETION = 10;
+const COPILOT_MAX_CONTEXT_MESSAGES = 12;
 
-const composePromptMessages = (
-  recentMessages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
-  userPrompt: string
-) => [
-  ...recentMessages.slice(-MAX_RECENT_MESSAGES_FOR_COMPLETION),
+type PromptMessage = { role: "system" | "user" | "assistant"; content: string };
+
+const selectCopilotContextMessages = (recentMessages: PromptMessage[], maxMessages = COPILOT_MAX_CONTEXT_MESSAGES) => {
+  const meaningful = recentMessages.filter((m) => m.content.trim().length > 0);
+  if (meaningful.length <= maxMessages) return meaningful;
+
+  // Take last N meaningful messages, but make sure we don't drop the latest client message.
+  const lastClientIndex = (() => {
+    for (let i = meaningful.length - 1; i >= 0; i -= 1) {
+      if (meaningful[i].role === "user") return i;
+    }
+    return -1;
+  })();
+
+  const tailStart = Math.max(0, meaningful.length - maxMessages);
+  let selected = meaningful.slice(tailStart);
+
+  if (lastClientIndex >= 0 && lastClientIndex < tailStart) {
+    // Ensure latest client msg is included by replacing the oldest selected item.
+    selected = [...selected.slice(1), meaningful[lastClientIndex]];
+  }
+
+  return selected;
+};
+
+const composePromptMessages = (recentMessages: PromptMessage[], userPrompt: string) => [
+  ...selectCopilotContextMessages(recentMessages),
   { role: "user" as const, content: userPrompt }
 ];
+
+export const __test__ = {
+  selectCopilotContextMessages
+};
 
 export class ReplySuggestionService {
   private readonly contextService: AIContextService;
@@ -126,7 +152,8 @@ export class ReplySuggestionService {
       promptVersion: this.app.config.env.AI_PROMPT_VERSION,
       context
     });
-    const promptMessages = composePromptMessages(context.recentMessages, userPrompt);
+    const selectedContextMessages = selectCopilotContextMessages(context.recentMessages);
+    const promptMessages = [...selectedContextMessages, { role: "user" as const, content: userPrompt }];
 
     const triggerMessageId = context.triggerMessageId;
 
@@ -219,6 +246,17 @@ export class ReplySuggestionService {
       this.app.log.debug(
         { companyId: params.companyId, conversationId: params.conversationId, prompt_estimated_size: promptDebug.promptEstimatedSize },
         "prompt_estimated_size"
+      );
+      this.app.log.debug(
+        {
+          companyId: params.companyId,
+          conversationId: params.conversationId,
+          system_prompt_chars: systemPrompt.length,
+          user_prompt_chars: userPrompt.length,
+          context_messages_included: selectedContextMessages.length,
+          knowledge_blocks_count: promptDebug.knowledgeBlocksCount
+        },
+        "copilot_prompt_size_debug"
       );
 
       providerResult = await provider.generateReply({
