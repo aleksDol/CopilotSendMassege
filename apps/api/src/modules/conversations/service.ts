@@ -129,18 +129,7 @@ export const listConversations = async (
       });
 
       const hasNext = rows.length > params.limit;
-      const items = rows.slice(0, params.limit).map((row) => ({
-        conversationId: row.conversationId,
-        title: row.conversation.title ?? row.conversation.channelAccount.displayName,
-        lastMessagePreview: row.lastMessagePreview,
-        lastMessageAt: row.lastMessageAt,
-        leadStage: row.leadStage.toLowerCase(),
-        leadTemperature: row.leadTemperature.toLowerCase(),
-        unansweredClientMessageCount: row.unansweredClientMessageCount,
-        isWaitingForReply: row.isWaitingForReply,
-        assignedUserId: row.conversation.assignedUserId,
-        isArchived: row.conversation.isArchived
-      }));
+      const items = rows.slice(0, params.limit).map(mapConversationStateRowToListItem);
 
       const nextCursor = hasNext
         ? encodeConversationCursor({
@@ -156,6 +145,23 @@ export const listConversations = async (
     }
   });
 };
+
+export type ConversationListRow = Prisma.ConversationStateGetPayload<{
+  include: { conversation: { include: { channelAccount: true } } };
+}>;
+
+export const mapConversationStateRowToListItem = (row: ConversationListRow) => ({
+  conversationId: row.conversationId,
+  title: row.conversation.title ?? row.conversation.channelAccount.displayName,
+  lastMessagePreview: row.lastMessagePreview,
+  lastMessageAt: row.lastMessageAt,
+  leadStage: row.leadStage.toLowerCase(),
+  leadTemperature: row.leadTemperature.toLowerCase(),
+  unansweredClientMessageCount: row.unansweredClientMessageCount,
+  isWaitingForReply: row.isWaitingForReply,
+  assignedUserId: row.conversation.assignedUserId,
+  isArchived: row.conversation.isArchived
+});
 
 export const invalidateConversationCaches = async (app: FastifyInstance, companyId: string) => {
   await invalidateCacheByPrefix(app, `cache:conversations:${companyId}:`);

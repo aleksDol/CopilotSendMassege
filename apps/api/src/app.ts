@@ -9,6 +9,7 @@ import rateLimitPlugin from "./plugins/rate-limit.js";
 import helmetPlugin from "./plugins/helmet.js";
 import errorHandlerPlugin from "./plugins/error-handler.js";
 import apiModules from "./modules/index.js";
+import { startIgnoredLeadSweep } from "./modules/follow-up/ignored-lead-sweep-runner.js";
 
 export const buildApp = async (config: AppConfig) => {
   const app = Fastify({
@@ -38,6 +39,9 @@ export const buildApp = async (config: AppConfig) => {
   await app.register(rateLimitPlugin);
   await app.register(errorHandlerPlugin);
   await app.register(apiModules);
+
+  // Background sweeps (safe, env-gated).
+  startIgnoredLeadSweep(app);
 
   return app;
 };

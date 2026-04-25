@@ -104,6 +104,8 @@ enum LeadStatus {
 enum LeadStage {
   NEW
   CONTACTED
+  REPLIED
+  IGNORED
   QUALIFIED
   PROPOSAL
   NEGOTIATION

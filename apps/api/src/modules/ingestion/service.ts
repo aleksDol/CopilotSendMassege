@@ -10,6 +10,11 @@ import { ConversationStateService } from "../state/service.js";
 import type { LeadRadarMessageInput } from "../leadradar/types/ingestion.js";
 import { enqueueLeadRadarJob } from "../leadradar/queue/leadradar-queue.js";
 import {
+  applyInboundRepliedStage,
+  applyOutboundContactedStage,
+  ensureCrmLeadForInbound
+} from "./crm-lead-stage-automation.js";
+import {
   enqueueAuthorProfileCheckBestEffort,
   isLikelyBotOrServiceSender,
   toAuthorProfileCheckPayload
@@ -550,8 +555,9 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
     const preview = sanitizeDbString(payload.text)?.slice(0, 240) || null;
     const currentState = await app.prisma.conversationState.findUnique({
       where: { conversationId: conversation.id },
-      select: { lastMessageId: true, lastMessageAt: true }
+      select: { lastMessageId: true, lastMessageAt: true, lastOutboundAt: true }
     });
+    const priorLastOutboundAt = currentState?.lastOutboundAt ?? null;
 
     const shouldApplyStateUpdate =
       // If state already points to this message, don't repeat inbound counter increments.
@@ -583,6 +589,30 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
           sentAt,
           preview
         });
+      }
+
+      // CRM lead creation + stage sync (ingestion is source of truth).
+      // Must be idempotent and never interfere with waiting/unanswered/cold logic.
+      try {
+        const ownerUserId = telegramAccount.channelAccount.createdByUserId;
+        if (payload.isOutgoing) {
+          await applyOutboundContactedStage(app.prisma, { conversationId: conversation.id });
+        } else {
+          await ensureCrmLeadForInbound(app.prisma, {
+            companyId,
+            conversationId: conversation.id,
+            ownerUserId: typeof ownerUserId === "string" ? ownerUserId : null
+          });
+          await applyInboundRepliedStage(app.prisma, {
+            companyId,
+            conversationId: conversation.id,
+            inboundSentAt: sentAt,
+            priorLastOutboundAt,
+            ownerUserId: typeof ownerUserId === "string" ? ownerUserId : null
+          });
+        }
+      } catch (err: unknown) {
+        app.log.warn({ err }, "[Ingestion] CRM lead stage automation failed (non-fatal)");
       }
 
       // We changed `conversation_state`, so all conversation list caches must be invalidated.
@@ -794,21 +824,54 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
 
   const stateService = new ConversationStateService(app.prisma);
   const preview = (payload.text ?? "").slice(0, 240) || null;
+  const sentAt = message.sentAt;
+  const priorLastOutboundAt = payload.isOutgoing
+    ? null
+    : (
+        await app.prisma.conversationState.findUnique({
+          where: { conversationId: conversation.id },
+          select: { lastOutboundAt: true }
+        })
+      )?.lastOutboundAt ?? null;
 
   if (payload.isOutgoing) {
     await stateService.updateFromOutboundMessage({
       conversationId: conversation.id,
       messageId: message.id,
-      sentAt: message.sentAt,
+      sentAt,
       preview
     });
   } else {
     await stateService.updateFromInboundMessage({
       conversationId: conversation.id,
       messageId: message.id,
-      sentAt: message.sentAt,
+      sentAt,
       preview
     });
+  }
+
+  // CRM lead creation + stage sync (ingestion is source of truth).
+  // Must be idempotent and never interfere with waiting/unanswered/cold logic.
+  try {
+    const ownerUserId = telegramAccount.channelAccount.createdByUserId;
+    if (payload.isOutgoing) {
+      await applyOutboundContactedStage(app.prisma, { conversationId: conversation.id });
+    } else {
+      await ensureCrmLeadForInbound(app.prisma, {
+        companyId,
+        conversationId: conversation.id,
+        ownerUserId: typeof ownerUserId === "string" ? ownerUserId : null
+      });
+      await applyInboundRepliedStage(app.prisma, {
+        companyId,
+        conversationId: conversation.id,
+        inboundSentAt: sentAt,
+        priorLastOutboundAt,
+        ownerUserId: typeof ownerUserId === "string" ? ownerUserId : null
+      });
+    }
+  } catch (err: unknown) {
+    app.log.warn({ err }, "[Ingestion] CRM lead stage automation failed (non-fatal)");
   }
 
   await app.prisma.telegramAccount.update({

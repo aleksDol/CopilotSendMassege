@@ -243,7 +243,6 @@ export const getDashboardSales = async (
 
   const activeChannelAccountId = activeTelegram?.channelAccountId ?? null;
   const ranges = getSalesDashboardRanges({ period: params.period, timezone: params.timezone });
-  const thresholdHours = app.config.env.FOLLOW_UP_UNANSWERED_HOURS || 24;
 
   const conversationWhereBase: Prisma.ConversationWhereInput = {
     companyId: params.companyId,
@@ -344,7 +343,7 @@ export const getDashboardSales = async (
 
           // 4) People ignoring / no reply:
           // distinct conversations where first OUTBOUND/contact in selected period exists,
-          // and no INBOUND exists within threshold after that outbound.
+          // and no INBOUND exists at all after that outbound ("no reply ever").
           app.prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
             WITH first_out AS (
               SELECT
@@ -370,7 +369,6 @@ export const getDashboardSales = async (
               WHERE mi."conversationId" = fo."conversationId"
                 AND mi."direction" = 'INBOUND'
                 AND mi."sentAt" >= fo.first_out_at
-                AND mi."sentAt" < (fo.first_out_at + (${thresholdHours} * INTERVAL '1 hour'))
             )
           `).then((rows) => Number(rows[0]?.count ?? 0)),
 
