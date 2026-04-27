@@ -102,19 +102,17 @@ async function main() {
 
     const expectedPeerId = peerParticipant.id;
 
-    // Find INBOUND messages in this conversation sent by someone OTHER than the expected peer
-    const foreignMessages = await prisma.message.findMany({
-      where: {
-        conversationId: conv.id,
-        direction: "INBOUND",
-        participantId: { not: expectedPeerId, notIn: [expectedPeerId] },
-        NOT: { participantId: null },
-      },
+    // Find ALL foreign messages: INBOUND from wrong sender OR OUTBOUND with rawPayload.peerExternalId
+    // pointing to a different peer than this conversation's expected peer.
+    const allMessages = await prisma.message.findMany({
+      where: { conversationId: conv.id },
       select: {
         id: true,
         externalMessageId: true,
+        direction: true,
         participantId: true,
         sentAt: true,
+        rawPayload: true,
         participant: {
           select: {
             id: true,
@@ -128,6 +126,28 @@ async function main() {
       orderBy: { sentAt: "asc" },
     });
 
+    // For each message determine the "peer" it belongs to:
+    // - INBOUND: participant (sender) = peer
+    // - OUTBOUND: rawPayload.peerExternalId = peer
+    type MsgWithPeer = (typeof allMessages)[0] & { resolvedPeerExtId: string | null };
+    const msgsWithPeer: MsgWithPeer[] = allMessages.map(msg => {
+      let resolvedPeerExtId: string | null = null;
+      if (msg.direction === "INBOUND") {
+        resolvedPeerExtId = msg.participant?.isSelf ? null : (msg.participant?.externalParticipantId ?? null);
+      } else {
+        // OUTBOUND: use peerExternalId from rawPayload
+        const raw = msg.rawPayload as Record<string, unknown> | null;
+        const peerRaw = raw?.peerExternalId;
+        resolvedPeerExtId = typeof peerRaw === "string" && peerRaw.trim() ? peerRaw.trim() : null;
+      }
+      return { ...msg, resolvedPeerExtId };
+    });
+
+    // Keep only messages that belong to a DIFFERENT peer than this conversation's expected peer
+    const foreignMessages = msgsWithPeer.filter(
+      m => m.resolvedPeerExtId !== null && m.resolvedPeerExtId !== peerParticipant.externalParticipantId
+    );
+
     if (foreignMessages.length === 0) continue;
 
     pollutedCount++;
@@ -135,34 +155,23 @@ async function main() {
     console.log(
       `\n[POLLUTED] conv=${conv.id} externalId=${conv.externalConversationId} ` +
       `title="${conv.title ?? "(no title)"}" peer=${peerParticipant.externalParticipantId} ` +
-      `→ ${foreignMessages.length} foreign INBOUND messages`
+      `→ ${foreignMessages.length} foreign messages (INBOUND+OUTBOUND)`
     );
 
-    // Group foreign messages by their actual sender
-    const bySender = new Map<string, typeof foreignMessages>();
+    // Group foreign messages by their resolved peer
+    const bySender = new Map<string, MsgWithPeer[]>();
     for (const msg of foreignMessages) {
-      if (!msg.participant) continue;
-      const senderId = msg.participant.id;
-      if (!bySender.has(senderId)) bySender.set(senderId, []);
-      bySender.get(senderId)!.push(msg);
+      const key = msg.resolvedPeerExtId!;
+      if (!bySender.has(key)) bySender.set(key, []);
+      bySender.get(key)!.push(msg);
     }
 
-    for (const [, msgs] of bySender) {
-      const sender = msgs[0].participant!;
-      if (sender.isSelf) {
-        console.log(
-          `  [SKIP] sender=${sender.externalParticipantId} is self — cannot determine target conversation`
-        );
-        messagesSkipped += msgs.length;
-        continue;
-      }
-
-      const senderExtId = sender.externalParticipantId;
+    for (const [senderExtId, msgs] of bySender) {
       console.log(
-        `  [SENDER] ${senderExtId} (${sender.fullName ?? sender.username ?? "unknown"}) — ${msgs.length} messages`
+        `  [PEER] ${senderExtId} — ${msgs.length} messages (${msgs.filter(m=>m.direction==="INBOUND").length} in / ${msgs.filter(m=>m.direction==="OUTBOUND").length} out)`
       );
 
-      // The correct conversation for this sender should have externalConversationId = senderExtId
+      // The correct conversation for this peer should have externalConversationId = senderExtId
       // (in Telegram, chatId = peer userId for DIRECT chats)
       const correctConv = await prisma.conversation.findFirst({
         where: {
@@ -197,27 +206,23 @@ async function main() {
           console.log(`  [UNARCHIVED] conv=${correctConv.id}`);
         }
 
-        // Restore ConversationParticipant for sender in target conversation
-        try {
-          await prisma.conversationParticipant.upsert({
-            where: {
-              conversationId_participantId: {
-                conversationId: correctConv.id,
-                participantId: sender.id,
-              }
-            },
-            update: {},
-            create: {
-              conversationId: correctConv.id,
-              participantId: sender.id,
-              joinedAt: new Date(),
+        // Restore ConversationParticipant for the inbound senders in target conversation
+        const inboundSenderIds = [...new Set(
+          msgs.filter(m => m.direction === "INBOUND" && m.participantId && !m.participant?.isSelf)
+              .map(m => m.participantId!)
+        )];
+        for (const participantId of inboundSenderIds) {
+          try {
+            await prisma.conversationParticipant.upsert({
+              where: { conversationId_participantId: { conversationId: correctConv.id, participantId } },
+              update: {},
+              create: { conversationId: correctConv.id, participantId, joinedAt: new Date() }
+            });
+            cpRestored++;
+          } catch (e) {
+            if (!isPrismaUniqueViolation(e)) {
+              console.error(`  [ERROR] Failed to restore CP participantId=${participantId}:`, e);
             }
-          });
-          cpRestored++;
-          console.log(`  [CP_RESTORED] participant=${sender.externalParticipantId} → conv=${correctConv.id}`);
-        } catch (e) {
-          if (!isPrismaUniqueViolation(e)) {
-            console.error(`  [ERROR] Failed to restore CP for sender=${senderExtId}:`, e);
           }
         }
 
