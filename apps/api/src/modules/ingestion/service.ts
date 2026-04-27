@@ -597,12 +597,14 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
       try {
         const ownerUserId = telegramAccount.channelAccount.createdByUserId;
         if (payload.isOutgoing) {
+          const outboundPeerExternalId =
+            getRawString(payload.rawPayload?.peerExternalId) ?? conversation.externalConversationId ?? null;
           await ensureCrmLeadForOutbound(app.prisma, {
             companyId,
             conversationId: conversation.id,
             ownerUserId: typeof ownerUserId === "string" ? ownerUserId : null,
             conversationType: toConversationType(payload),
-            peerExternalId: getRawString(payload.rawPayload?.peerExternalId),
+            peerExternalId: outboundPeerExternalId,
             peerIsBot: Boolean(payload.rawPayload?.peerIsBot),
             isServiceDialog: Boolean(payload.rawPayload?.isServiceDialog),
             senderExternalId: getRawString(payload.senderExternalId)
