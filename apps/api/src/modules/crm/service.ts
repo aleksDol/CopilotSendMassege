@@ -119,10 +119,13 @@ export async function listCrmLeads(
       take: batchSize
     });
 
+    const batchStartOffset = scannedOffset;
     scannedOffset += rows.length;
     hasMore = rows.length === batchSize;
 
+    let rowsConsumed = 0;
     for (const row of rows) {
+      rowsConsumed += 1;
       const title = row.conversation.title ?? null;
       const externalConversationId = row.conversation.externalConversationId ?? null;
       const clientName = title?.trim() || externalConversationId?.trim() || "Без имени";
@@ -156,6 +159,13 @@ export async function listCrmLeads(
       });
 
       if (items.length >= params.limit) break;
+    }
+
+    // If we stopped early inside the batch (limit reached before exhausting rows),
+    // resume from the row where we stopped, not from the end of the full batch.
+    if (items.length >= params.limit && rowsConsumed < rows.length) {
+      scannedOffset = batchStartOffset + rowsConsumed;
+      hasMore = true;
     }
   }
 
