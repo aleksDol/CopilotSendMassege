@@ -31,7 +31,7 @@ test("PromptAssemblyService includes hidden sales analysis + strategy rules + ou
 
   assert.ok(userPrompt.includes("Hidden internal step (do NOT show this to the user):"));
   assert.ok(userPrompt.includes("ONE ACTION RULE"));
-  assert.ok(systemPrompt.includes("The final answer must contain ONLY the message to send to the client."));
+  assert.ok(systemPrompt.includes('Return ONLY a valid JSON object: {"suggestion":"...", "confidence":number|null}.'));
 });
 
 test("PromptAssemblyService does not duplicate serialized chat history in prompts", () => {
@@ -68,4 +68,3 @@ test("PromptAssemblyService skips empty/fallback sections", () => {
   assert.equal(userPrompt.includes("Conversation summary:"), false);
   assert.equal(userPrompt.includes("Relevant knowledge:"), false);
 });
-

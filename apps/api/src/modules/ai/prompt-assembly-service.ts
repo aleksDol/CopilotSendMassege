@@ -65,7 +65,14 @@ Missing-for-decision guidance (use analysis.missing to choose what to emphasize,
 - examples: offer to show an example only if examples exist in context/knowledge
 - simplicity: reduce complexity and suggest a simple next step
 - urgency: avoid fake urgency; mention timing only if it is relevant in context
-- none: proceed naturally with the chosen strategy`;
+- none: proceed naturally with the chosen strategy
+
+Situation guidance (keep ONE ACTION RULE):
+- first touch: keep it light, no pressure, and ask ONE simple question.
+- objection/refusal: briefly acknowledge the concern/refusal, reframe value in one short phrase, then ask ONE light follow-up question.
+- interested lead: add one concrete detail and move to one safe next step.
+- pricing objection: do not argue about price; first ask one short clarifying question about scope/context.
+- unclear intent: ask one precise clarifying question before proposing anything.`;
 
 const PRICE_SIGNALS = [
   "price",
@@ -297,11 +304,11 @@ Style rules:
 - Avoid stiff templates like "Здравствуйте"
 
 Strictly avoid starting with:
-- "Р§Р°СЃС‚Рѕ..."
-- "РњРЅРѕРіРёРµ..."
-- "Р’ Р±РѕР»СЊС€РёРЅСЃС‚РІРµ СЃР»СѓС‡Р°РµРІ..."
-- "РљР°Рє РїСЂР°РІРёР»Рѕ..."
-- "РРЅС‚РµСЂРµСЃРЅРѕ, РєР°РєРёРµ..."
+- "Часто..."
+- "Многие..."
+- "В большинстве случаев..."
+- "Как правило..."
+- "Интересно, какие..."
 
 Instead:
 - Use natural phrasing
@@ -318,10 +325,10 @@ Output constraints:
 - no prefixes like "Ответ:" or "Сообщение:"
 
 STRICTLY FORBIDDEN:
-- "РЅР°РїРёС€РёС‚Рµ РІ Р»РёС‡РєСѓ"
-- "РјРѕРіСѓ РїРѕРјРѕС‡СЊ"
-- "СЏ СЌРєСЃРїРµСЂС‚"
-- "РѕР±СЂР°С‰Р°Р№С‚РµСЃСЊ"
+- "напишите в личку"
+- "могу помочь"
+- "я эксперт"
+- "обращайтесь"
 - any aggressive selling
 
 Critical behavior:
@@ -331,8 +338,9 @@ Critical behavior:
 - The reply must feel natural and believable
 
 Output guard:
-- The final answer must contain ONLY the message to send to the client.
-- No analysis, no explanations, no labels, no markdown, no multiple options.`;
+- Return ONLY a valid JSON object: {"suggestion":"...", "confidence":number|null}.
+- "suggestion" must contain ONLY the message to send to the client (no analysis, no labels, no markdown, no multiple options).
+- "confidence" must be a number from 0 to 1, or null.`;
 
     const selectedKnowledge = selectRelevantKnowledge(params.context);
     const selectedKnowledgeItems = selectedKnowledge.items;
@@ -394,7 +402,8 @@ Output guard:
     userParts.push(
       "Write the reply as a quick chat message that moves the conversation one step forward.",
       "Keep it 1–3 sentences, natural Russian, no pressure.",
-      "Return ONLY the message text."
+      'Return ONLY valid JSON: {"suggestion":"...", "confidence":number|null}.',
+      '"suggestion" must contain only the final client-facing message text.'
     );
 
     const userPrompt = userParts.join("\n");
@@ -411,7 +420,7 @@ Output guard:
       policyBlock,
       "",
       "Output requirements:",
-      "Return JSON object with fields: suggestion (string), confidence (number optional)."
+      'Return ONLY valid JSON object with fields: suggestion (string), confidence (number | null).'
     ].join("\n");
 
     const hashMaterial = JSON.stringify({

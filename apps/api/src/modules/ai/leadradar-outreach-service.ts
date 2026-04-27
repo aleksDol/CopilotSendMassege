@@ -496,7 +496,11 @@ export class LeadRadarOutreachService {
                 (playbookCheck.violated
                   ? `Playbook compliance failed: ${playbookCheck.reasons.join(", ")}. Fix it. `
                   : "") +
-                "Do NOT mention product/tool/solution. No 'могу помочь'. No AI mention. Keep 1–2 short sentences and exactly ONE question."
+                "Do NOT pitch aggressively. Do NOT list features. Do NOT make a direct sales offer immediately. " +
+                "You may mention the value/product context in one short human phrase if it helps make the question understandable. " +
+                "Keep it non-salesy, concrete, and relevant to the lead context. " +
+                "Do NOT use phrases like 'могу помочь', 'давайте созвонимся', 'купите', 'оставьте заявку'. " +
+                "No AI mention. Keep 1–2 short sentences and exactly ONE question."
             }
           ],
           { temperature: 0.4, maxTokens: 160 }
@@ -625,4 +629,3 @@ export class LeadRadarOutreachService {
     return { ...msg, analysis };
   }
 }
-
