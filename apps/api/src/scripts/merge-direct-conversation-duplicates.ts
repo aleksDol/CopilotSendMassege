@@ -181,10 +181,9 @@ async function main() {
       });
 
       for (const fromId of mergedIds) {
-        await prisma.$transaction(async (tx) => {
-          // Move Message rows. If a unique constraint conflict occurs (same externalMessageId already exists),
-          // we keep the conflicting rows on the old conversation (non-destructive) and continue.
-          const fromMessages = await tx.message.findMany({
+          // Move Message rows one-by-one outside a transaction so that a P2002 conflict
+          // on one message does not abort the whole batch (Postgres error 25P02).
+          const fromMessages = await prisma.message.findMany({
             where: { conversationId: fromId },
             select: { id: true },
             orderBy: [{ sentAt: "asc" }, { id: "asc" }]
@@ -192,7 +191,7 @@ async function main() {
 
           for (const m of fromMessages) {
             try {
-              await tx.message.update({
+              await prisma.message.update({
                 where: { id: m.id },
                 data: { conversationId: canonicalId }
               });
@@ -207,17 +206,17 @@ async function main() {
           }
 
           // ConversationState is 1:1 unique(conversationId). Prefer keeping canonical state if it exists.
-          const canonicalState = await tx.conversationState.findUnique({
+          const canonicalState = await prisma.conversationState.findUnique({
             where: { conversationId: canonicalId },
             select: { conversationId: true }
           });
           if (!canonicalState) {
-            const fromState = await tx.conversationState.findUnique({
+            const fromState = await prisma.conversationState.findUnique({
               where: { conversationId: fromId },
               select: { conversationId: true }
             });
             if (fromState) {
-              await tx.conversationState.update({
+              await prisma.conversationState.update({
                 where: { conversationId: fromId },
                 data: { conversationId: canonicalId }
               });
@@ -226,24 +225,24 @@ async function main() {
           }
 
           // Lead is also 1:1 unique(conversationId). Prefer keeping canonical lead if it exists.
-          const canonicalLead = await tx.lead.findUnique({
+          const canonicalLead = await prisma.lead.findUnique({
             where: { conversationId: canonicalId },
             select: { id: true }
           });
           if (!canonicalLead) {
-            const fromLead = await tx.lead.findUnique({
+            const fromLead = await prisma.lead.findUnique({
               where: { conversationId: fromId },
               select: { id: true }
             });
             if (fromLead) {
-              await tx.lead.update({
+              await prisma.lead.update({
                 where: { id: fromLead.id },
                 data: { conversationId: canonicalId }
               });
               movedLead += 1;
             }
           } else {
-            const fromLead = await tx.lead.findUnique({
+            const fromLead = await prisma.lead.findUnique({
               where: { conversationId: fromId },
               select: { id: true }
             });
@@ -251,40 +250,39 @@ async function main() {
           }
 
           // Move ConversationSummary rows.
-          const sumRes = await tx.conversationSummary.updateMany({
+          const sumRes = await prisma.conversationSummary.updateMany({
             where: { conversationId: fromId },
             data: { conversationId: canonicalId }
           });
           movedSummaries += sumRes.count;
 
           // Move AiSuggestion rows.
-          const sugRes = await tx.aiSuggestion.updateMany({
+          const sugRes = await prisma.aiSuggestion.updateMany({
             where: { conversationId: fromId },
             data: { conversationId: canonicalId }
           });
           movedAiSuggestions += sugRes.count;
 
           // AiRun.conversationId is nullable; safe to move.
-          const runRes = await tx.aiRun.updateMany({
+          const runRes = await prisma.aiRun.updateMany({
             where: { conversationId: fromId },
             data: { conversationId: canonicalId }
           });
           movedAiRuns += runRes.count;
 
           // Task.conversationId is nullable; safe to move.
-          const taskRes = await tx.task.updateMany({
+          const taskRes = await prisma.task.updateMany({
             where: { conversationId: fromId },
             data: { conversationId: canonicalId }
           });
           movedTasks += taskRes.count;
 
           // Archive the duplicate conversation row. Do NOT delete (safe).
-          await tx.conversation.update({
+          await prisma.conversation.update({
             where: { id: fromId },
             data: { isArchived: true }
           });
           archivedConversations += 1;
-        });
       }
 
       mergedGroups += 1;
