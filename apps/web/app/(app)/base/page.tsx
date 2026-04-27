@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +11,7 @@ import { useCrmLeads } from "@/lib/hooks/use-app-data";
 import { conversationsApi } from "@/lib/api/conversations";
 import { useAuth } from "@/lib/auth/context";
 import { ApiError } from "@/lib/api/errors";
+import type { CrmLeadListItem } from "@/lib/api/types";
 
 const STAGE_OPTIONS: Array<{ label: string; value: string }> = [
   { label: "Все", value: "all" },
@@ -41,13 +42,46 @@ export default function BasePage() {
     search: ""
   });
 
+  const [extraItems, setExtraItems] = useState<CrmLeadListItem[]>([]);
+  const [nextPageCursor, setNextPageCursor] = useState<string | null>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
   const leads = useCrmLeads({
     limit: 50,
     stage: filters.stage === "all" ? undefined : filters.stage,
     search: filters.search.trim() ? filters.search.trim() : undefined
   });
 
-  const items = leads.data?.items ?? [];
+  const firstPageItems = leads.data?.items ?? [];
+  const firstPageNextCursor = leads.data?.nextCursor ?? null;
+
+  const items = [...firstPageItems, ...extraItems];
+  const hasMore = extraItems.length === 0 ? !!firstPageNextCursor : !!nextPageCursor;
+  const cursorToLoad = extraItems.length === 0 ? firstPageNextCursor : nextPageCursor;
+
+  const handleFilterChange = useCallback((newFilters: Partial<{ stage: string; search: string }>) => {
+    setFilters((prev) => ({ ...prev, ...newFilters }));
+    setExtraItems([]);
+    setNextPageCursor(null);
+  }, []);
+
+  const handleLoadMore = useCallback(async () => {
+    if (!cursorToLoad) return;
+    setIsLoadingMore(true);
+    try {
+      const { crmApi } = await import("@/lib/api/crm");
+      const res = await crmApi.listLeads(token ?? "", {
+        limit: 50,
+        cursor: cursorToLoad,
+        stage: filters.stage === "all" ? undefined : filters.stage,
+        search: filters.search.trim() ? filters.search.trim() : undefined
+      });
+      setExtraItems((prev) => [...prev, ...(res.items ?? [])]);
+      setNextPageCursor(res.nextCursor ?? null);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [cursorToLoad, token, filters]);
 
   const stageOptionsNoAll = useMemo(() => STAGE_OPTIONS.filter((o) => o.value !== "all"), []);
 
@@ -82,17 +116,17 @@ export default function BasePage() {
               aria-label="Фильтр по этапу"
               options={STAGE_OPTIONS}
               value={filters.stage}
-              onChange={(e) => setFilters((prev) => ({ ...prev, stage: e.target.value }))}
+              onChange={(e) => handleFilterChange({ stage: e.target.value })}
             />
           </div>
           <input
             value={filters.search}
-            onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
+            onChange={(e) => handleFilterChange({ search: e.target.value })}
             placeholder="Поиск по имени / externalConversationId"
             className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
           />
           <div className="text-sm text-muted-foreground sm:ml-auto">
-            {items.length} шт.
+            {items.length} шт.{hasMore ? "+" : ""}
           </div>
         </CardContent>
       </Card>
@@ -161,6 +195,17 @@ export default function BasePage() {
               </tbody>
             </table>
           </CardContent>
+          {hasMore && (
+            <div className="flex justify-center pb-4">
+              <button
+                onClick={() => void handleLoadMore()}
+                disabled={isLoadingMore}
+                className="rounded-md border border-border bg-background px-5 py-2 text-sm hover:bg-muted disabled:opacity-50"
+              >
+                {isLoadingMore ? "Загружаем..." : "Загрузить ещё"}
+              </button>
+            </div>
+          )}
         </Card>
       )}
     </div>
