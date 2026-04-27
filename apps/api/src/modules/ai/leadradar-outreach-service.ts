@@ -502,6 +502,8 @@ export class LeadRadarOutreachService {
                   : "") +
                 "First message goal: start natural dialogue, not selling. " +
                 "If the message contains an offer, audit, service pitch, 'могу помочь', 'могу разобрать', or direct selling, rewrite it as a neutral qualifying question. " +
+                "If the message is too generic and the lead context contains a clear niche/service/topic, rewrite it into a context-specific qualifying question. " +
+                "Use context only to choose the topic; do NOT explain how you found the context. " +
                 "Do NOT add value proposition in the first message. " +
                 "Do NOT use detective/claim phrases like 'увидел', 'заметил', 'нашёл', 'пишу, потому что', 'вижу, что', 'судя по'. " +
                 "Prefer question over claim. No AI mention. Keep 1вЂ“2 short sentences and exactly ONE question. Output only plain text."
@@ -545,6 +547,8 @@ export class LeadRadarOutreachService {
                   "- Do NOT sell anything in the first message.\n" +
                   "- Do NOT offer audit/services/help/consultation/call.\n" +
                   "- If there is any offer/pitch, replace it with a neutral qualifying question.\n" +
+                  "- If the message is too generic and context has a clear niche/service/topic, rewrite it into a context-specific qualifying question.\n" +
+                  "- Use context only to choose question topic; do NOT reveal how you got this context.\n" +
                   "- Do NOT guess what the person does.\n" +
                   "- Prefer question over claim.\n" +
                   "- Do NOT use: \"увидел\", \"заметил\", \"смотрел\", \"нашёл\", \"наткнулся\", \"попался\", \"пишу, потому что\", \"вижу, что\", \"судя по\".\n" +

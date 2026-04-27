@@ -187,12 +187,17 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
     ? clip(params.coldFirstTouchPlaybook.trim(), 1200)
     : "вЂ”";
 
-  const strictFirstMessageRules = `FIRST MESSAGE GOAL (STRICT):
+const strictFirstMessageRules = `FIRST MESSAGE GOAL (STRICT):
 - Do NOT sell anything in the first message.
 - Do NOT offer audit, services, consultation, implementation, product, bot, CRM, website, automation, or help.
 - Do NOT write: "могу помочь", "могу разобрать", "можем сделать", "предлагаю", "оставьте заявку", "давайте созвонимся".
 - Your only goal is to start a natural conversation and ask one simple relevant qualifying question.
 - The message must feel like a normal Telegram chat message, not outreach or advertising.
+
+CONTEXT USAGE (STRICT):
+- Use the lead context to make the question specific, but do not explicitly say that you saw, found, noticed, or analyzed anything.
+- Prefer context-specific questions over generic business questions.
+- Use context only to choose the topic of the question, not to reveal the source of the context.
 
 FORBIDDEN PHRASES (STRICT):
 - "увидел", "заметил", "смотрел", "нашёл", "наткнулся", "попался"
@@ -203,7 +208,16 @@ FORBIDDEN PHRASES (STRICT):
 
 QUESTION OVER CLAIM:
 - Do NOT confidently state what the person does unless it is explicitly stated by the lead.
-- Prefer questions over claims.`;
+- Turn context into a question.
+- Prefer questions over claims.
+
+GENERIC QUESTION BAN WHEN CONTEXT EXISTS:
+- If lead context contains a clear niche, role, service, product, pain, or topic, avoid generic questions like:
+  "Как вы привлекаете клиентов?",
+  "У вас есть сайт?",
+  "Чем вы занимаетесь?",
+  "Как сейчас идут заявки?"
+- Instead, ask one question tied to that niche/service/topic.`;
 
   const systemPrompt = `You are writing a first cold outreach message in Telegram.
 
@@ -266,6 +280,12 @@ Format:
     "Good direction examples:",
     '- "Привет! Подскажи, ты сейчас больше делаешь инфографику под карточки товаров или ещё ведёшь упаковку/продвижение магазинов?"',
     '- "Привет! У тебя сейчас клиенты больше приходят из Telegram или с рекомендаций?"',
+    "",
+    "Generic vs context-specific examples (when context exists):",
+    '- Bad: "Привет! Как ты сейчас привлекаешь клиентов — больше через сайт или рекомендации?"',
+    '- Good: "Привет! Подскажи, клиенты на инфографику сейчас больше приходят с рекомендаций или из Telegram/чатов?"',
+    '- Bad: "Привет! У вас сейчас заявки больше с сайта или из Telegram?"',
+    '- Good: "Привет! Подскажи, заявки на ремонт сейчас чаще приходят с Авито, рекомендаций или из Telegram?"',
     "",
     "Final constraints:",
     "- Do NOT add value proposition in the first message.",

@@ -1,4 +1,4 @@
-import test from "node:test";
+﻿import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildLeadRadarOutreachAnalysisPrompt,
@@ -30,7 +30,7 @@ test("outreach analysis prompt keeps JSON contract", () => {
   assert.ok(userPrompt.includes("Return JSON with EXACT keys:"));
 });
 
-test("outreach message prompt enforces neutral first-touch question", () => {
+test("outreach message prompt enforces context-specific first-touch question", () => {
   const { systemPrompt, userPrompt } = buildLeadRadarOutreachMessagePrompt({
     leadMessage: "ищу подрядчика",
     leadName: "Alex",
@@ -41,9 +41,9 @@ test("outreach message prompt enforces neutral first-touch question", () => {
     coldFirstTouchPlaybook: null,
     analysis: {
       leadType: "buyer_direct",
-      detectedRole: "вЂ”",
-      detectedActivity: "вЂ”",
-      detectedNeedOrPain: "вЂ”",
+      detectedRole: "—",
+      detectedActivity: "—",
+      detectedNeedOrPain: "—",
       relevantOfferAngle: "simple qualification",
       productFit: true,
       productFitReason: "relevant",
@@ -57,8 +57,18 @@ test("outreach message prompt enforces neutral first-touch question", () => {
   });
 
   assert.ok(systemPrompt.includes("Do NOT sell anything in the first message."));
+  assert.ok(userPrompt.includes("Prefer context-specific questions over generic business questions."));
+  assert.ok(userPrompt.includes("Use context only to choose the topic of the question, not to reveal the source of the context."));
+  assert.ok(userPrompt.includes("Turn context into a question."));
+  assert.ok(userPrompt.includes("avoid generic questions like:"));
   assert.ok(userPrompt.includes("\"увидел\", \"заметил\""));
   assert.ok(userPrompt.includes("Prefer questions over claims."));
+  assert.ok(userPrompt.includes('Bad: "Привет! Как ты сейчас привлекаешь клиентов — больше через сайт или рекомендации?"'));
+  assert.ok(
+    userPrompt.includes(
+      'Good: "Привет! Подскажи, клиенты на инфографику сейчас больше приходят с рекомендаций или из Telegram/чатов?"'
+    )
+  );
   assert.ok(systemPrompt.includes("Output ONLY the message text."));
   assert.ok(userPrompt.includes("relatedPostId: \"post-123\""));
   assert.ok(userPrompt.includes("contextPreview: \"Комментарий под постом про воронки.\""));
