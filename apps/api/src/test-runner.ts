@@ -25,3 +25,4 @@ import "./modules/leadradar/author-profile-matching-setting-migration.test.js";
 import "./modules/ai/prompt-assembly-service.test.js";
 import "./modules/ai/reply-suggestion-service.test.js";
 import "./modules/dashboard/sales-utils.test.js";
+import "./scripts/cleanup-invalid-crm-leads.test.js";
