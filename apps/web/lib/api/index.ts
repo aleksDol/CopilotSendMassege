@@ -9,4 +9,5 @@ export * from "./billing";
 export * from "./team";
 export * from "./workspace";
 export * from "./leadradar";
+export * from "./crm";
 export * from "./types";

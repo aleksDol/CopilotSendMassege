@@ -114,6 +114,28 @@ export type UpdateConversationLeadStageResponse = {
   lostAt: string | null;
 };
 
+export type CrmLeadListItem = {
+  leadId: string;
+  conversationId: string;
+  clientName: string;
+  externalConversationId: string | null;
+  conversationTitle: string | null;
+  conversationType: string | null;
+  source: string;
+  status: string;
+  stage: string;
+  lastMessageAt: string | null;
+  lastInboundAt: string | null;
+  lastOutboundAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CrmLeadsListResponse = {
+  items: CrmLeadListItem[];
+  nextCursor: string | null;
+};
+
 export type MessageItem = {
   id: string;
   direction: string;

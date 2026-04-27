@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { aiApi, billingApi, conversationsApi, dashboardApi, leadradarApi, settingsApi, tasksApi, teamApi, telegramApi, workspaceApi } from "@/lib/api";
+import { aiApi, billingApi, conversationsApi, crmApi, dashboardApi, leadradarApi, settingsApi, tasksApi, teamApi, telegramApi, workspaceApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth/context";
 
 /** Scope key so cache is never shared between users/companies (accounts). */
@@ -73,6 +73,16 @@ export const useTasks = (filters: Record<string, string | number | boolean | und
   return useQuery({
     queryKey: ["tasks", baseScopeKey(company?.id, user?.id), filters],
     queryFn: () => tasksApi.list(token ?? "", filters),
+    enabled: Boolean(token)
+  });
+};
+
+export const useCrmLeads = (filters: { stage?: string; search?: string; limit?: number; cursor?: string }) => {
+  const { token, company, user } = useAuth();
+  const scope = baseScopeKey(company?.id, user?.id);
+  return useQuery({
+    queryKey: ["crm-leads", scope, filters],
+    queryFn: () => crmApi.listLeads(token ?? "", filters),
     enabled: Boolean(token)
   });
 };

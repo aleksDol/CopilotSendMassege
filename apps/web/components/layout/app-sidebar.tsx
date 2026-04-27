@@ -9,6 +9,7 @@ import {
   MessageCircle,
   CheckSquare,
   Radar,
+  Database,
   Bot,
   Smartphone,
   CreditCard,
@@ -26,6 +27,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/chats", label: "Chats", icon: MessageCircle },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
+  { href: "/base", label: "База", icon: Database },
   { href: "/leadradar", label: "LeadRadar", icon: Radar }
 ];
 
