@@ -794,7 +794,9 @@ const leadradarController: FastifyPluginAsync = async (app) => {
         leadMessage: lead.message_text ?? null,
         leadName: lead.display_name ?? null,
         sourceType: lead.source_type ?? null,
-        chatTitle: lead.chat_title ?? null
+        chatTitle: lead.chat_title ?? null,
+        relatedPostId: lead.related_post_id ?? null,
+        contextPreview: lead.context_preview ?? null
       });
 
       // Keep API response shape minimal for UI: it only needs text.

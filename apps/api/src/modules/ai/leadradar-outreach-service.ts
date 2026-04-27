@@ -1,4 +1,4 @@
-import { OpenAIProvider, type AIMessage } from "@repo/ai-core";
+﻿import { OpenAIProvider, type AIMessage } from "@repo/ai-core";
 import type { KnowledgeItem, ReplyPolicy } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -37,14 +37,14 @@ const tryParseJson = (raw: string): unknown => {
 };
 
 const SALESY_TRIGGERS = [
-  "у меня есть инструмент",
-  "у меня есть решение",
-  "я могу предложить",
-  "ты пробовал ai",
-  "ты пробовал ии",
-  "могу помочь",
-  "оптимизировать процессы",
-  "увеличить конверсию"
+  "Сѓ РјРµРЅСЏ РµСЃС‚СЊ РёРЅСЃС‚СЂСѓРјРµРЅС‚",
+  "Сѓ РјРµРЅСЏ РµСЃС‚СЊ СЂРµС€РµРЅРёРµ",
+  "СЏ РјРѕРіСѓ РїСЂРµРґР»РѕР¶РёС‚СЊ",
+  "С‚С‹ РїСЂРѕР±РѕРІР°Р» ai",
+  "С‚С‹ РїСЂРѕР±РѕРІР°Р» РёРё",
+  "РјРѕРіСѓ РїРѕРјРѕС‡СЊ",
+  "РѕРїС‚РёРјРёР·РёСЂРѕРІР°С‚СЊ РїСЂРѕС†РµСЃСЃС‹",
+  "СѓРІРµР»РёС‡РёС‚СЊ РєРѕРЅРІРµСЂСЃРёСЋ"
 ] as const;
 
 const isSalesyOutreach = (text: string): boolean => {
@@ -54,17 +54,17 @@ const isSalesyOutreach = (text: string): boolean => {
 };
 
 const ASSUMPTION_TRIGGERS_DIRECT = [
-  "занимаешься ",
-  "вы занимаетесь ",
-  "ты занимаешься ",
-  "вижу, что",
-  "вижу что",
-  "заметил, что",
-  "заметил что",
-  "судя по",
-  "возможно,",
-  "скорее всего",
-  "наверное,"
+  "Р·Р°РЅРёРјР°РµС€СЊСЃСЏ ",
+  "РІС‹ Р·Р°РЅРёРјР°РµС‚РµСЃСЊ ",
+  "С‚С‹ Р·Р°РЅРёРјР°РµС€СЊСЃСЏ ",
+  "РІРёР¶Сѓ, С‡С‚Рѕ",
+  "РІРёР¶Сѓ С‡С‚Рѕ",
+  "Р·Р°РјРµС‚РёР», С‡С‚Рѕ",
+  "Р·Р°РјРµС‚РёР» С‡С‚Рѕ",
+  "СЃСѓРґСЏ РїРѕ",
+  "РІРѕР·РјРѕР¶РЅРѕ,",
+  "СЃРєРѕСЂРµРµ РІСЃРµРіРѕ",
+  "РЅР°РІРµСЂРЅРѕРµ,"
 ] as const;
 
 const isAssumptiveForDirect = (text: string): boolean => {
@@ -92,9 +92,9 @@ const extractPlaybookRequirements = (playbook: string | null | undefined): {
   const p = (playbook ?? "").toLowerCase();
   if (!p.trim()) return { requireFree: false, requireBot: false, requireTryQuestion: false };
   return {
-    requireFree: p.includes("бесплат"),
-    requireBot: p.includes("бот"),
-    requireTryQuestion: p.includes("интерес") && (p.includes("попроб") || p.includes("пробова"))
+    requireFree: p.includes("Р±РµСЃРїР»Р°С‚"),
+    requireBot: p.includes("Р±РѕС‚"),
+    requireTryQuestion: p.includes("РёРЅС‚РµСЂРµСЃ") && (p.includes("РїРѕРїСЂРѕР±") || p.includes("РїСЂРѕР±РѕРІР°"))
   };
 };
 
@@ -117,17 +117,17 @@ const violatesPlaybook = (params: {
   }
 
   // If playbook explicitly asks to mention "free", enforce it.
-  if (req.requireFree && !t.includes("бесплат")) {
+  if (req.requireFree && !t.includes("Р±РµСЃРїР»Р°С‚")) {
     reasons.push("missing_free");
   }
 
-  // If playbook explicitly asks to say it's a bot, enforce "бот".
-  if (req.requireBot && !t.includes("бот")) {
+  // If playbook explicitly asks to say it's a bot, enforce "Р±РѕС‚".
+  if (req.requireBot && !t.includes("Р±РѕС‚")) {
     reasons.push("missing_bot");
   }
 
-  // If playbook asks to end with "интересно попробовать?" enforce try/interest question hint.
-  if (req.requireTryQuestion && !(t.includes("интерес") && (t.includes("попроб") || t.includes("пробова")))) {
+  // If playbook asks to end with "РёРЅС‚РµСЂРµСЃРЅРѕ РїРѕРїСЂРѕР±РѕРІР°С‚СЊ?" enforce try/interest question hint.
+  if (req.requireTryQuestion && !(t.includes("РёРЅС‚РµСЂРµСЃ") && (t.includes("РїРѕРїСЂРѕР±") || t.includes("РїСЂРѕР±РѕРІР°")))) {
     reasons.push("missing_try_interest_question");
   }
 
@@ -138,14 +138,14 @@ const hasChatReason = (text: string): boolean => {
   const t = text.trim().toLowerCase();
   if (!t) return false;
   // lightweight: require a "chat reference" token
-  return t.includes("в чате") || t.includes("сообщен");
+  return t.includes("РІ С‡Р°С‚Рµ") || t.includes("СЃРѕРѕР±С‰РµРЅ");
 };
 
 const hasDirectReason = (text: string): boolean => {
   const t = text.trim().toLowerCase();
   if (!t) return false;
   // Ensure we don't accidentally reference chats/groups when this is a DM.
-  const hasForbidden = t.includes("в чате") || t.includes("в группе") || t.includes("в канале");
+  const hasForbidden = t.includes("РІ С‡Р°С‚Рµ") || t.includes("РІ РіСЂСѓРїРїРµ") || t.includes("РІ РєР°РЅР°Р»Рµ");
   if (hasForbidden) return false;
   // Neutral reason without chat mention is ok.
   return true;
@@ -158,10 +158,10 @@ const isDirectSource = (params: { sourceType?: string | null; chatTitle?: string
   const ct = normalize(params.chatTitle);
   // Manual leads are explicitly created for DM outreach in CRM.
   if (st === "manual") return true;
-  // Common values: direct, private, dm, личка (case-insensitive)
-  if (st === "direct" || st === "private" || st === "dm" || st.includes("лич")) return true;
-  // UI column "ЧАТ" for manual leads is "Личка"
-  if (ct.includes("лич")) return true;
+  // Common values: direct, private, dm, Р»РёС‡РєР° (case-insensitive)
+  if (st === "direct" || st === "private" || st === "dm" || st.includes("Р»РёС‡")) return true;
+  // UI column "Р§РђРў" for manual leads is "Р›РёС‡РєР°"
+  if (ct.includes("Р»РёС‡")) return true;
   return false;
 };
 
@@ -173,14 +173,14 @@ const isChannelOrGroupSource = (params: { sourceType?: string | null; chatTitle?
     st.includes("group") ||
     st.includes("channel") ||
     st.includes("comments") ||
-    st.includes("чат") ||
-    st.includes("групп") ||
-    st.includes("канал")
+    st.includes("С‡Р°С‚") ||
+    st.includes("РіСЂСѓРїРї") ||
+    st.includes("РєР°РЅР°Р»")
   ) {
     return true;
   }
-  // If chatTitle is present and not "Личка", treat as chat-ish context.
-  if (ct && !ct.includes("лич")) return true;
+  // If chatTitle is present and not "Р›РёС‡РєР°", treat as chat-ish context.
+  if (ct && !ct.includes("Р»РёС‡")) return true;
   return false;
 };
 
@@ -393,6 +393,8 @@ export class LeadRadarOutreachService {
     leadName?: string | null;
     sourceType?: string | null;
     chatTitle?: string | null;
+    relatedPostId?: string | null;
+    contextPreview?: string | null;
     telegramAccountId?: string | null;
     analysis: OutreachLeadAnalysis;
   }): Promise<{ text: string }> {
@@ -407,6 +409,8 @@ export class LeadRadarOutreachService {
       leadName: params.leadName,
       sourceType: params.sourceType,
       chatTitle: params.chatTitle,
+      relatedPostId: params.relatedPostId,
+      contextPreview: params.contextPreview,
       coldFirstTouchPlaybook,
       analysis: params.analysis,
       knowledgeItems,
@@ -451,7 +455,7 @@ export class LeadRadarOutreachService {
       const reasonOk = sourceIsDirect ? hasDirectReason(text) : sourceIsChat ? hasChatReason(text) : true;
       const detectedActivity = (params.analysis.detectedActivity ?? "").trim();
       const analysisIsLowConfidence = params.analysis.confidence === "low";
-      const requiresActivity = !analysisIsLowConfidence && detectedActivity.length > 0 && detectedActivity !== "—";
+      const requiresActivity = !analysisIsLowConfidence && detectedActivity.length > 0 && detectedActivity !== "вЂ”";
       const activityOk = !requiresActivity ? true : hasDetectedActivity(text, detectedActivity);
       const structureOk = !requiresStructure ? true : reasonOk && activityOk;
 
@@ -482,25 +486,25 @@ export class LeadRadarOutreachService {
               role: "user",
               content:
                 userPrompt +
-                "\n\nCRITICAL: Rewrite the message to be non-salesy and follow the required structure. " +
+                "\n\nCRITICAL: Rewrite the message to be a neutral first-touch question and follow the required structure. " +
                 (sourceIsDirect
                   ? "If productFit=true, do NOT mention chats/groups/channels. "
                   : sourceIsChat
-                    ? "If productFit=true, you MUST include a short chat-based reason (mention 'в чате' or 'сообщение') "
+                    ? "If productFit=true, you MUST include a short chat-based reason (mention 'РІ С‡Р°С‚Рµ' or 'СЃРѕРѕР±С‰РµРЅРёРµ') "
                     : "If productFit=true, keep the reason neutral (no chat claims). ") +
                 (analysisIsLowConfidence || !requiresActivity
                   ? "Do NOT guess what the person does. Follow the provided cold-first-touch playbook if present. " +
-                    "Use 1 short value hook + 1 short key plus from AI Brain, then ONE qualifying question (two options if possible). " +
-                    "Keep it to 1–2 sentences. "
+                    "Use a natural opener + ONE qualifying question (two options if possible). " +
+                    "Keep it to 1вЂ“2 sentences. "
                   : "Include detectedActivity (use its key words). ") +
                 (playbookCheck.violated
                   ? `Playbook compliance failed: ${playbookCheck.reasons.join(", ")}. Fix it. `
                   : "") +
-                "Do NOT pitch aggressively. Do NOT list features. Do NOT make a direct sales offer immediately. " +
-                "You may mention the value/product context in one short human phrase if it helps make the question understandable. " +
-                "Keep it non-salesy, concrete, and relevant to the lead context. " +
-                "Do NOT use phrases like 'могу помочь', 'давайте созвонимся', 'купите', 'оставьте заявку'. " +
-                "No AI mention. Keep 1–2 short sentences and exactly ONE question."
+                "First message goal: start natural dialogue, not selling. " +
+                "If the message contains an offer, audit, service pitch, 'могу помочь', 'могу разобрать', or direct selling, rewrite it as a neutral qualifying question. " +
+                "Do NOT add value proposition in the first message. " +
+                "Do NOT use detective/claim phrases like 'увидел', 'заметил', 'нашёл', 'пишу, потому что', 'вижу, что', 'судя по'. " +
+                "Prefer question over claim. No AI mention. Keep 1вЂ“2 short sentences and exactly ONE question. Output only plain text."
             }
           ],
           { temperature: 0.4, maxTokens: 160 }
@@ -517,14 +521,14 @@ export class LeadRadarOutreachService {
         if (playbookCheckAfter.violated) {
           const req = extractPlaybookRequirements(coldFirstTouchPlaybook);
           const tryQuestionVariants = [
-            "Интересно попробовать?",
-            "Интересно протестить?",
-            "Хочешь попробовать?",
-            "Хотите попробовать?"
+            "РРЅС‚РµСЂРµСЃРЅРѕ РїРѕРїСЂРѕР±РѕРІР°С‚СЊ?",
+            "РРЅС‚РµСЂРµСЃРЅРѕ РїСЂРѕС‚РµСЃС‚РёС‚СЊ?",
+            "РҐРѕС‡РµС€СЊ РїРѕРїСЂРѕР±РѕРІР°С‚СЊ?",
+            "РҐРѕС‚РёС‚Рµ РїРѕРїСЂРѕР±РѕРІР°С‚СЊ?"
           ];
           const mustInclude = [
-            ...(req.requireBot ? ["бот"] : []),
-            ...(req.requireFree ? ["бесплатно"] : []),
+            ...(req.requireBot ? ["Р±РѕС‚"] : []),
+            ...(req.requireFree ? ["Р±РµСЃРїР»Р°С‚РЅРѕ"] : []),
             ...(req.requireTryQuestion ? [pickOne(tryQuestionVariants)] : [])
           ];
 
@@ -536,15 +540,21 @@ export class LeadRadarOutreachService {
                 content:
                   userPrompt +
                   "\n\nCRITICAL: Your rewrite still does NOT follow the playbook. Rewrite again with these hard requirements:\n" +
-                  "- Keep it 1–2 short sentences.\n" +
+                  "- Keep it 1вЂ“2 short sentences.\n" +
                   "- Exactly ONE question.\n" +
+                  "- Do NOT sell anything in the first message.\n" +
+                  "- Do NOT offer audit/services/help/consultation/call.\n" +
+                  "- If there is any offer/pitch, replace it with a neutral qualifying question.\n" +
                   "- Do NOT guess what the person does.\n" +
+                  "- Prefer question over claim.\n" +
+                  "- Do NOT use: \"увидел\", \"заметил\", \"смотрел\", \"нашёл\", \"наткнулся\", \"попался\", \"пишу, потому что\", \"вижу, что\", \"судя по\".\n" +
                   (sourceIsDirect ? "- Do NOT mention chats/groups/channels.\n" : "") +
                   (mustInclude.length
                     ? `- MUST include these exact words/phrases somewhere in the message: ${mustInclude
                         .map((x) => `"${x}"`)
                         .join(", ")}.\n`
                     : "") +
+                  "- Keep only a natural opener + one question.\n" +
                   "- Output ONLY the message text."
               }
             ],
@@ -622,6 +632,8 @@ export class LeadRadarOutreachService {
     leadName?: string | null;
     sourceType?: string | null;
     chatTitle?: string | null;
+    relatedPostId?: string | null;
+    contextPreview?: string | null;
     telegramAccountId?: string | null;
   }): Promise<{ text: string; analysis: OutreachLeadAnalysis }> {
     const analysis = await this.analyzeLeadForOutreach(params);
@@ -629,3 +641,4 @@ export class LeadRadarOutreachService {
     return { ...msg, analysis };
   }
 }
+

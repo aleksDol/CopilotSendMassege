@@ -1,4 +1,4 @@
-import type { KnowledgeItem, ReplyPolicy } from "@prisma/client";
+﻿import type { KnowledgeItem, ReplyPolicy } from "@prisma/client";
 
 const clip = (value: string, max: number): string => {
   const trimmed = value.trim();
@@ -19,7 +19,7 @@ const pickBrainContext = (items: Array<Pick<KnowledgeItem, "kind" | "title" | "c
     ...other.map((i) => `- [other] ${i.title}: ${clip(i.content, 220)}`)
   ];
 
-  return lines.length ? lines.join("\n") : "—";
+  return lines.length ? lines.join("\n") : "вЂ”";
 };
 
 export const LEADRADAR_OUTREACH_ANALYSIS_PROMPT_KEY = "leadradar_outreach_analysis_v1" as const;
@@ -70,7 +70,7 @@ export const buildLeadRadarOutreachAnalysisPrompt = (params: {
         ),
         900
       )
-    : "—";
+    : "вЂ”";
 
   const systemPrompt = `You are an analyst for CRM outreach in Telegram.
 
@@ -91,7 +91,7 @@ No markdown. No explanations.`;
     "You will analyze a lead for the first outreach in Telegram.",
     "",
     "Lead message:",
-    `"${leadMessage || "—"}"`,
+    `"${leadMessage || "вЂ”"}"`,
     leadName ? `Lead name: "${clip(leadName, 80)}"` : "Lead name: (unknown)",
     sourceType ? `Lead sourceType: "${clip(sourceType, 60)}"` : "Lead sourceType: (unknown)",
     chatTitle ? `Lead chatTitle: "${clip(chatTitle, 80)}"` : "Lead chatTitle: (unknown)",
@@ -119,29 +119,27 @@ No markdown. No explanations.`;
     "",
     "Rules:",
     "- Use 'service_provider' when lead is offering services / looking for clients / advertising themselves.",
-    "- Use 'buyer_direct' when lead is directly looking for an исполнителя/решение (\"кто сделает...\", \"нужен специалист\").",
+    "- Use 'buyer_direct' when lead is directly looking for an исполнителя/решение.",
     "- Use 'business_owner_with_problem' when lead describes a business pain (no leads, manual work, no site, etc.).",
     "- Use 'unclear' if you can't tell.",
     "- If the lead message is empty/very short/only a link OR you have no real info about the person: DO NOT guess their niche or activity.",
     "  In that case set:",
-    "  - detectedRole = \"—\"",
-    "  - detectedActivity = \"—\"",
-    "  - detectedNeedOrPain = \"—\"",
-    "  - confidence = \"low\"",
-    "  - contactReason: neutral, depends on sourceType (DM vs chat) without claiming you \"saw\" anything",
+    '  - detectedRole = "вЂ”"',
+    '  - detectedActivity = "вЂ”"',
+    '  - detectedNeedOrPain = "вЂ”"',
+    '  - confidence = "low"',
+    "  - contactReason: neutral, depends on sourceType (DM vs chat) without claiming you saw anything",
     "  - relevantOfferAngle: 1 short generic value angle based on AI Brain (no hardcoded product names)",
     "  - bestQuestion: 1 qualifying question about their current process/status quo (two options if possible).",
     "- relevantOfferAngle must be grounded in AI Brain context (what we can realistically offer).",
-    "- keyTopic: extract ONE primary obvious topic from the lead message (1-2 words max). Examples: \"таргет\", \"воронки\", \"сайт\", \"дизайн\", \"клиенты\".",
+    "- keyTopic: extract ONE primary obvious topic from the lead message (1-2 words max).",
     "- If no clear topic, set keyTopic to null.",
     "- Do NOT extract multiple topics. Do NOT overthink.",
-    "- detectedActivity: what they do, 2-5 words max (e.g. \"занимается таргетом\", \"делает сайты\", \"ищет исполнителя\").",
+    "- detectedActivity: what they do, 2-5 words max.",
     "- productFit: true if our product (from AI Brain context) is plausibly relevant to their workflow right now; otherwise false.",
     "- productFitReason: short (max ~8 words), no marketing.",
-    "- contactReason: short (3-8 words), natural reason for writing based on the SOURCE TYPE:",
-    "  - if sourceType indicates DM/private (direct/private/dm/\"личка\") OR sourceType=\"manual\" OR chatTitle contains \"Личка\": NEVER claim you saw a message in a chat. Use a neutral reason like \"пишу в личку по теме\" / \"по вашему вопросу\".",
-    "  - if sourceType indicates group/chat/channel_comments: you may say \"увидел сообщение в чате\" / \"увидел комментарий\" (keep it short).",
-    "- bestQuestion: ONE short qualifying question that helps start a dialogue and moves towards a sale later, grounded in relevantOfferAngle and detectedNeedOrPain.",
+    "- contactReason: short (3-8 words), natural reason for writing based on the SOURCE TYPE.",
+    "- bestQuestion: ONE short qualifying question that helps start a dialogue and moves towards a sale later.",
     "- IMPORTANT: first touch message should NOT pitch the product. Prefer a natural opener + one qualifying question.",
     "- relevantOfferAngle is for internal strategy; do not assume it must be mentioned explicitly in the first message."
   ].join("\n");
@@ -154,6 +152,8 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
   leadName?: string | null | undefined;
   sourceType?: string | null | undefined;
   chatTitle?: string | null | undefined;
+  relatedPostId?: string | null | undefined;
+  contextPreview?: string | null | undefined;
   coldFirstTouchPlaybook?: string | null | undefined;
   analysis: OutreachLeadAnalysis;
   knowledgeItems: Array<Pick<KnowledgeItem, "kind" | "title" | "content">>;
@@ -163,7 +163,10 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
   const leadName = (params.leadName ?? "").trim();
   const sourceType = (params.sourceType ?? "").trim();
   const chatTitle = (params.chatTitle ?? "").trim();
+  const relatedPostId = (params.relatedPostId ?? "").trim();
+  const contextPreview = clip(params.contextPreview ?? "", 320);
   const brain = pickBrainContext(params.knowledgeItems);
+
   const policyBlock = params.replyPolicy
     ? clip(
         JSON.stringify(
@@ -178,75 +181,61 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
         ),
         900
       )
-    : "—";
+    : "вЂ”";
 
   const coldFirstTouchBlock = params.coldFirstTouchPlaybook?.trim()
     ? clip(params.coldFirstTouchPlaybook.trim(), 1200)
-    : "—";
+    : "вЂ”";
 
-  const systemPrompt = `Ты пишешь первое сообщение человеку в Telegram.
+  const strictFirstMessageRules = `FIRST MESSAGE GOAL (STRICT):
+- Do NOT sell anything in the first message.
+- Do NOT offer audit, services, consultation, implementation, product, bot, CRM, website, automation, or help.
+- Do NOT write: "могу помочь", "могу разобрать", "можем сделать", "предлагаю", "оставьте заявку", "давайте созвонимся".
+- Your only goal is to start a natural conversation and ask one simple relevant qualifying question.
+- The message must feel like a normal Telegram chat message, not outreach or advertising.
 
-Цель: за 1–2 предложения быстро объяснить, что это за продукт (1 фраза) и чем он полезен (1 фраза), и задать 1 вопрос, чтобы продолжить диалог.
+FORBIDDEN PHRASES (STRICT):
+- "увидел", "заметил", "смотрел", "нашёл", "наткнулся", "попался"
+- "пишу, потому что", "вижу, что", "судя по"
+- "ты занимаешься...", "вы занимаетесь...", "у вас есть проблема..."
+- "где теряются клиенты", "теряете клиентов"
+- "разобрать проект", "AI-аудит", "ИИ-аудит", "аудит сайта", "бесплатно разобрать"
 
-Можно (и часто нужно) коротко обозначить, что именно мы предлагаем — но:
-- без цен/условий/скидок
-- без давления и “впаривания”
-- 1 короткая ценность/выгода, основанная на AI Brain и analysis.relevantOfferAngle
-- не делай длинных объяснений “почему это полезно” — это не питч, а зацепка
+QUESTION OVER CLAIM:
+- Do NOT confidently state what the person does unless it is explicitly stated by the lead.
+- Prefer questions over claims.`;
 
-Контекст источника:
-- Если sourceType означает ЛИЧКУ (direct/private/dm/личка) ИЛИ sourceType="manual" ИЛИ chatTitle содержит "Личка": запрещено писать "видел(а) ваше сообщение в чате/группе/канале" и любые отсылки к чату.
-- Если sourceType означает ЧАТ/ГРУППУ/КОММЕНТАРИИ: можно коротко сослаться на сообщение/комментарий.
+  const systemPrompt = `You are writing a first cold outreach message in Telegram.
 
-Если данных о человеке мало (leadMessage пустое/\"—\" ИЛИ analysis.confidence=\"low\"):
-- НЕ пытайся угадывать сферу/занятия
-- НЕ пиши \"вижу/заметил\" и т.п.
-- НЕ начинай с абстрактного \"пишу по теме ...\" без интро продукта
-- Структура ДОЛЖНА быть такой (строго):
-  1) \"Привет.\"
-  2) 1 фраза: что делаем (из AI Brain и/или Playbook)
-  3) 1 фраза: главный плюс/выгода (из AI Brain и/или Playbook)
-  4) 1 вопрос: либо \"интересно попробовать?\", либо квалифицирующий вопрос с 2 вариантами ответа
+First-touch objective:
+- Start a natural dialogue.
+- Ask exactly ONE simple relevant qualifying question.
+- Do NOT sell or pitch in the first message.
 
-Вариативность (важно):
-- формулируй чуть по-разному от раза к разу (синонимы/порядок слов), чтобы сообщения не были одинаковыми
-- не меняй смысл и не нарушай ограничения
+Source context:
+- If sourceType indicates DM/private/direct/manual OR chatTitle contains "Личка": do NOT mention chats/groups/channels.
+- If sourceType indicates group/channel/comments: you may use neutral context, but never detective wording.
 
-Если analysis.productFit = true, сообщение ДОЛЖНО следовать структуре:
-1) короткое приветствие: "Привет."
-2) причина написать: используй analysis.contactReason (коротко, естественно)
-3) если analysis.confidence НЕ "low": понимание, чем человек занимается: используй analysis.detectedActivity (вставь буквально, без пересказа сообщения)
-4) короткий релевантный “угол” (1 фраза): используй analysis.relevantOfferAngle (и/или 1 мысль из AI Brain) без хардкора под конкретный продукт
-5) один вопрос: используй analysis.bestQuestion (или близко к нему)
+Low-context behavior:
+- If leadMessage is empty/"вЂ”" OR analysis.confidence is "low", do NOT guess who the person is or what they do.
+- Prefer a neutral opener and one qualifying question with 2 simple options when possible.
 
-Если analysis.productFit = false:
-- коротко и нейтрально, 1 вопрос по теме, без попытки натянуть product-fit.
+${strictFirstMessageRules}
 
-Ограничения:
-- максимум 2 предложения (3 только если очень коротко)
-- ровно ОДИН вопрос
-- Telegram-стиль, без формальностей
-- не используй вводные “возможно”, “скорее всего”, “наверное”
-
-Запрещено:
-- пустые комплименты
-- "могу помочь", "увеличить конверсию", "оптимизировать процессы"
-- агрессивные обещания результата
-- допущения о человеке: "ты занимаешься бизнесом", "ты ищешь рост", "тебе нужно"
-- объяснялки/обучение: "взаимный пиар может помочь", "это позволит", "это дает", "вы получите"
-- фразы-утверждения без основания, особенно для лички/manual: "вижу, что ты...", "заметил, что ты...", "судя по всему ты..."
-- слишком общие заходы без сути: "у нас есть сервис" / "у нас есть решение" без конкретной 1 ценности/механики
-- роботские фразы: "я заметил что ты...", "я увидел что ты...", "ты написал что..."
-- длинные объяснения
-
-Выведи только текст сообщения. Без пояснений.`;
+Format:
+- 1-2 short sentences.
+- Exactly one question.
+- No markdown, no lists, no multiple options blocks.
+- Output ONLY the message text.`;
 
   const userPrompt = [
-    "Контекст лида:",
-    `Сообщение: "${leadMessage || "—"}"`,
-    leadName ? `Имя: "${clip(leadName, 80)}"` : "Имя: (неизвестно)",
-    sourceType ? `sourceType: "${clip(sourceType, 60)}"` : "sourceType: (неизвестно)",
-    chatTitle ? `chatTitle: "${clip(chatTitle, 80)}"` : "chatTitle: (неизвестно)",
+    "Lead context:",
+    `Message: "${leadMessage || "вЂ”"}"`,
+    leadName ? `Lead name: "${clip(leadName, 80)}"` : "Lead name: (unknown)",
+    sourceType ? `sourceType: "${clip(sourceType, 60)}"` : "sourceType: (unknown)",
+    chatTitle ? `chatTitle: "${clip(chatTitle, 80)}"` : "chatTitle: (unknown)",
+    relatedPostId ? `relatedPostId: "${clip(relatedPostId, 120)}"` : "relatedPostId: (none)",
+    contextPreview.trim().length ? `contextPreview: "${contextPreview}"` : "contextPreview: (none)",
     "",
     "AI Brain / product context (knowledge base):",
     brain,
@@ -257,28 +246,32 @@ export const buildLeadRadarOutreachMessagePrompt = (params: {
     "Reply policy (may be empty):",
     policyBlock,
     "",
-    "Результат анализа (используй это, чтобы выбрать правильный оффер/угол):",
+    "Analysis result (use as context, do not output JSON):",
     JSON.stringify(params.analysis),
     "",
-    "Правила сборки сообщения:",
-    "- Если analysis.productFit=true: используй analysis.contactReason + analysis.detectedActivity + analysis.relevantOfferAngle + analysis.bestQuestion.",
-    "- detectedActivity вставляй коротко и буквально (чтобы было понятно, что это не шаблон).",
-    "- Если analysis.keyTopic НЕ null — можно мягко упомянуть тему 1 раз, но не обязательно.",
-    "- НЕ делай предположений про человека (не пиши: \"ты занимаешься бизнесом\", \"ты ищешь рост\" и т.п.).",
-    "- НЕ делай объяснялок/обучения (не пиши: \"это позволит...\", \"может помочь...\", \"вы получите...\").",
-    "- Для Личка/manual: не используй формулировки \"вижу/заметил/судя по\" — не утверждай, что ты что-то наблюдал(а).",
-    "- Вместо \"у нас есть X\" сразу формулируй 1 конкретную ценность/механику из AI Brain (например: \"подбираем релевантных партнёров\", \"автоматизируем поиск\", \"соединяем в мини-подборки\"), одной короткой фразой.",
-    "- Если leadMessage пустое/\"—\" ИЛИ analysis.confidence=\"low\": пиши как для нового контакта без контекста.",
-    "  - Если Playbook НЕ \"—\": строго следуй Playbook (это главный приоритет).",
-    "  - Если Playbook = \"—\": 1 фраза \"что делаем\" + 1 фраза \"главный плюс\" из AI Brain, затем 1 квалифицирующий вопрос.",
-    "- Для нового контакта НЕ начинай с абстрактного \"пишу по теме ...\". Сразу дай интро продукта (что делаем + плюс).",
-    "- Не пересказывай lead message и не цитируй его.",
-    "- Должен быть ровно один вопрос.",
-    "- Вопрос должен быть квалифицирующим и конкретным (2 варианта ответа или чёткий параметр), чтобы продолжить диалог и потом предложить релевантный оффер — но без продажи в лоб.",
-    "- Можно обозначить 1 ценность из AI Brain коротко (без цен и обещаний), но не превращай это в “презентацию продукта”.",
-    "- Не делай маркетинговых формулировок."
+    strictFirstMessageRules,
+    "",
+    "Pattern for this first message:",
+    "- greeting",
+    "- optional very short neutral bridge, only if natural",
+    "- exactly one simple question about current situation",
+    "",
+    "Bad examples (forbidden direction):",
+    '- "Увидел сообщение в чате..."',
+    '- "Могу бесплатно разобрать..."',
+    '- "Покажу, где теряются клиенты..."',
+    '- "Мы делаем сайты, боты и CRM..."',
+    '- "Давайте созвонимся..."',
+    "",
+    "Good direction examples:",
+    '- "Привет! Подскажи, ты сейчас больше делаешь инфографику под карточки товаров или ещё ведёшь упаковку/продвижение магазинов?"',
+    '- "Привет! У тебя сейчас клиенты больше приходят из Telegram или с рекомендаций?"',
+    "",
+    "Final constraints:",
+    "- Do NOT add value proposition in the first message.",
+    "- Keep only a natural opener + one question.",
+    "- Output ONLY the message text."
   ].join("\n");
 
   return { systemPrompt, userPrompt };
 };
-
