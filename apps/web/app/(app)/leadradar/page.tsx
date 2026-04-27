@@ -156,8 +156,15 @@ function ManualLeadAddModal({
   );
 }
 
-const STATUSES: Array<{ label: string; value: LeadRadarLeadStatus | "all" }> = [
-  { label: "Все статусы", value: "all" },
+// LeadRadar is prospecting inbox: default view shows only NEW.
+const FILTER_STATUSES: Array<{ label: string; value: LeadRadarLeadStatus | "all" }> = [
+  { label: "NEW", value: "new" },
+  { label: "CONTACTED", value: "contacted" },
+  { label: "SPAM", value: "spam" },
+  { label: "ALL", value: "all" }
+];
+
+const ROW_STATUS_OPTIONS: Array<{ label: string; value: LeadRadarLeadStatus }> = [
   { label: "New", value: "new" },
   { label: "Reviewed", value: "reviewed" },
   { label: "Hot", value: "hot" },
@@ -169,10 +176,6 @@ const STATUSES: Array<{ label: string; value: LeadRadarLeadStatus | "all" }> = [
   { label: "Ignored", value: "ignored" },
   { label: "Spam", value: "spam" }
 ];
-
-const ROW_STATUS_OPTIONS: Array<{ label: string; value: LeadRadarLeadStatus }> = STATUSES.filter(
-  (s): s is { label: string; value: LeadRadarLeadStatus } => s.value !== "all"
-);
 
 const statusChipClassName = (status: LeadRadarLeadStatus): string => {
   // Requested palette:
@@ -230,7 +233,7 @@ export default function LeadRadarInboxPage() {
   const [filters, setFilters] = useState<{
     status: LeadRadarLeadStatus | "all";
     search: string;
-  }>({ status: "all", search: "" });
+  }>({ status: "new", search: "" });
   const [page, setPage] = useState(1);
   const limit = 20;
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
@@ -302,7 +305,7 @@ export default function LeadRadarInboxPage() {
                 setFilters((prev) => ({ ...prev, status: event.target.value as LeadRadarLeadStatus | "all" }));
                 setPage(1);
               }}
-              options={STATUSES.map((s) => ({ label: s.label, value: s.value }))}
+              options={FILTER_STATUSES.map((s) => ({ label: s.label, value: s.value }))}
             />
             <input
               value={filters.search}
@@ -321,7 +324,7 @@ export default function LeadRadarInboxPage() {
             <Button
               variant="outline"
               onClick={() => {
-                setFilters({ status: "all", search: "" });
+                  setFilters({ status: "new", search: "" });
                 setPage(1);
               }}
             >
@@ -394,7 +397,7 @@ export default function LeadRadarInboxPage() {
               setFilters((prev) => ({ ...prev, status: event.target.value as LeadRadarLeadStatus | "all" }));
               setPage(1);
             }}
-            options={STATUSES.map((s) => ({ label: s.label, value: s.value }))}
+            options={FILTER_STATUSES.map((s) => ({ label: s.label, value: s.value }))}
           />
           <input
             value={filters.search}
@@ -421,7 +424,7 @@ export default function LeadRadarInboxPage() {
                 <th className="py-2 pr-3">Сообщение</th>
                 <th className="py-2 pr-3">Score</th>
                 <th className="py-2 pr-3">Created</th>
-                <th className="py-2 pr-3 w-[200px]">Статус</th>
+                <th className="py-2 pr-3 w-[240px]">Статус</th>
               </tr>
             </thead>
             <tbody>
@@ -465,20 +468,35 @@ export default function LeadRadarInboxPage() {
                   <td className="py-3 pr-3">{lead.score}</td>
                   <td className="py-3 pr-3 text-muted-foreground">{formatDate(lead.createdAt)}</td>
                   <td className="py-3 pr-3" onClick={(e) => e.stopPropagation()}>
-                    <Select
-                      className={[
-                        "h-8 min-w-[10rem] max-w-[14rem] cursor-pointer rounded-full border px-2.5 py-0.5 text-xs font-semibold",
-                        statusChipClassName(lead.status)
-                      ].join(" ")}
-                      value={lead.status}
-                      disabled={actions.updateLeadStatus.isPending}
-                      options={ROW_STATUS_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}
-                      onChange={async (e) => {
-                        const next = e.target.value as LeadRadarLeadStatus;
-                        if (next === lead.status) return;
-                        await actions.updateLeadStatus.mutateAsync({ leadId: lead.id, status: next });
-                      }}
-                    />
+                    <div className="flex items-center gap-2">
+                      <Select
+                        className={[
+                          "h-8 min-w-[10rem] max-w-[14rem] cursor-pointer rounded-full border px-2.5 py-0.5 text-xs font-semibold",
+                          statusChipClassName(lead.status)
+                        ].join(" ")}
+                        value={lead.status}
+                        disabled={actions.updateLeadStatus.isPending}
+                        options={ROW_STATUS_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}
+                        onChange={async (e) => {
+                          const next = e.target.value as LeadRadarLeadStatus;
+                          if (next === lead.status) return;
+                          await actions.updateLeadStatus.mutateAsync({ leadId: lead.id, status: next });
+                        }}
+                      />
+
+                      {lead.status !== "spam" ? (
+                        <button
+                          type="button"
+                          className="rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                          disabled={actions.updateLeadStatus.isPending}
+                          onClick={async () => {
+                            await actions.updateLeadStatus.mutateAsync({ leadId: lead.id, status: "spam" });
+                          }}
+                        >
+                          Mark as Spam
+                        </button>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))}
