@@ -36,14 +36,19 @@ export async function resolveConversationForMessage(
     });
 
     if (peer?.id) {
-      // Prefer the conversation whose externalConversationId already equals the numeric peer id (canonical).
+      // Only match the canonical conversation: the one whose externalConversationId equals the
+      // numeric peer id AND the peer is a participant AND it is not archived.
+      // We intentionally do NOT fall back to "any DIRECT conversation with this peer" because
+      // that can route messages for Person A into Person B's conversation when participant
+      // records were displaced by a bad data migration.
       const exact = await prisma.conversationParticipant.findFirst({
         where: {
           participantId: peer.id,
           conversation: {
             channelAccountId: params.channelAccountId,
             conversationType: "DIRECT",
-            externalConversationId: params.peerExternalParticipantId
+            externalConversationId: params.peerExternalParticipantId,
+            isArchived: false
           }
         },
         select: {
@@ -53,25 +58,7 @@ export async function resolveConversationForMessage(
         }
       });
 
-      const any =
-        exact ??
-        (await prisma.conversationParticipant.findFirst({
-          where: {
-            participantId: peer.id,
-            conversation: {
-              channelAccountId: params.channelAccountId,
-              conversationType: "DIRECT"
-            }
-          },
-          orderBy: { joinedAt: "desc" },
-          select: {
-            conversation: {
-              select: { id: true, externalConversationId: true }
-            }
-          }
-        }));
-
-      const existingId = any?.conversation?.id ?? null;
+      const existingId = exact?.conversation?.id ?? null;
       if (existingId) {
         if (title) {
           await prisma.conversation.update({
