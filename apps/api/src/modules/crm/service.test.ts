@@ -31,7 +31,7 @@ test("listCrmLeads scopes by companyId and supports stage filter", async () => {
   assert.ok(receivedArgs);
   assert.equal(receivedArgs.where.companyId, "c1");
   assert.equal(receivedArgs.where.stage, "CONTACTED");
-  assert.equal(receivedArgs.take, 21);
+  assert.ok(receivedArgs.take >= 21);
 });
 
 test("listCrmLeads supports search by conversation title or externalConversationId", async () => {
@@ -93,7 +93,8 @@ test("listCrmLeads maps missing ConversationState safely", async () => {
               title: null,
               externalConversationId: "ivan",
               conversationType: "DIRECT",
-              state: null
+              state: null,
+              participants: [{ participant: { externalParticipantId: "p1", isSelf: false } }]
             }
           }
         ]
@@ -105,5 +106,52 @@ test("listCrmLeads maps missing ConversationState safely", async () => {
   assert.equal(res.items.length, 1);
   assert.equal(res.items[0].clientName, "ivan");
   assert.equal(res.items[0].lastMessageAt, null);
+});
+
+test("listCrmLeads dedupes DIRECT leads by peer externalParticipantId (isSelf=false)", async () => {
+  const app = makeApp({
+    prisma: {
+      lead: {
+        findMany: async () => [
+          {
+            id: "l1",
+            conversationId: "conv_numeric",
+            source: "TELEGRAM",
+            status: "OPEN",
+            stage: "CONTACTED",
+            createdAt: new Date("2026-01-01T00:00:00.000Z"),
+            updatedAt: new Date("2026-01-03T00:00:00.000Z"),
+            conversation: {
+              title: "Yan",
+              externalConversationId: "6516814090",
+              conversationType: "DIRECT",
+              state: { lastMessageAt: new Date("2026-01-03T00:00:00.000Z"), lastInboundAt: null, lastOutboundAt: null },
+              participants: [{ participant: { externalParticipantId: "6516814090", isSelf: false } }]
+            }
+          },
+          {
+            id: "l2",
+            conversationId: "conv_username",
+            source: "TELEGRAM",
+            status: "OPEN",
+            stage: "CONTACTED",
+            createdAt: new Date("2026-01-01T00:00:00.000Z"),
+            updatedAt: new Date("2026-01-02T00:00:00.000Z"),
+            conversation: {
+              title: "Yan",
+              externalConversationId: "Yan_adver",
+              conversationType: "DIRECT",
+              state: { lastMessageAt: new Date("2026-01-02T00:00:00.000Z"), lastInboundAt: null, lastOutboundAt: null },
+              participants: [{ participant: { externalParticipantId: "6516814090", isSelf: false } }]
+            }
+          }
+        ]
+      }
+    }
+  });
+
+  const res = await listCrmLeads(app, { companyId: "c1", limit: 50 });
+  assert.equal(res.items.length, 1);
+  assert.equal(res.items[0].leadId, "l1");
 });
 

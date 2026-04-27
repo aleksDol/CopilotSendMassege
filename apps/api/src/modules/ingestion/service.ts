@@ -20,6 +20,7 @@ import {
   isLikelyBotOrServiceSender,
   toAuthorProfileCheckPayload
 } from "./leadradar-author-profile-enqueue.js";
+import { resolveConversationForMessage } from "./conversation-identity.js";
 
 type MessageEventPayload = {
   telegramAccountId: string;
@@ -410,23 +411,23 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
     }
   }
 
-  const conversation = await app.prisma.conversation.upsert({
-    where: {
-      channelAccountId_externalConversationId: {
-        channelAccountId,
-        externalConversationId: payload.externalConversationId
-      }
-    },
-    update: {
-      title: sanitizeDbString(payload.conversationTitle) ?? undefined
-    },
-    create: {
-      companyId,
-      channelAccountId,
-      externalConversationId: payload.externalConversationId,
-      conversationType: toConversationType(payload),
-      title: sanitizeDbString(payload.conversationTitle)
-    }
+  const conversationType = toConversationType(payload);
+  const peerExternalParticipantId =
+    conversationType === "DIRECT"
+      ? payload.isOutgoing
+        ? getRawString(payload.rawPayload?.peerExternalId)
+        : payload.senderType === "user"
+          ? payload.senderExternalId
+          : null
+      : null;
+
+  const conversation = await resolveConversationForMessage(app.prisma, {
+    companyId,
+    channelAccountId,
+    externalConversationId: payload.externalConversationId,
+    conversationType,
+    conversationTitle: payload.conversationTitle ?? null,
+    peerExternalParticipantId
   });
 
   await app.prisma.conversationParticipant.upsert({

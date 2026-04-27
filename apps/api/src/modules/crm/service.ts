@@ -46,77 +46,122 @@ export async function listCrmLeads(
 
   const search = params.search?.trim() ? params.search.trim() : null;
 
-  const rows = await app.prisma.lead.findMany({
-    where: {
-      companyId: params.companyId,
-      ...(params.stage ? { stage: params.stage } : {}),
-      ...(search
-        ? {
-            conversation: {
-              OR: [
-                { title: { contains: search, mode: "insensitive" } },
-                { externalConversationId: { contains: search, mode: "insensitive" } }
-              ]
-            }
+  // IMPORTANT:
+  // Telegram sometimes identifies the same peer by numeric id or by username.
+  // That can create multiple DIRECT Conversations for the same peer, which then appear
+  // as duplicates in the CRM list. We dedupe DIRECT leads by peer externalParticipantId
+  // (ConversationParticipant -> Participant where isSelf=false).
+  //
+  // Since the API uses offset-cursors, we may need to scan more than `limit` rows to
+  // fill a page after deduplication.
+  const where: any = {
+    companyId: params.companyId,
+    ...(params.stage ? { stage: params.stage } : {}),
+    ...(search
+      ? {
+          conversation: {
+            OR: [
+              { title: { contains: search, mode: "insensitive" } },
+              { externalConversationId: { contains: search, mode: "insensitive" } }
+            ]
           }
-        : {})
-    },
-    select: {
-      id: true,
-      conversationId: true,
-      source: true,
-      status: true,
-      stage: true,
-      createdAt: true,
-      updatedAt: true,
-      conversation: {
-        select: {
-          title: true,
-          externalConversationId: true,
-          conversationType: true,
-          state: {
-            select: {
-              lastMessageAt: true,
-              lastInboundAt: true,
-              lastOutboundAt: true
+        }
+      : {})
+  };
+
+  const orderBy: any = [{ conversation: { state: { lastMessageAt: "desc" } } }, { updatedAt: "desc" }, { id: "desc" }];
+
+  const items: CrmLeadListItem[] = [];
+  const seenPeerKeys = new Set<string>();
+
+  const batchSize = Math.min(250, Math.max(params.limit * 5, params.limit + 1));
+  let scannedOffset = offset;
+  let hasMore = true;
+
+  while (items.length < params.limit && hasMore) {
+    const rows = await app.prisma.lead.findMany({
+      where,
+      select: {
+        id: true,
+        conversationId: true,
+        source: true,
+        status: true,
+        stage: true,
+        createdAt: true,
+        updatedAt: true,
+        conversation: {
+          select: {
+            title: true,
+            externalConversationId: true,
+            conversationType: true,
+            state: {
+              select: {
+                lastMessageAt: true,
+                lastInboundAt: true,
+                lastOutboundAt: true
+              }
+            },
+            participants: {
+              select: {
+                participant: {
+                  select: {
+                    externalParticipantId: true,
+                    isSelf: true
+                  }
+                }
+              }
             }
           }
         }
+      },
+      orderBy,
+      skip: scannedOffset,
+      take: batchSize
+    });
+
+    scannedOffset += rows.length;
+    hasMore = rows.length === batchSize;
+
+    for (const row of rows) {
+      const title = row.conversation.title ?? null;
+      const externalConversationId = row.conversation.externalConversationId ?? null;
+      const clientName = title?.trim() || externalConversationId?.trim() || "Без имени";
+
+      const peerExternalParticipantId =
+        row.conversation.conversationType === "DIRECT"
+          ? row.conversation.participants.find((p) => !p.participant.isSelf)?.participant.externalParticipantId ?? null
+          : null;
+
+      const peerKey = peerExternalParticipantId ? `peer:${peerExternalParticipantId}` : null;
+      if (peerKey) {
+        if (seenPeerKeys.has(peerKey)) continue;
+        seenPeerKeys.add(peerKey);
       }
-    },
-    orderBy: [{ conversation: { state: { lastMessageAt: "desc" } } }, { updatedAt: "desc" }, { id: "desc" }],
-    skip: offset,
-    take: params.limit + 1
-  });
 
-  const hasNext = rows.length > params.limit;
-  const page = rows.slice(0, params.limit);
+      items.push({
+        leadId: row.id,
+        conversationId: row.conversationId,
+        clientName,
+        externalConversationId,
+        conversationTitle: title,
+        conversationType: row.conversation.conversationType ?? null,
+        source: row.source,
+        status: row.status,
+        stage: row.stage,
+        lastMessageAt: row.conversation.state?.lastMessageAt ?? null,
+        lastInboundAt: row.conversation.state?.lastInboundAt ?? null,
+        lastOutboundAt: row.conversation.state?.lastOutboundAt ?? null,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt
+      });
 
-  const items: CrmLeadListItem[] = page.map((row) => {
-    const title = row.conversation.title ?? null;
-    const externalConversationId = row.conversation.externalConversationId ?? null;
-    const clientName = title?.trim() || externalConversationId?.trim() || "Без имени";
-    return {
-      leadId: row.id,
-      conversationId: row.conversationId,
-      clientName,
-      externalConversationId,
-      conversationTitle: title,
-      conversationType: row.conversation.conversationType ?? null,
-      source: row.source,
-      status: row.status,
-      stage: row.stage,
-      lastMessageAt: row.conversation.state?.lastMessageAt ?? null,
-      lastInboundAt: row.conversation.state?.lastInboundAt ?? null,
-      lastOutboundAt: row.conversation.state?.lastOutboundAt ?? null,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt
-    };
-  });
+      if (items.length >= params.limit) break;
+    }
+  }
 
   return {
     items,
-    nextCursor: hasNext ? encodeOffsetCursor({ offset: offset + params.limit }) : null
+    nextCursor: hasMore ? encodeOffsetCursor({ offset: scannedOffset }) : null
   };
 }
 
