@@ -14,6 +14,21 @@ const NON_AUTOMATABLE_STAGES = new Set<LeadStage>([
 
 const canAutoUpdateStage = (stage: LeadStage): boolean => !NON_AUTOMATABLE_STAGES.has(stage);
 
+const isEligibleDirectHumanPeer = (params: {
+  conversationType: "DIRECT" | "GROUP" | "CHANNEL";
+  peerExternalId: string | null;
+  peerIsBot: boolean;
+  isServiceDialog: boolean;
+  senderExternalId: string | null;
+}): boolean => {
+  if (params.conversationType !== "DIRECT") return false;
+  if (!params.peerExternalId) return false;
+  if (params.peerIsBot) return false;
+  if (params.isServiceDialog) return false;
+  if (params.senderExternalId && params.peerExternalId === params.senderExternalId) return false;
+  return true;
+};
+
 export async function ensureCrmLeadForOutbound(
   prisma: PrismaClient,
   params: {
@@ -29,11 +44,7 @@ export async function ensureCrmLeadForOutbound(
 ) {
   // Be conservative: only create outbound-first leads for DIRECT chats
   // with a known human peer, and never for service/bot/self dialogs.
-  if (params.conversationType !== "DIRECT") return null;
-  if (!params.peerExternalId) return null;
-  if (params.peerIsBot) return null;
-  if (params.isServiceDialog) return null;
-  if (params.senderExternalId && params.peerExternalId === params.senderExternalId) return null;
+  if (!isEligibleDirectHumanPeer(params)) return null;
 
   const existing = await prisma.lead.findUnique({
     where: { conversationId: params.conversationId }
@@ -68,8 +79,22 @@ export async function ensureCrmLeadForOutbound(
 
 export async function ensureCrmLeadForInbound(
   prisma: PrismaClient,
-  params: { companyId: string; conversationId: string; ownerUserId?: string | null }
+  params: {
+    companyId: string;
+    conversationId: string;
+    ownerUserId?: string | null;
+    conversationType: "DIRECT" | "GROUP" | "CHANNEL";
+    peerExternalId: string | null;
+    peerIsBot: boolean;
+    isServiceDialog: boolean;
+    senderExternalId: string | null;
+    senderType: "user" | "self" | "system";
+  }
 ) {
+  // Be conservative: only auto-create leads for real DIRECT human dialogs.
+  if (params.senderType !== "user") return null;
+  if (!isEligibleDirectHumanPeer(params)) return null;
+
   const existing = await prisma.lead.findUnique({
     where: { conversationId: params.conversationId }
   });
@@ -131,14 +156,7 @@ export async function applyInboundRepliedStage(
     ownerUserId?: string | null;
   }
 ) {
-  const lead =
-    (await prisma.lead.findUnique({ where: { conversationId: params.conversationId } })) ??
-    (await ensureCrmLeadForInbound(prisma, {
-      companyId: params.companyId,
-      conversationId: params.conversationId,
-      ownerUserId: params.ownerUserId ?? null
-    }));
-
+  const lead = await prisma.lead.findUnique({ where: { conversationId: params.conversationId } });
   if (!lead) return null;
   if (!canAutoUpdateStage(lead.stage)) return lead;
   if (lead.stage === LeadStage.REPLIED) return lead;

@@ -47,7 +47,13 @@ test("ensureCrmLeadForInbound creates NEW lead and syncs ConversationState.leadS
   const lead = await ensureCrmLeadForInbound(prisma, {
     companyId: "co1",
     conversationId: "conv1",
-    ownerUserId: "u1"
+    ownerUserId: "u1",
+    conversationType: "DIRECT",
+    peerExternalId: "peer-1",
+    peerIsBot: false,
+    isServiceDialog: false,
+    senderExternalId: null,
+    senderType: "user"
   });
 
   assert.ok(lead, "expected lead to be created");
@@ -79,10 +85,120 @@ test("ensureCrmLeadForInbound is idempotent on unique constraint race (P2002)", 
     }
   });
 
-  const lead = await ensureCrmLeadForInbound(prisma, { companyId: "co1", conversationId: "conv1" });
+  const lead = await ensureCrmLeadForInbound(prisma, {
+    companyId: "co1",
+    conversationId: "conv1",
+    conversationType: "DIRECT",
+    peerExternalId: "peer-1",
+    peerIsBot: false,
+    isServiceDialog: false,
+    senderExternalId: null,
+    senderType: "user"
+  });
   assert.equal(createAttempts, 1);
   assert.ok(lead);
   assert.equal(lead.id, "l-existing");
+});
+
+test("ensureCrmLeadForInbound does NOT create lead for GROUP/CHANNEL", async () => {
+  let created = false;
+  const prisma = makePrisma({
+    lead: {
+      findUnique: async () => null,
+      create: async () => {
+        created = true;
+        return null;
+      }
+    }
+  });
+
+  const g = await ensureCrmLeadForInbound(prisma, {
+    companyId: "co1",
+    conversationId: "conv-g",
+    conversationType: "GROUP",
+    peerExternalId: "peer-1",
+    peerIsBot: false,
+    isServiceDialog: false,
+    senderExternalId: null,
+    senderType: "user"
+  });
+  assert.equal(g, null);
+
+  const c = await ensureCrmLeadForInbound(prisma, {
+    companyId: "co1",
+    conversationId: "conv-c",
+    conversationType: "CHANNEL",
+    peerExternalId: "peer-1",
+    peerIsBot: false,
+    isServiceDialog: false,
+    senderExternalId: null,
+    senderType: "user"
+  });
+  assert.equal(c, null);
+  assert.equal(created, false);
+});
+
+test("ensureCrmLeadForInbound does NOT create lead for bot/service/self/system senders", async () => {
+  let created = false;
+  const prisma = makePrisma({
+    lead: {
+      findUnique: async () => null,
+      create: async () => {
+        created = true;
+        return null;
+      }
+    }
+  });
+
+  const bot = await ensureCrmLeadForInbound(prisma, {
+    companyId: "co1",
+    conversationId: "conv-b",
+    conversationType: "DIRECT",
+    peerExternalId: "peer-1",
+    peerIsBot: true,
+    isServiceDialog: false,
+    senderExternalId: null,
+    senderType: "user"
+  });
+  assert.equal(bot, null);
+
+  const service = await ensureCrmLeadForInbound(prisma, {
+    companyId: "co1",
+    conversationId: "conv-s",
+    conversationType: "DIRECT",
+    peerExternalId: "peer-1",
+    peerIsBot: false,
+    isServiceDialog: true,
+    senderExternalId: null,
+    senderType: "user"
+  });
+  assert.equal(service, null);
+
+  const self = await ensureCrmLeadForInbound(prisma, {
+    companyId: "co1",
+    conversationId: "conv-self",
+    conversationType: "DIRECT",
+    peerExternalId: "peer-1",
+    peerIsBot: false,
+    isServiceDialog: false,
+    senderExternalId: null,
+    senderType: "self"
+  });
+  assert.equal(self, null);
+
+  const system = await ensureCrmLeadForInbound(prisma, {
+    companyId: "co1",
+    conversationId: "conv-sys",
+    conversationType: "DIRECT",
+    peerExternalId: "peer-1",
+    peerIsBot: false,
+    isServiceDialog: false,
+    senderExternalId: null,
+    senderType: "system"
+  });
+  assert.equal(system, null);
+
+  assert.equal(created, false);
 });
 
 test("applyOutboundContactedStage skips when lead missing", async () => {

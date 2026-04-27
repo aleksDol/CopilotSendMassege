@@ -612,7 +612,15 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
           await ensureCrmLeadForInbound(app.prisma, {
             companyId,
             conversationId: conversation.id,
-            ownerUserId: typeof ownerUserId === "string" ? ownerUserId : null
+            ownerUserId: typeof ownerUserId === "string" ? ownerUserId : null,
+            conversationType: toConversationType(payload),
+            peerExternalId: getRawString(payload.senderExternalId),
+            peerIsBot:
+              Boolean(payload.rawPayload?.peerIsBot) ||
+              Boolean(payload.senderUsername?.toLowerCase().endsWith("bot")),
+            isServiceDialog: Boolean(payload.rawPayload?.isServiceDialog) || payload.senderExternalId === "777000",
+            senderExternalId: null,
+            senderType: payload.senderType ?? "user"
           });
           await applyInboundRepliedStage(app.prisma, {
             companyId,
@@ -881,7 +889,15 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
       await ensureCrmLeadForInbound(app.prisma, {
         companyId,
         conversationId: conversation.id,
-        ownerUserId: typeof ownerUserId === "string" ? ownerUserId : null
+        ownerUserId: typeof ownerUserId === "string" ? ownerUserId : null,
+        conversationType: toConversationType(payload),
+        peerExternalId: getRawString(payload.senderExternalId),
+        peerIsBot:
+          Boolean(payload.rawPayload?.peerIsBot) ||
+          Boolean(payload.senderUsername?.toLowerCase().endsWith("bot")),
+        isServiceDialog: Boolean(payload.rawPayload?.isServiceDialog) || payload.senderExternalId === "777000",
+        senderExternalId: null,
+        senderType: payload.senderType ?? "user"
       });
       await applyInboundRepliedStage(app.prisma, {
         companyId,
