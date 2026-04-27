@@ -26,6 +26,25 @@ const STAGE_OPTIONS: Array<{ label: string; value: string }> = [
   { label: "Lost", value: "LOST" }
 ];
 
+const stageChipClassName = (stage: string): string => {
+  const normalized = stage.trim().toUpperCase();
+
+  // Match LeadRadar palette for overlapping statuses.
+  if (normalized === "NEW") return "border-transparent bg-red-100 text-red-800";
+  if (normalized === "CONTACTED") return "border-transparent bg-amber-100 text-amber-800";
+  if (normalized === "REPLIED") return "border-transparent bg-blue-100 text-blue-800";
+  if (normalized === "QUALIFIED") return "border-transparent bg-emerald-200 text-emerald-950";
+  if (normalized === "WON") return "border-transparent bg-emerald-100 text-emerald-800";
+  if (normalized === "LOST") return "border-transparent bg-red-100 text-red-800";
+  if (normalized === "IGNORED") return "bg-transparent text-foreground";
+
+  // CRM-specific stages without direct LeadRadar equivalents.
+  if (normalized === "PROPOSAL") return "border-transparent bg-sky-100 text-sky-800";
+  if (normalized === "NEGOTIATION") return "border-transparent bg-cyan-100 text-cyan-800";
+
+  return "border-transparent bg-secondary text-secondary-foreground";
+};
+
 const formatDateTime = (iso: string | null) => {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -176,7 +195,10 @@ export default function BasePage() {
                         onChange={(e) =>
                           void updateLeadStageMutation.mutateAsync({ conversationId: lead.conversationId, stage: e.target.value })
                         }
-                        className="h-9"
+                        className={[
+                          "h-9 min-w-[10rem] max-w-[14rem] cursor-pointer rounded-full border px-2.5 py-0.5 text-xs font-semibold",
+                          stageChipClassName(lead.stage)
+                        ].join(" ")}
                       />
                     </td>
                     <td className="py-3 pr-3">{lead.status}</td>
@@ -211,4 +233,3 @@ export default function BasePage() {
     </div>
   );
 }
-
