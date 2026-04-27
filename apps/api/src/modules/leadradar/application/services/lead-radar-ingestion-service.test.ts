@@ -42,8 +42,12 @@ function makeService(params?: {
   match?: (input: LeadRadarMessageInput) => Promise<any>;
   score?: (args: any) => Promise<any>;
   findByTelegramChatId?: (input: FindSourceByTelegramChatIdInput) => Promise<LeadSource | null>;
+  hasCrmLeadByTelegramUserId?: (input: { telegram_account_id: string; telegram_user_id: string }) => Promise<boolean>;
 }) {
-  const calls: { createLead: any[] } = { createLead: [] };
+  const calls: {
+    createLead: any[];
+    findCrmLeadByTelegramUserId: Array<{ telegram_account_id: string; telegram_user_id: string }>;
+  } = { createLead: [], findCrmLeadByTelegramUserId: [] };
 
   const service = new LeadRadarIngestionService({
     leadRepo: {
@@ -54,6 +58,10 @@ function makeService(params?: {
       existsByMessage: async () => false,
       existsRecentFromSenderInChat: async () => false,
       findRecentLeadForMultiChatMerge: async () => null,
+      findCrmLeadByTelegramUserId: async (input: { telegram_account_id: string; telegram_user_id: string }) => {
+        calls.findCrmLeadByTelegramUserId.push(input);
+        return (await params?.hasCrmLeadByTelegramUserId?.(input)) ?? false;
+      },
       mergeMultiChatLead: async () => {
         throw new Error("unexpected mergeMultiChatLead in these tests");
       }
@@ -215,5 +223,56 @@ test("Case 5: GROUP falls back to linked channel id when group has no source (di
   );
 
   assert.deepEqual(lookupOrder, ["-100GROUP", "-100CHAN"]);
+  assert.equal(calls.createLead.length, 1);
+});
+
+test("CRM anti-duplicate: skips LeadRadar lead when author already exists in CRM by telegramUserId", async () => {
+  const { service, calls } = makeService({
+    hasCrmLeadByTelegramUserId: async ({ telegram_user_id }) => telegram_user_id === "tg-user-1"
+  });
+
+  await service.processMessage(baseMessage({ messageId: "crm-skip", text: "KEY crm" }));
+
+  assert.equal(calls.findCrmLeadByTelegramUserId.length, 1);
+  assert.deepEqual(calls.findCrmLeadByTelegramUserId[0], {
+    telegram_account_id: "ta1",
+    telegram_user_id: "tg-user-1"
+  });
+  assert.equal(calls.createLead.length, 0);
+});
+
+test("CRM anti-duplicate: creates LeadRadar lead when telegramUserId has no CRM Lead", async () => {
+  const { service, calls } = makeService({
+    hasCrmLeadByTelegramUserId: async () => false
+  });
+
+  await service.processMessage(baseMessage({ messageId: "no-crm-lead", text: "KEY no crm" }));
+
+  assert.equal(calls.findCrmLeadByTelegramUserId.length, 1);
+  assert.equal(calls.createLead.length, 1);
+  assert.equal(calls.createLead[0].message_id, "no-crm-lead");
+});
+
+test("CRM anti-duplicate: does not block when telegramUserId is missing", async () => {
+  const { service, calls } = makeService();
+
+  await service.processMessage(baseMessage({ messageId: "no-sender-id", text: "KEY no sender", senderId: null }));
+
+  assert.equal(calls.findCrmLeadByTelegramUserId.length, 0);
+  assert.equal(calls.createLead.length, 1);
+});
+
+test("CRM anti-duplicate: username is not used for blocking when telegramUserId is missing", async () => {
+  const { service, calls } = makeService({
+    hasCrmLeadByTelegramUserId: async () => {
+      throw new Error("findCrmLeadByTelegramUserId must not be called without telegramUserId");
+    }
+  });
+
+  await service.processMessage(
+    baseMessage({ messageId: "username-only", text: "KEY username only", senderId: null, senderUsername: "alice" })
+  );
+
+  assert.equal(calls.findCrmLeadByTelegramUserId.length, 0);
   assert.equal(calls.createLead.length, 1);
 });

@@ -21,6 +21,7 @@ type LeadRadarSkipReason =
   | "below_threshold"
   | "duplicate_hard"
   | "duplicate_soft"
+  | "already_in_crm"
   | "merged_existing_lead";
 
 const isLeadRadarDebugEnabled = (): boolean => {
@@ -640,6 +641,47 @@ export class LeadRadarIngestionService {
       }
     }
 
+    // 7c) CRM anti-duplicate: if this Telegram author already exists as CRM Lead via Conversation, skip LeadRadar lead creation.
+    // Strict identity: telegram numeric user id only. Username is intentionally ignored.
+    const senderExternalIdForCrmCheck = input.senderId?.trim() || null;
+    if (senderExternalIdForCrmCheck) {
+      const crmLeadExists = await this.deps.leadRepo.findCrmLeadByTelegramUserId({
+        telegram_account_id: input.telegramAccountId,
+        telegram_user_id: senderExternalIdForCrmCheck
+      });
+      if (crmLeadExists) {
+        log(
+          `[LeadRadar] Skipped LeadRadar lead because author already exists in CRM telegramAccountId=${input.telegramAccountId} telegramUserId=${senderExternalIdForCrmCheck}`
+        );
+        log("[LeadRadar] message processed");
+        skip_reason = "already_in_crm";
+        final_action = "skipped";
+        if (traceEnabled) {
+          log(
+            `[LeadRadar-TRACE] ${JSON.stringify({
+              messageId: input.messageId,
+              leadradar_enabled: true,
+              source_monitored,
+              inbound_message: true,
+              text_message: true,
+              raw_text,
+              normalized_text,
+              positive_keyword_matches,
+              negative_keyword_matches,
+              history_messages_loaded_count,
+              lead_created_from_message_id,
+              score_breakdown: score_breakdown ?? null,
+              threshold_passed,
+              dedupe_result,
+              final_action,
+              skip_reason
+            })}`
+          );
+        }
+        return;
+      }
+    }
+
     // 8) Save lead (new)
     lead_created_from_message_id = input.messageId;
     await this.deps.leadRepo.createLead({
@@ -704,4 +746,3 @@ export class LeadRadarIngestionService {
     }
   }
 }
-

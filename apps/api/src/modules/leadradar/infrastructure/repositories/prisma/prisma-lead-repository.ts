@@ -453,6 +453,36 @@ export class PrismaLeadRepository implements LeadRepository {
     return row ? leadRadarMappers.lead(row) : null;
   }
 
+  async findCrmLeadByTelegramUserId(input: { telegram_account_id: string; telegram_user_id: string }): Promise<boolean> {
+    const telegramUserId = input.telegram_user_id?.trim();
+    if (!telegramUserId) return false;
+
+    const telegramAccount = await this.prisma.telegramAccount.findUnique({
+      where: { id: input.telegram_account_id },
+      select: { channelAccountId: true }
+    });
+    if (!telegramAccount?.channelAccountId) return false;
+
+    const row = await this.prisma.lead.findFirst({
+      where: {
+        conversation: {
+          channelAccountId: telegramAccount.channelAccountId,
+          participants: {
+            some: {
+              participant: {
+                externalParticipantId: telegramUserId,
+                isSelf: false
+              }
+            }
+          }
+        }
+      },
+      select: { id: true }
+    });
+
+    return Boolean(row?.id);
+  }
+
   async mergeMultiChatLead(input: MergeMultiChatLeadInput): Promise<Lead> {
     return this.prisma.$transaction(async (tx) => {
       const current = await tx.leadRadarLead.findFirst({

@@ -33,6 +33,7 @@ export interface LeadRepository {
 
   mergeMultiChatLead(input: MergeMultiChatLeadInput): Promise<Lead>;
   findExistingAuthorProfileLead(input: FindExistingAuthorProfileLeadInput): Promise<Lead | null>;
+  findCrmLeadByTelegramUserId(input: { telegram_account_id: string; telegram_user_id: string }): Promise<boolean>;
 
   // Optional helper for next steps (not used yet)
   _getSettingsForScope?(input: { user_id: string; telegram_account_id: string }): Promise<LeadSettings | null>;
