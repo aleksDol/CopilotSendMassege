@@ -31,6 +31,7 @@ test("listCrmLeads scopes by companyId and supports stage filter", async () => {
   assert.ok(receivedArgs);
   assert.equal(receivedArgs.where.companyId, "c1");
   assert.equal(receivedArgs.where.stage, "CONTACTED");
+  assert.equal(receivedArgs.where.conversation.isArchived, false);
   assert.ok(receivedArgs.take >= 21);
 });
 
@@ -52,6 +53,7 @@ test("listCrmLeads supports search by conversation title or externalConversation
   assert.ok(receivedWhere);
   assert.equal(receivedWhere.companyId, "c1");
   assert.ok(receivedWhere.conversation);
+  assert.equal(receivedWhere.conversation.isArchived, false);
   assert.ok(Array.isArray(receivedWhere.conversation.OR));
   assert.equal(receivedWhere.conversation.OR.length, 2);
 });
@@ -154,4 +156,3 @@ test("listCrmLeads dedupes DIRECT leads by peer externalParticipantId (isSelf=fa
   assert.equal(res.items.length, 1);
   assert.equal(res.items[0].leadId, "l1");
 });
-

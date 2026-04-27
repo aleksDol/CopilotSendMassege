@@ -53,6 +53,41 @@ test("listConversations scopes to active channelAccountId in prisma query", asyn
   assert.deepEqual(result, { items: [], nextCursor: null });
   assert.ok(receivedWhere, "expected conversationState.findMany to be called");
   assert.equal(receivedWhere.conversation.channelAccountId, "ca-9");
+  assert.equal(receivedWhere.conversation.isArchived, false);
+});
+
+test("listConversations allows archived/all override through status filter", async () => {
+  const receivedWheres: any[] = [];
+  const app = makeApp({
+    prisma: {
+      telegramAccount: {
+        findFirst: async () => ({ channelAccountId: "ca-9" })
+      },
+      conversationState: {
+        findMany: async (args: any) => {
+          receivedWheres.push(args?.where ?? null);
+          return [];
+        }
+      }
+    }
+  });
+
+  await listConversations(app as any, {
+    companyId: "c1",
+    userId: "u1",
+    limit: 20,
+    status: "archived"
+  });
+
+  await listConversations(app as any, {
+    companyId: "c1",
+    userId: "u1",
+    limit: 20,
+    status: "all"
+  });
+
+  assert.equal(receivedWheres[0].conversation.isArchived, true);
+  assert.equal("isArchived" in receivedWheres[1].conversation, false);
 });
 
 test("mapConversationStateRowToListItem lowercases new lead stages (replied/ignored)", () => {
@@ -75,4 +110,3 @@ test("mapConversationStateRowToListItem lowercases new lead stages (replied/igno
   assert.equal(mapConversationStateRowToListItem(baseRow).leadStage, "replied");
   assert.equal(mapConversationStateRowToListItem({ ...baseRow, leadStage: "IGNORED" }).leadStage, "ignored");
 });
-

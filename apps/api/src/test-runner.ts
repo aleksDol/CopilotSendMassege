@@ -28,5 +28,6 @@ import "./modules/ai/reply-suggestion-service.test.js";
 import "./modules/dashboard/sales-utils.test.js";
 import "./scripts/cleanup-invalid-crm-leads.test.js";
 import "./scripts/merge-direct-conversation-duplicates.test.js";
+import "./scripts/archive-duplicate-direct-conversations.test.js";
 import "./scripts/reconcile-leadradar-contacted.test.js";
 import "./scripts/backfill-crm-leads-from-outbound.test.js";

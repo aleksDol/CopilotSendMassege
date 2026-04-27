@@ -63,8 +63,13 @@ export const listConversations = async (
         }
       };
 
-      if (params.status && params.status !== "all") {
-        conversationFilter.isArchived = params.status === "archived";
+      if (params.status === "all") {
+        // Explicit override: include both active and archived.
+      } else if (params.status === "archived") {
+        conversationFilter.isArchived = true;
+      } else {
+        // Default behavior for chat list is active-only.
+        conversationFilter.isArchived = false;
       }
 
       if (params.assignedUserId) {

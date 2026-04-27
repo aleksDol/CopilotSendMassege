@@ -57,16 +57,17 @@ export async function listCrmLeads(
   const where: any = {
     companyId: params.companyId,
     ...(params.stage ? { stage: params.stage } : {}),
-    ...(search
-      ? {
-          conversation: {
+    conversation: {
+      isArchived: false,
+      ...(search
+        ? {
             OR: [
               { title: { contains: search, mode: "insensitive" } },
               { externalConversationId: { contains: search, mode: "insensitive" } }
             ]
           }
-        }
-      : {})
+        : {})
+    }
   };
 
   const orderBy: any = [{ conversation: { state: { lastMessageAt: "desc" } } }, { updatedAt: "desc" }, { id: "desc" }];
@@ -174,4 +175,3 @@ export async function listCrmLeads(
     nextCursor: hasMore ? encodeOffsetCursor({ offset: scannedOffset }) : null
   };
 }
-
