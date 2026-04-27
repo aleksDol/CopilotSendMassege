@@ -274,7 +274,8 @@ export const getDashboardSales = async (
     ],
     loader: async () => {
       const computeForRange = async (range: { start: Date; end: Date }) => {
-        const [newLeads, avgReplyRows, repliedCount, ignoredCount, generatedSuggestions, wonCount] = await Promise.all([
+        const [newLeads, avgReplyRows, contactedCount, repliedCount, ignoredCount, generatedSuggestions, wonCount] =
+          await Promise.all([
           // 1) New leads: Lead.createdAt in selected period (CRM Lead table)
           app.prisma.lead.count({
             where: {
@@ -318,61 +319,84 @@ export const getDashboardSales = async (
               AND "prev_sentAt" < ${range.end}
           `),
 
-          // 3) People who replied: distinct conversations where there is an OUTBOUND and later INBOUND,
-          // and inbound reply sentAt in selected period.
-          app.prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
-            SELECT COUNT(DISTINCT m_in."conversationId")::bigint AS count
-            FROM "Message" m_in
-            JOIN "Conversation" c ON c."id" = m_in."conversationId"
-            WHERE c."companyId" = ${params.companyId}::uuid
-              AND c."isArchived" = false
-              ${activeChannelAccountId
-                ? Prisma.sql`AND c."channelAccountId" = ${activeChannelAccountId}::uuid`
-                : Prisma.sql``}
-              AND m_in."direction" = 'INBOUND'
-              AND m_in."sentAt" >= ${range.start}
-              AND m_in."sentAt" < ${range.end}
-              AND EXISTS (
-                SELECT 1
-                FROM "Message" m_out
-                WHERE m_out."conversationId" = m_in."conversationId"
-                  AND m_out."direction" = 'OUTBOUND'
-                  AND m_out."sentAt" < m_in."sentAt"
+          // 3) Contacted in period: distinct conversations where we sent the FIRST OUTBOUND in this period.
+          // This is the denominator for "Написали → ответили" and "Игнорируют" (cohort = "we wrote in this period").
+          app.prisma
+            .$queryRaw<{ count: bigint }[]>(Prisma.sql`
+              WITH first_out AS (
+                SELECT
+                  m."conversationId",
+                  MIN(m."sentAt") AS first_out_at
+                FROM "Message" m
+                JOIN "Conversation" c ON c."id" = m."conversationId"
+                WHERE c."companyId" = ${params.companyId}::uuid
+                  AND c."isArchived" = false
+                  ${activeChannelAccountId
+                    ? Prisma.sql`AND c."channelAccountId" = ${activeChannelAccountId}::uuid`
+                    : Prisma.sql``}
+                  AND m."direction" = 'OUTBOUND'
+                  AND m."sentAt" >= ${range.start}
+                  AND m."sentAt" < ${range.end}
+                GROUP BY m."conversationId"
               )
-          `).then((rows) => Number(rows[0]?.count ?? 0)),
+              SELECT COUNT(*)::bigint AS count
+              FROM first_out
+            `)
+            .then((rows) => Number(rows[0]?.count ?? 0)),
 
-          // 4) People ignoring / no reply:
-          // distinct conversations where first OUTBOUND/contact in selected period exists,
-          // and no INBOUND exists at all after that outbound ("no reply ever").
-          app.prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
-            WITH first_out AS (
-              SELECT
-                m."conversationId",
-                MIN(m."sentAt") AS first_out_at
-              FROM "Message" m
-              JOIN "Conversation" c ON c."id" = m."conversationId"
-              WHERE c."companyId" = ${params.companyId}::uuid
-                AND c."isArchived" = false
-                ${activeChannelAccountId
-                  ? Prisma.sql`AND c."channelAccountId" = ${activeChannelAccountId}::uuid`
-                  : Prisma.sql``}
-                AND m."direction" = 'OUTBOUND'
-                AND m."sentAt" >= ${range.start}
-                AND m."sentAt" < ${range.end}
-              GROUP BY m."conversationId"
-            )
-            SELECT COUNT(*)::bigint AS count
-            FROM first_out fo
-            WHERE NOT EXISTS (
-              SELECT 1
-              FROM "Message" mi
-              WHERE mi."conversationId" = fo."conversationId"
-                AND mi."direction" = 'INBOUND'
-                AND mi."sentAt" >= fo.first_out_at
-            )
-          `).then((rows) => Number(rows[0]?.count ?? 0)),
+          // 4) Replied (CRM stage): of those we wrote to in this period, how many are now REPLIED.
+          app.prisma
+            .$queryRaw<{ count: bigint }[]>(Prisma.sql`
+              WITH first_out AS (
+                SELECT
+                  m."conversationId",
+                  MIN(m."sentAt") AS first_out_at
+                FROM "Message" m
+                JOIN "Conversation" c ON c."id" = m."conversationId"
+                WHERE c."companyId" = ${params.companyId}::uuid
+                  AND c."isArchived" = false
+                  ${activeChannelAccountId
+                    ? Prisma.sql`AND c."channelAccountId" = ${activeChannelAccountId}::uuid`
+                    : Prisma.sql``}
+                  AND m."direction" = 'OUTBOUND'
+                  AND m."sentAt" >= ${range.start}
+                  AND m."sentAt" < ${range.end}
+                GROUP BY m."conversationId"
+              )
+              SELECT COUNT(*)::bigint AS count
+              FROM first_out fo
+              JOIN "Lead" l ON l."conversationId" = fo."conversationId"
+              WHERE l."stage" = 'REPLIED'
+            `)
+            .then((rows) => Number(rows[0]?.count ?? 0)),
 
-          // 5) Generated AI suggestions: AiSuggestion.createdAt in selected period
+          // 5) Ignored (CRM stage): of those we wrote to in this period, how many are now IGNORED.
+          app.prisma
+            .$queryRaw<{ count: bigint }[]>(Prisma.sql`
+              WITH first_out AS (
+                SELECT
+                  m."conversationId",
+                  MIN(m."sentAt") AS first_out_at
+                FROM "Message" m
+                JOIN "Conversation" c ON c."id" = m."conversationId"
+                WHERE c."companyId" = ${params.companyId}::uuid
+                  AND c."isArchived" = false
+                  ${activeChannelAccountId
+                    ? Prisma.sql`AND c."channelAccountId" = ${activeChannelAccountId}::uuid`
+                    : Prisma.sql``}
+                  AND m."direction" = 'OUTBOUND'
+                  AND m."sentAt" >= ${range.start}
+                  AND m."sentAt" < ${range.end}
+                GROUP BY m."conversationId"
+              )
+              SELECT COUNT(*)::bigint AS count
+              FROM first_out fo
+              JOIN "Lead" l ON l."conversationId" = fo."conversationId"
+              WHERE l."stage" = 'IGNORED'
+            `)
+            .then((rows) => Number(rows[0]?.count ?? 0)),
+
+          // 6) Generated AI suggestions: AiSuggestion.createdAt in selected period
           app.prisma.aiSuggestion.count({
             where: {
               companyId: params.companyId,
@@ -382,7 +406,7 @@ export const getDashboardSales = async (
             }
           }),
 
-          // 6) Won clients:
+          // 7) Won clients:
           // preferred: wonAt in period
           // fallback: wonAt is null but status=WON and updatedAt in period
           app.prisma.lead.count({
@@ -403,6 +427,7 @@ export const getDashboardSales = async (
         return {
           newLeads,
           avgResponseTimeMinutes,
+          contactedCount,
           repliedCount,
           ignoredCount,
           generatedSuggestions,
@@ -415,8 +440,10 @@ export const getDashboardSales = async (
         computeForRange(ranges.previous)
       ]);
 
-      const currentLeadToReplyRate = current.newLeads > 0 ? (current.repliedCount / current.newLeads) * 100 : 0;
-      const previousLeadToReplyRate = previous.newLeads > 0 ? (previous.repliedCount / previous.newLeads) * 100 : 0;
+      const currentWriteToReplyRate =
+        current.contactedCount > 0 ? (current.repliedCount / current.contactedCount) * 100 : 0;
+      const previousWriteToReplyRate =
+        previous.contactedCount > 0 ? (previous.repliedCount / previous.contactedCount) * 100 : 0;
 
       const currentReplyToWonRate = current.repliedCount > 0 ? (current.wonCount / current.repliedCount) * 100 : 0;
       const previousReplyToWonRate = previous.repliedCount > 0 ? (previous.wonCount / previous.repliedCount) * 100 : 0;
@@ -442,9 +469,9 @@ export const getDashboardSales = async (
           }),
           wonCount: buildCountMetric({ label: "Клиенты WON", value: current.wonCount, previousValue: previous.wonCount }),
           leadToReplyRate: buildRateMetricPp({
-            label: "Новые → ответили",
-            value: currentLeadToReplyRate,
-            previousValue: previousLeadToReplyRate
+            label: "Написали → ответили",
+            value: currentWriteToReplyRate,
+            previousValue: previousWriteToReplyRate
           }),
           replyToWonRate: buildRateMetricPp({
             label: "Ответили → WON",
