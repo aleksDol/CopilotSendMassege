@@ -5,6 +5,9 @@ type Options = {
   companyId?: string;
   // Merge only this peer telegram user id (Participant.externalParticipantId) if provided.
   peerId?: string;
+  // Skip groups with more conversations than this (default 3). Protects against bad participant data
+  // where many unrelated conversations share the same externalParticipantId.
+  maxGroupSize: number;
 };
 
 type ConversationRef = {
@@ -27,7 +30,7 @@ const isPrismaUniqueViolation = (err: unknown): boolean =>
 const isLikelyNumericId = (s: string): boolean => /^\d+$/.test(s);
 
 function parseArgs(argv: string[]): Options {
-  const opts: Options = { apply: false };
+  const opts: Options = { apply: false, maxGroupSize: 3 };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--apply") {
@@ -41,6 +44,11 @@ function parseArgs(argv: string[]): Options {
     }
     if (arg === "--peer-id") {
       opts.peerId = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg === "--max-group-size") {
+      opts.maxGroupSize = parseInt(argv[i + 1], 10) || 3;
       i += 1;
       continue;
     }
@@ -139,9 +147,22 @@ async function main() {
       keyToGroup.set(key, g);
     }
 
-    const duplicateGroups = [...keyToGroup.values()].filter((g) => g.conversations.length > 1);
+    const allDuplicateGroups = [...keyToGroup.values()].filter((g) => g.conversations.length > 1);
+    const skippedLargeGroups = allDuplicateGroups.filter((g) => g.conversations.length > opts.maxGroupSize);
+    const duplicateGroups = allDuplicateGroups.filter((g) => g.conversations.length <= opts.maxGroupSize);
 
-    console.log(`[merge-direct-conversation-duplicates] duplicate_groups_found=${duplicateGroups.length}`);
+    if (skippedLargeGroups.length > 0) {
+      console.warn(
+        `[merge-direct-conversation-duplicates] WARNING: skipped ${skippedLargeGroups.length} groups with more than ${opts.maxGroupSize} conversations (likely bad participant data):`
+      );
+      for (const g of skippedLargeGroups) {
+        console.warn(
+          `  SKIPPED peerId=${g.peerExternalParticipantId} companyId=${g.companyId} count=${g.conversations.length}`
+        );
+      }
+    }
+
+    console.log(`[merge-direct-conversation-duplicates] duplicate_groups_found=${duplicateGroups.length} skipped_large=${skippedLargeGroups.length}`);
     for (const g of duplicateGroups.slice(0, 200)) {
       const pick = pickCanonicalConversation({
         peerExternalParticipantId: g.peerExternalParticipantId,
