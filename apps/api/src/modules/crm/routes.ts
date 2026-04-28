@@ -11,7 +11,6 @@ const crmRoutes: FastifyPluginAsync = async (app) => {
 
     return listCrmLeads(app, {
       companyId: scope.companyId,
-      userId: scope.userId,
       limit: query.limit,
       cursor: query.cursor,
       stage: query.stage,
@@ -21,3 +20,4 @@ const crmRoutes: FastifyPluginAsync = async (app) => {
 };
 
 export default crmRoutes;
+

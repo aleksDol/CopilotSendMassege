@@ -4,14 +4,7 @@ import { listCrmLeads } from "./service.js";
 
 function makeApp(overrides: Partial<any> = {}) {
   return {
-    log: {
-      info: () => undefined
-    },
     prisma: {
-      telegramAccount: {
-        findFirst: async () => ({ id: "tg1", channelAccountId: "ch1" }),
-        ...(overrides.prisma?.telegramAccount ?? {})
-      },
       lead: {
         findMany: async () => [],
         ...(overrides.prisma?.lead ?? {})
@@ -33,12 +26,11 @@ test("listCrmLeads scopes by companyId and supports stage filter", async () => {
     }
   });
 
-  await listCrmLeads(app, { companyId: "c1", userId: "u1", limit: 20, stage: "CONTACTED" as any });
+  await listCrmLeads(app, { companyId: "c1", limit: 20, stage: "CONTACTED" as any });
 
   assert.ok(receivedArgs);
   assert.equal(receivedArgs.where.companyId, "c1");
   assert.equal(receivedArgs.where.stage, "CONTACTED");
-  assert.equal(receivedArgs.where.conversation.channelAccountId, "ch1");
   assert.equal(receivedArgs.where.conversation.isArchived, false);
   assert.ok(receivedArgs.take >= 21);
 });
@@ -56,7 +48,7 @@ test("listCrmLeads supports search by conversation title or externalConversation
     }
   });
 
-  await listCrmLeads(app, { companyId: "c1", userId: "u1", limit: 50, search: "ivan" });
+  await listCrmLeads(app, { companyId: "c1", limit: 50, search: "ivan" });
 
   assert.ok(receivedWhere);
   assert.equal(receivedWhere.companyId, "c1");
@@ -79,7 +71,7 @@ test("listCrmLeads orders by lastMessageAt desc, then updatedAt desc", async () 
     }
   });
 
-  await listCrmLeads(app, { companyId: "c1", userId: "u1", limit: 10 });
+  await listCrmLeads(app, { companyId: "c1", limit: 10 });
 
   assert.ok(receivedOrderBy);
   assert.deepEqual(receivedOrderBy[0], { conversation: { state: { lastMessageAt: "desc" } } });
@@ -112,7 +104,7 @@ test("listCrmLeads maps missing ConversationState safely", async () => {
     }
   });
 
-  const res = await listCrmLeads(app, { companyId: "c1", userId: "u1", limit: 50 });
+  const res = await listCrmLeads(app, { companyId: "c1", limit: 50 });
   assert.equal(res.items.length, 1);
   assert.equal(res.items[0].clientName, "ivan");
   assert.equal(res.items[0].lastMessageAt, null);
@@ -160,7 +152,7 @@ test("listCrmLeads dedupes DIRECT leads by peer externalParticipantId (isSelf=fa
     }
   });
 
-  const res = await listCrmLeads(app, { companyId: "c1", userId: "u1", limit: 50 });
+  const res = await listCrmLeads(app, { companyId: "c1", limit: 50 });
   assert.equal(res.items.length, 1);
   assert.equal(res.items[0].leadId, "l1");
 });
