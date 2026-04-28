@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/common/empty-state";
 import { LoadingState } from "@/components/common/loading-state";
 import { Select } from "@/components/ui/select";
-import { useCrmLeads } from "@/lib/hooks/use-app-data";
+import { useCrmLeads, useTelegramAccount } from "@/lib/hooks/use-app-data";
 import { conversationsApi } from "@/lib/api/conversations";
 import { useAuth } from "@/lib/auth/context";
 import { ApiError } from "@/lib/api/errors";
@@ -53,7 +53,8 @@ const formatDateTime = (iso: string | null) => {
 };
 
 export default function BasePage() {
-  const { token } = useAuth();
+  const { token, company, user } = useAuth();
+  const telegram = useTelegramAccount();
   const queryClient = useQueryClient();
 
   const [filters, setFilters] = useState<{ stage: string; search: string }>({
@@ -62,45 +63,83 @@ export default function BasePage() {
   });
 
   const [extraItems, setExtraItems] = useState<CrmLeadListItem[]>([]);
+  const [extraItemsScopeKey, setExtraItemsScopeKey] = useState<string | null>(null);
   const [nextPageCursor, setNextPageCursor] = useState<string | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const datasetScopeKeyRef = useRef<string>("");
+
+  const normalizedSearch = filters.search.trim();
+  const stageFilter = filters.stage === "all" ? undefined : filters.stage;
+  const channelAccountId = telegram.data?.channelAccountId ?? "";
+
+  const datasetScopeKey = useMemo(
+    () =>
+      JSON.stringify({
+        companyId: company?.id ?? "",
+        userId: user?.id ?? "",
+        channelAccountId,
+        stage: stageFilter ?? null,
+        search: normalizedSearch || null,
+        limit: 50
+      }),
+    [company?.id, user?.id, channelAccountId, stageFilter, normalizedSearch]
+  );
+
+  useEffect(() => {
+    datasetScopeKeyRef.current = datasetScopeKey;
+  }, [datasetScopeKey]);
 
   const leads = useCrmLeads({
     limit: 50,
-    stage: filters.stage === "all" ? undefined : filters.stage,
-    search: filters.search.trim() ? filters.search.trim() : undefined
+    stage: stageFilter,
+    search: normalizedSearch ? normalizedSearch : undefined
   });
 
   const firstPageItems = leads.data?.items ?? [];
   const firstPageNextCursor = leads.data?.nextCursor ?? null;
+  const scopedExtraItems = extraItemsScopeKey === datasetScopeKey ? extraItems : [];
 
-  const items = [...firstPageItems, ...extraItems];
-  const hasMore = extraItems.length === 0 ? !!firstPageNextCursor : !!nextPageCursor;
-  const cursorToLoad = extraItems.length === 0 ? firstPageNextCursor : nextPageCursor;
+  const items = [...firstPageItems, ...scopedExtraItems];
+  const hasMore = scopedExtraItems.length === 0 ? !!firstPageNextCursor : !!nextPageCursor;
+  const cursorToLoad = scopedExtraItems.length === 0 ? firstPageNextCursor : nextPageCursor;
+
+  useEffect(() => {
+    setExtraItems([]);
+    setExtraItemsScopeKey(null);
+    setNextPageCursor(firstPageNextCursor ?? null);
+    setIsLoadingMore(false);
+  }, [datasetScopeKey, firstPageNextCursor]);
 
   const handleFilterChange = useCallback((newFilters: Partial<{ stage: string; search: string }>) => {
     setFilters((prev) => ({ ...prev, ...newFilters }));
     setExtraItems([]);
+    setExtraItemsScopeKey(null);
     setNextPageCursor(null);
+    setIsLoadingMore(false);
   }, []);
 
   const handleLoadMore = useCallback(async () => {
     if (!cursorToLoad) return;
+    const requestScopeKey = datasetScopeKeyRef.current;
     setIsLoadingMore(true);
     try {
       const { crmApi } = await import("@/lib/api/crm");
       const res = await crmApi.listLeads(token ?? "", {
         limit: 50,
         cursor: cursorToLoad,
-        stage: filters.stage === "all" ? undefined : filters.stage,
-        search: filters.search.trim() ? filters.search.trim() : undefined
+        stage: stageFilter,
+        search: normalizedSearch ? normalizedSearch : undefined
       });
+      if (datasetScopeKeyRef.current !== requestScopeKey) return;
       setExtraItems((prev) => [...prev, ...(res.items ?? [])]);
+      setExtraItemsScopeKey(requestScopeKey);
       setNextPageCursor(res.nextCursor ?? null);
     } finally {
-      setIsLoadingMore(false);
+      if (datasetScopeKeyRef.current === requestScopeKey) {
+        setIsLoadingMore(false);
+      }
     }
-  }, [cursorToLoad, token, filters]);
+  }, [cursorToLoad, token, stageFilter, normalizedSearch]);
 
   const stageOptionsNoAll = useMemo(() => STAGE_OPTIONS.filter((o) => o.value !== "all"), []);
 

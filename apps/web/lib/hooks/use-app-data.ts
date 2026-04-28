@@ -79,11 +79,15 @@ export const useTasks = (filters: Record<string, string | number | boolean | und
 
 export const useCrmLeads = (filters: { stage?: string; search?: string; limit?: number; cursor?: string }) => {
   const { token, company, user } = useAuth();
-  const scope = baseScopeKey(company?.id, user?.id);
+  const telegram = useTelegramAccount();
+  const telegramStatus = telegram.data?.loginStatus ?? telegram.data?.status ?? "login_required";
+  const channelAccountId = telegram.data?.channelAccountId ?? "";
+  const isTelegramConnected = telegramStatus === "connected" && Boolean(channelAccountId);
+  const scope = `${baseScopeKey(company?.id, user?.id)}:${channelAccountId}`;
   return useQuery({
     queryKey: ["crm-leads", scope, filters],
     queryFn: () => crmApi.listLeads(token ?? "", filters),
-    enabled: Boolean(token)
+    enabled: Boolean(token && isTelegramConnected)
   });
 };
 

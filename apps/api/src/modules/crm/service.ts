@@ -1,5 +1,8 @@
 import type { FastifyInstance } from "fastify";
-import type { LeadStage, LeadSource, LeadStatus } from "@prisma/client";
+import { ChannelAccountStatus, ChannelType, TelegramLoginStatus, type LeadStage, type LeadSource, type LeadStatus } from "@prisma/client";
+
+const TG_CONNECTED = "CONNECTED" as unknown as TelegramLoginStatus;
+const TG_ERROR = "ERROR" as unknown as TelegramLoginStatus;
 
 type OffsetCursorPayload = { offset: number };
 
@@ -36,12 +39,45 @@ export async function listCrmLeads(
   app: FastifyInstance,
   params: {
     companyId: string;
+    userId: string;
     limit: number;
     cursor?: string;
     stage?: LeadStage;
     search?: string;
   }
 ): Promise<{ items: CrmLeadListItem[]; nextCursor: string | null }> {
+  const activeTelegram = await app.prisma.telegramAccount.findFirst({
+    where: {
+      loginStatus: { in: [TG_CONNECTED, TG_ERROR] },
+      channelAccount: {
+        companyId: params.companyId,
+        channelType: ChannelType.TELEGRAM,
+        createdByUserId: params.userId,
+        status: { not: ChannelAccountStatus.DISCONNECTED }
+      }
+    },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true, channelAccountId: true }
+  });
+
+  if (!activeTelegram) {
+    app.log.info(
+      {
+        event: "CRM leads query scope",
+        workspaceId: params.companyId,
+        userId: params.userId,
+        telegramAccountId: null,
+        channelAccountId: null,
+        stage: params.stage ?? null,
+        search: params.search ?? null,
+        isArchived: false,
+        count: 0
+      },
+      "CRM leads query scope"
+    );
+    return { items: [], nextCursor: null };
+  }
+
   const offset = params.cursor ? decodeOffsetCursor(params.cursor).offset : 0;
 
   const search = params.search?.trim() ? params.search.trim() : null;
@@ -58,6 +94,7 @@ export async function listCrmLeads(
     companyId: params.companyId,
     ...(params.stage ? { stage: params.stage } : {}),
     conversation: {
+      channelAccountId: activeTelegram.channelAccountId,
       isArchived: false,
       ...(search
         ? {
@@ -74,6 +111,8 @@ export async function listCrmLeads(
 
   const items: CrmLeadListItem[] = [];
   const seenPeerKeys = new Set<string>();
+  const returnedLeadIds: string[] = [];
+  const returnedConversationIds: string[] = [];
 
   const batchSize = Math.min(250, Math.max(params.limit * 5, params.limit + 1));
   let scannedOffset = offset;
@@ -158,6 +197,8 @@ export async function listCrmLeads(
         createdAt: row.createdAt,
         updatedAt: row.updatedAt
       });
+      if (returnedLeadIds.length < 10) returnedLeadIds.push(row.id);
+      if (returnedConversationIds.length < 10) returnedConversationIds.push(row.conversationId);
 
       if (items.length >= params.limit) break;
     }
@@ -169,6 +210,25 @@ export async function listCrmLeads(
       hasMore = true;
     }
   }
+
+  app.log.info(
+    {
+      event: "CRM leads query scope",
+      workspaceId: params.companyId,
+      userId: params.userId,
+      telegramAccountId: activeTelegram.id,
+      channelAccountId: activeTelegram.channelAccountId,
+      stage: params.stage ?? null,
+      search: search ?? null,
+      isArchived: false,
+      returnedCount: items.length,
+      returnedLeadIdsFirst10: returnedLeadIds,
+      returnedConversationIdsFirst10: returnedConversationIds,
+      offset,
+      limit: params.limit
+    },
+    "CRM leads query scope"
+  );
 
   return {
     items,
