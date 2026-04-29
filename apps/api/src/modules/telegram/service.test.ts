@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getTelegramAccount, disconnectTelegram, patchTelegramAccountFlags, triggerInitialSync } from "./service.js";
+import { listTelegramAccounts, disconnectTelegram, patchTelegramAccountFlags, triggerInitialSync } from "./service.js";
 import { TelegramWorkerClient } from "../../lib/telegram-worker-client.js";
 
 function makeApp(overrides: Partial<any> = {}) {
@@ -11,28 +11,27 @@ function makeApp(overrides: Partial<any> = {}) {
   };
 }
 
-test("getTelegramAccount scopes to createdByUserId", async () => {
+test("listTelegramAccounts scopes to current company", async () => {
   let receivedWhere: any | null = null;
 
   const app = makeApp({
     prisma: {
       telegramAccount: {
-        findFirst: async (args: any) => {
+        findMany: async (args: any) => {
           receivedWhere = args?.where ?? null;
-          return null;
+          return [];
         }
       }
     }
   });
 
-  await getTelegramAccount(app as any, { companyId: "c1", userId: "u1" });
+  await listTelegramAccounts(app as any, { companyId: "c1", userId: "u1" });
 
-  assert.ok(receivedWhere, "expected prisma.telegramAccount.findFirst to be called");
+  assert.ok(receivedWhere, "expected prisma.telegramAccount.findMany to be called");
   assert.equal(receivedWhere.channelAccount.companyId, "c1");
-  assert.equal(receivedWhere.channelAccount.createdByUserId, "u1");
 });
 
-test("disconnectTelegram only disconnects current user's telegram channel accounts", async () => {
+test("disconnectTelegram scopes to current company telegram channel accounts", async () => {
   let receivedWhere: any | null = null;
 
   const app = makeApp({
@@ -50,7 +49,7 @@ test("disconnectTelegram only disconnects current user's telegram channel accoun
 
   assert.ok(receivedWhere, "expected prisma.channelAccount.findMany to be called");
   assert.equal(receivedWhere.companyId, "c1");
-  assert.equal(receivedWhere.createdByUserId, "u1");
+  assert.equal(receivedWhere.channelType, "TELEGRAM");
 });
 
 test("patchTelegramAccountFlags forbids disabling both sending and parsing", async () => {
@@ -125,7 +124,7 @@ test("triggerInitialSync uses explicit valid channelAccountId", async () => {
         telegramAccount: {
           findFirst: async (args: any) => ({
             id: "ta-explicit",
-            channelAccountId: args.where.id ?? "ca-explicit",
+            channelAccountId: "ca-explicit",
             phone: "+10000000000",
             channelAccount: { id: "ca-explicit" }
           })

@@ -10,6 +10,7 @@ export default function TelegramSettingsPage() {
   const telegram = useTelegramAccount();
   const telegramAccounts = useTelegramAccounts();
   const actions = useTelegramActions();
+  const hasAccounts = Boolean(telegramAccounts.data?.items?.length);
 
   if (telegram.isLoading) {
     return <LoadingState label="Загрузка статуса Telegram..." />;
@@ -24,6 +25,7 @@ export default function TelegramSettingsPage() {
 
       <TelegramConnectCard
         account={telegram.data}
+        connectButtonLabel={hasAccounts ? "Добавить ещё" : "Добавить аккаунт"}
         loading={
           actions.startConnectQr.isPending ||
           actions.pollLoginQr.isPending ||
@@ -42,10 +44,16 @@ export default function TelegramSettingsPage() {
         }}
       />
 
-      {telegramAccounts.data?.items?.length ? (
+      {!hasAccounts ? (
+        <div className="rounded-xl border border-dashed border-border bg-card p-4 text-sm text-muted-foreground">
+          Telegram-аккаунты не подключены.
+        </div>
+      ) : null}
+
+      {hasAccounts ? (
         <div className="space-y-3 rounded-xl border border-border bg-card p-4">
           <h2 className="text-base font-semibold">Роли аккаунтов</h2>
-          {telegramAccounts.data.items.map((account) => {
+          {telegramAccounts.data?.items?.map((account) => {
             const channelAccountId = account.channelAccountId;
             if (!channelAccountId) return null;
             const sendingEnabled = account.sendingEnabled !== false;

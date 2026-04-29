@@ -3,17 +3,23 @@ import assert from "node:assert/strict";
 import { resolveActiveLeadRadarTelegramAccount } from "./account-guard.js";
 
 test("resolveActiveLeadRadarTelegramAccount returns account when parsing is enabled", async () => {
+  let fallbackWhere: any | null = null;
   const prisma: any = {
     channelAccount: {
       count: async () => 1
     },
     telegramAccount: {
-      findFirst: async () => ({ id: "ta-1", channelAccountId: "ca-1" })
+      findFirst: async (args: any) => {
+        fallbackWhere = args.where;
+        return { id: "ta-1", channelAccountId: "ca-1" };
+      }
     }
   };
 
   const out = await resolveActiveLeadRadarTelegramAccount(prisma, { companyId: "c1", userId: "u1" });
   assert.deepEqual(out, { id: "ta-1", channelAccountId: "ca-1" });
+  assert.equal(fallbackWhere.channelAccount.companyId, "c1");
+  assert.equal(fallbackWhere.channelAccount.createdByUserId, undefined);
 });
 
 test("resolveActiveLeadRadarTelegramAccount returns null when no parsing-enabled account", async () => {

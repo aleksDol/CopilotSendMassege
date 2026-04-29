@@ -12,6 +12,7 @@ const POLL_INTERVAL_MS = 2500;
 
 export function TelegramConnectCard({
   account,
+  connectButtonLabel = "Добавить аккаунт",
   onStartQr,
   onPollQr,
   onVerifyPasswordQr,
@@ -20,6 +21,7 @@ export function TelegramConnectCard({
   loading
 }: {
   account?: TelegramAccountResponse;
+  connectButtonLabel?: string;
   onStartQr: () => Promise<{ qrSessionId: string; qrUrl: string; expiresAt: number }>;
   onPollQr: (qrSessionId: string) => Promise<{ status: string; expiresAt: number; errorMessage?: string | null }>;
   onVerifyPasswordQr: (payload: { qrSessionId: string; password: string }) => Promise<{ status: string }>;
@@ -32,17 +34,15 @@ export function TelegramConnectCard({
 
   const [qrSessionId, setQrSessionId] = useState<string | null>(null);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
-  const [expiresAt, setExpiresAt] = useState<number>(0);
   const [qrStatus, setQrStatus] = useState<string>("pending");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
-    }
+    if (!pollIntervalRef.current) return;
+    clearInterval(pollIntervalRef.current);
+    pollIntervalRef.current = null;
   }, []);
 
   const startPolling = useCallback(
@@ -70,9 +70,7 @@ export function TelegramConnectCard({
     [onPollQr, stopPolling]
   );
 
-  useEffect(() => {
-    return () => stopPolling();
-  }, [stopPolling]);
+  useEffect(() => () => stopPolling(), [stopPolling]);
 
   const handleStartQr = async () => {
     setError(null);
@@ -81,19 +79,10 @@ export function TelegramConnectCard({
       const data = await onStartQr();
       setQrSessionId(data.qrSessionId);
       setQrUrl(data.qrUrl);
-      setExpiresAt(data.expiresAt);
       startPolling(data.qrSessionId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось получить QR-код");
     }
-  };
-
-  const handleRefreshQr = () => {
-    setQrSessionId(null);
-    setQrUrl(null);
-    setQrStatus("pending");
-    setError(null);
-    void handleStartQr();
   };
 
   const handleVerifyPassword = async () => {
@@ -114,7 +103,7 @@ export function TelegramConnectCard({
     <Card>
       <CardHeader>
         <CardTitle>Подключение Telegram</CardTitle>
-        <CardDescription>Отсканируйте QR-код в приложении Telegram для входа.</CardDescription>
+        <CardDescription>Сканируйте QR-код в приложении Telegram для входа.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center gap-2 text-sm">
@@ -124,29 +113,29 @@ export function TelegramConnectCard({
           </Badge>
         </div>
 
-        {!isConnected && !qrUrl && (
+        {!isConnected && !qrUrl ? (
           <Button className="w-full" disabled={loading} onClick={() => void handleStartQr()}>
-            Войти по QR-коду
+            {connectButtonLabel}
           </Button>
-        )}
+        ) : null}
 
-        {qrUrl && (
+        {qrUrl ? (
           <div className="flex flex-col items-center gap-3">
             <div className="rounded-lg border bg-white p-3">
               <QRCodeSVG value={qrUrl} size={220} level="M" />
             </div>
             <p className="text-center text-sm text-muted-foreground">
-              Откройте Telegram → Настройки → Устройства → Войти по QR-коду
+              Откройте Telegram -&gt; Настройки -&gt; Устройства -&gt; Войти по QR-коду
             </p>
-            {qrStatus === "pending" && (
-              <p className="text-sm text-muted-foreground">Ожидание сканирования… QR действует 60 секунд.</p>
-            )}
-            {(qrStatus === "expired" || qrStatus === "error") && (
-              <Button variant="outline" disabled={loading} onClick={handleRefreshQr}>
+            {qrStatus === "pending" ? (
+              <p className="text-sm text-muted-foreground">Ожидание сканирования... QR действует 60 секунд.</p>
+            ) : null}
+            {(qrStatus === "expired" || qrStatus === "error") ? (
+              <Button variant="outline" disabled={loading} onClick={() => void handleStartQr()}>
                 Получить новый QR-код
               </Button>
-            )}
-            {qrStatus === "password_required" && (
+            ) : null}
+            {qrStatus === "password_required" ? (
               <div className="flex w-full max-w-sm flex-col gap-2">
                 <div>
                   <div className="text-xs text-muted-foreground">Пароль 2FA</div>
@@ -161,9 +150,9 @@ export function TelegramConnectCard({
                   Подтвердить пароль
                 </Button>
               </div>
-            )}
+            ) : null}
           </div>
-        )}
+        ) : null}
 
         {account?.username || account?.displayName ? (
           <div className="text-sm text-muted-foreground">

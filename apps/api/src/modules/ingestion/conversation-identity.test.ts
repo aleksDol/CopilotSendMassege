@@ -65,21 +65,23 @@ test("DIRECT: resolves existing conversation by peerExternalParticipantId, prefe
   assert.equal(calls.some((c) => c[0] === "conversation.update"), true);
 });
 
-test("DIRECT: falls back to any existing DIRECT conversation for peer when exact match missing", async () => {
+test("DIRECT: does not fallback to any conversation for peer when exact match missing", async () => {
+  const calls: any[] = [];
   const prisma = makePrisma({
     participant: {
       findUnique: async () => ({ id: "p1" })
     },
     conversationParticipant: {
       findFirst: async (args: any) => {
-        // first attempt (exact) returns null; second attempt (any) returns a conversation
-        if (args?.where?.conversation?.externalConversationId) return null;
-        return { conversation: { id: "conv_any", externalConversationId: "some" } };
+        calls.push(["conversationParticipant.findFirst", args]);
+        // exact DIRECT by peer id is not found
+        return null;
       }
     },
     conversation: {
-      upsert: async () => {
-        throw new Error("should not upsert when any conversation exists");
+      upsert: async (args: any) => {
+        calls.push(["conversation.upsert", args]);
+        return { id: "conv_upserted", externalConversationId: args.create.externalConversationId };
       },
       findUniqueOrThrow: async (args: any) => ({ id: args.where.id, externalConversationId: "some" })
     }
@@ -93,7 +95,11 @@ test("DIRECT: falls back to any existing DIRECT conversation for peer when exact
     peerExternalParticipantId: "peer123"
   });
 
-  assert.equal(res.id, "conv_any");
+  assert.equal(res.id, "conv_upserted");
+  assert.equal(calls.some((c) => c[0] === "conversation.upsert"), true);
+  const upsertCall = calls.find((c) => c[0] === "conversation.upsert")?.[1];
+  assert.equal(upsertCall?.where?.channelAccountId_externalConversationId?.channelAccountId, "ca1");
+  assert.equal(upsertCall?.where?.channelAccountId_externalConversationId?.externalConversationId, "username_chat");
 });
 
 test("Non-DIRECT or missing peer id: falls back to upsert by externalConversationId", async () => {
@@ -118,4 +124,3 @@ test("Non-DIRECT or missing peer id: falls back to upsert by externalConversatio
   assert.equal(res.id, "conv_upserted");
   assert.equal(calls.length, 1);
 });
-

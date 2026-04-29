@@ -46,12 +46,16 @@ test("resolveTelegramAccountForRequest rejects foreign explicit channelAccountId
 });
 
 test("resolveTelegramAccountForRequest falls back to latest when channelAccountId is not provided", async () => {
+  let fallbackWhere: any | null = null;
   const prisma: any = {
     channelAccount: {
       findFirst: async () => null
     },
     telegramAccount: {
-      findFirst: async () => ({ id: "ta-1", channelAccountId: "ca-1" })
+      findFirst: async (args: any) => {
+        fallbackWhere = args.where;
+        return { id: "ta-1", channelAccountId: "ca-1" };
+      }
     }
   };
 
@@ -61,6 +65,8 @@ test("resolveTelegramAccountForRequest falls back to latest when channelAccountI
   });
 
   assert.deepEqual(resolved, { telegramAccountId: "ta-1", channelAccountId: "ca-1" });
+  assert.equal(fallbackWhere.channelAccount.companyId, "c1");
+  assert.equal(fallbackWhere.channelAccount.createdByUserId, undefined);
 });
 
 test("resolveTelegramAccountForRequest rejects explicit disconnected account", async () => {

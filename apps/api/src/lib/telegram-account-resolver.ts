@@ -48,7 +48,6 @@ export async function resolveTelegramAccountForRequest(
       channelAccount: {
         companyId: params.companyId,
         channelType: ChannelType.TELEGRAM,
-        createdByUserId: params.userId,
         status: { not: ChannelAccountStatus.DISCONNECTED }
       }
     },

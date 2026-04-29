@@ -11,10 +11,10 @@ import { isLeadRadarParsingSelectionError, isTelegramAccountSelectionError } fro
 const baseScopeKey = (companyId: string | undefined, userId: string | undefined) =>
   `${companyId ?? ""}:${userId ?? ""}`;
 
-const selectedTelegramStorageKey = (companyId?: string, userId?: string) =>
-  companyId && userId ? `selected-telegram-account:${companyId}:${userId}` : null;
-const selectedLeadRadarParsingStorageKey = (companyId?: string, userId?: string) =>
-  companyId && userId ? `selected-leadradar-parsing-account:${companyId}:${userId}` : null;
+const selectedTelegramStorageKey = (companyId?: string) =>
+  companyId ? `selectedTelegramChannelAccountId:${companyId}` : null;
+const selectedLeadRadarParsingStorageKey = (companyId?: string) =>
+  companyId ? `selectedLeadRadarParsingChannelAccountId:${companyId}` : null;
 
 let lastAccountRecoveryAlertAt = 0;
 const showAccountRecoveryAlert = (message: string) => {
@@ -28,21 +28,33 @@ const showAccountRecoveryAlert = (message: string) => {
 export const useSelectedTelegramChannelAccountId = () => {
   const { company, user } = useAuth();
   const telegram = useTelegramAccount();
-  const key = selectedTelegramStorageKey(company?.id, user?.id);
-  const fallback = telegram.data?.channelAccountId ?? "";
+  const telegramAccounts = useTelegramAccounts();
+  const key = selectedTelegramStorageKey(company?.id);
+  const availableAccountIds = (telegramAccounts.data?.items ?? [])
+    .map((account) => (account.channelAccountId ?? "").trim())
+    .filter(Boolean);
+  const fallbackFromAccount = (telegram.data?.channelAccountId ?? "").trim();
+  const fallback = availableAccountIds.includes(fallbackFromAccount)
+    ? fallbackFromAccount
+    : availableAccountIds[0] ?? "";
   const [selected, setSelected] = useState<string>("");
 
   useEffect(() => {
     if (!key || typeof window === "undefined") return;
     const fromStorage = window.localStorage.getItem(key)?.trim() ?? "";
-    if (fromStorage) {
+    if (fromStorage && availableAccountIds.includes(fromStorage)) {
       setSelected(fromStorage);
       return;
     }
+    if (fromStorage && !availableAccountIds.includes(fromStorage)) {
+      window.localStorage.removeItem(key);
+    }
     if (fallback) {
       setSelected(fallback);
+      return;
     }
-  }, [key, fallback]);
+    setSelected("");
+  }, [key, fallback, availableAccountIds]);
 
   const setSelectedChannelAccountId = (value: string | null) => {
     const next = (value ?? "").trim();
@@ -62,7 +74,7 @@ export const useSelectedLeadRadarParsingChannelAccountId = () => {
   const { company, user } = useAuth();
   const { selectedChannelAccountId } = useSelectedTelegramChannelAccountId();
   const telegramAccounts = useTelegramAccounts();
-  const key = selectedLeadRadarParsingStorageKey(company?.id, user?.id);
+  const key = selectedLeadRadarParsingStorageKey(company?.id);
   const [selected, setSelected] = useState<string>("");
 
   const parsingAccounts = (telegramAccounts.data?.items ?? []).filter((account: TelegramAccountResponse) => {
@@ -83,6 +95,9 @@ export const useSelectedLeadRadarParsingChannelAccountId = () => {
     if (fromStorage && parsingAccounts.some((account: TelegramAccountResponse) => account.channelAccountId === fromStorage)) {
       setSelected(fromStorage);
       return;
+    }
+    if (fromStorage && !parsingAccounts.some((account: TelegramAccountResponse) => account.channelAccountId === fromStorage)) {
+      window.localStorage.removeItem(key);
     }
     setSelected(fallback);
   }, [key, fallback, parsingAccounts]);

@@ -14,8 +14,7 @@ export async function resolveActiveLeadRadarTelegramAccount(
       where: {
         id: selectedChannelAccountId,
         companyId: params.companyId,
-        channelType: ChannelType.TELEGRAM,
-        createdByUserId: params.userId
+        channelType: ChannelType.TELEGRAM
       },
       select: {
         id: true,
@@ -46,7 +45,6 @@ export async function resolveActiveLeadRadarTelegramAccount(
     where: {
       companyId: params.companyId,
       channelType: ChannelType.TELEGRAM,
-      createdByUserId: params.userId,
       parsingEnabled: true,
       status: { not: ChannelAccountStatus.DISCONNECTED },
       telegram: {
@@ -66,7 +64,6 @@ export async function resolveActiveLeadRadarTelegramAccount(
       channelAccount: {
         companyId: params.companyId,
         channelType: ChannelType.TELEGRAM,
-        createdByUserId: params.userId,
         parsingEnabled: true,
         status: { not: ChannelAccountStatus.DISCONNECTED }
       }
