@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth/context";
-import { useTelegramAccount } from "@/lib/hooks/use-app-data";
+import { useSelectedTelegramChannelAccountId, useTelegramAccount } from "@/lib/hooks/use-app-data";
 import type { ConversationListResponse } from "@/lib/api/types";
 
 function getRealtimeBaseUrl(): string {
@@ -116,10 +116,11 @@ export function useChatsRealtime(
 ) {
   const { token, company, user, isAuthenticated } = useAuth();
   const telegram = useTelegramAccount();
+  const { selectedChannelAccountId } = useSelectedTelegramChannelAccountId();
   const queryClient = useQueryClient();
   const selectedIdRef = useRef<string | null>(selectedConversationId);
   const onNewMessageRef = useRef(onNewMessageInOtherChat);
-  const channelAccountId = telegram.data?.channelAccountId ?? "";
+  const channelAccountId = selectedChannelAccountId;
   const scope = `${company?.id ?? ""}:${user?.id ?? ""}:${channelAccountId}`;
 
   selectedIdRef.current = selectedConversationId;

@@ -9,7 +9,7 @@ export const crmApi = {
       cursor?: string;
       stage?: string;
       search?: string;
+      channelAccountId?: string;
     }
   ) => apiClient.get<CrmLeadsListResponse>("/crm/leads", { token, query })
 };
-

@@ -14,7 +14,8 @@ const crmRoutes: FastifyPluginAsync = async (app) => {
       limit: query.limit,
       cursor: query.cursor,
       stage: query.stage,
-      search: query.search
+      search: query.search,
+      channelAccountId: query.channelAccountId
     });
   });
 };

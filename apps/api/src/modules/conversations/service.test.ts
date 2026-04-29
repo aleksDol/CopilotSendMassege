@@ -90,6 +90,69 @@ test("listConversations allows archived/all override through status filter", asy
   assert.equal("isArchived" in receivedWheres[1].conversation, false);
 });
 
+test("listConversations uses explicit channelAccountId when provided", async () => {
+  let receivedWhere: any | null = null;
+  const app = makeApp({
+    prisma: {
+      channelAccount: {
+        findFirst: async () => ({ id: "ca-explicit", telegram: { id: "ta-explicit" } })
+      },
+      telegramAccount: {
+        findFirst: async () => ({ channelAccountId: "ca-fallback" })
+      },
+      conversationState: {
+        findMany: async (args: any) => {
+          receivedWhere = args?.where ?? null;
+          return [];
+        }
+      }
+    }
+  });
+
+  await listConversations(app as any, {
+    companyId: "c1",
+    userId: "u1",
+    limit: 20,
+    channelAccountId: "ca-explicit"
+  });
+
+  assert.ok(receivedWhere);
+  assert.equal(receivedWhere.conversation.channelAccountId, "ca-explicit");
+});
+
+test("listConversations with invalid explicit channelAccountId throws and does not fallback", async () => {
+  let findManyCalls = 0;
+  const app = makeApp({
+    prisma: {
+      channelAccount: {
+        findFirst: async () => null
+      },
+      telegramAccount: {
+        findFirst: async () => ({ channelAccountId: "ca-fallback" })
+      },
+      conversationState: {
+        findMany: async () => {
+          findManyCalls += 1;
+          return [];
+        }
+      }
+    }
+  });
+
+  await assert.rejects(
+    () =>
+      listConversations(app as any, {
+        companyId: "c1",
+        userId: "u1",
+        limit: 20,
+        channelAccountId: "ca-foreign"
+      }),
+    (err: any) => err?.code === "TELEGRAM_ACCOUNT_FORBIDDEN"
+  );
+
+  assert.equal(findManyCalls, 0);
+});
+
 test("mapConversationStateRowToListItem lowercases new lead stages (replied/ignored)", () => {
   const baseRow: any = {
     conversationId: "c-1",

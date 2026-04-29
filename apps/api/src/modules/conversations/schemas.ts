@@ -7,7 +7,8 @@ export const listConversationsQuerySchema = z.object({
   status: z.enum(["active", "archived", "all"]).optional(),
   assignedUserId: z.string().uuid().optional(),
   waitingForReply: z.coerce.boolean().optional(),
-  leadStage: z.string().optional()
+  leadStage: z.string().optional(),
+  channelAccountId: z.string().uuid().optional()
 });
 
 export const conversationIdParamsSchema = z.object({

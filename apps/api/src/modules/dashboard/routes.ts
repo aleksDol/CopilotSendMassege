@@ -12,7 +12,8 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
     return getDashboardOverview(app, {
       companyId: scope.companyId,
       userId: scope.userId,
-      windowDays: query.windowDays
+      windowDays: query.windowDays,
+      channelAccountId: query.channelAccountId
     });
   });
 
@@ -25,7 +26,8 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
       companyId: scope.companyId,
       userId: scope.userId,
       period: query.period,
-      timezone: user.company.timezone
+      timezone: user.company.timezone,
+      channelAccountId: query.channelAccountId
     });
   });
 };

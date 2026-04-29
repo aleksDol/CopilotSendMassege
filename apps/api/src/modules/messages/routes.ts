@@ -30,7 +30,8 @@ const messageRoutes: FastifyPluginAsync = async (app) => {
       companyId: scope.companyId,
       userId: scope.userId,
       conversationId: params.id,
-      text: body.text
+      text: body.text,
+      channelAccountId: body.channelAccountId
     });
   });
 };

@@ -129,6 +129,14 @@ export type CrmLeadListItem = {
   lastOutboundAt: string | null;
   createdAt: string;
   updatedAt: string;
+  account: {
+    channelAccountId: string;
+    title: string | null;
+    status: string;
+    sendingEnabled: boolean;
+    parsingEnabled: boolean;
+    isPrimary: boolean;
+  } | null;
 };
 
 export type CrmLeadsListResponse = {
@@ -184,14 +192,23 @@ export type TaskListResponse = {
 };
 
 export type TelegramAccountResponse = {
+  telegramAccountId?: string;
   status?: string;
+  channelStatus?: string;
   channelAccountId?: string;
   phone?: string | null;
   loginStatus?: string;
   displayName?: string | null;
+  isPrimary?: boolean;
+  sendingEnabled?: boolean;
+  parsingEnabled?: boolean;
   username?: string | null;
   lastSyncAt?: string | null;
   errorMessage?: string | null;
+};
+
+export type TelegramAccountsListResponse = {
+  items: TelegramAccountResponse[];
 };
 
 export type AiSuggestion = {
@@ -318,6 +335,14 @@ export type LeadRadarLeadItem = {
   score: number;
   status: LeadRadarLeadStatus;
   createdAt: string;
+  parsingAccount?: {
+    channelAccountId: string;
+    title: string | null;
+    status: string;
+    sendingEnabled: boolean;
+    parsingEnabled: boolean;
+    isPrimary: boolean;
+  } | null;
 };
 
 export type LeadRadarLeadListResponse = {
@@ -344,8 +369,17 @@ export type LeadRadarLeadEvent = {
 };
 
 export type LeadRadarLeadDetailsResponse = {
+  parsingAccount: {
+    channelAccountId: string;
+    title: string | null;
+    status: string;
+    sendingEnabled: boolean;
+    parsingEnabled: boolean;
+    isPrimary: boolean;
+  } | null;
   lead: {
     id: string;
+    telegramAccountId?: string;
     username: string | null;
     displayName: string | null;
     telegramUserId: string | null;
@@ -359,6 +393,14 @@ export type LeadRadarLeadDetailsResponse = {
     status: LeadRadarLeadStatus;
     createdAt: string;
     notes: string | null;
+    parsingAccount?: {
+      channelAccountId: string;
+      title: string | null;
+      status: string;
+      sendingEnabled: boolean;
+      parsingEnabled: boolean;
+      isPrimary: boolean;
+    } | null;
   };
   context: {
     beforeMessages: LeadRadarContextMessage[];

@@ -15,6 +15,7 @@ import {
   useAiSuggestions,
   useConversationMessages,
   useConversations,
+  useSelectedTelegramChannelAccountId,
   useSendMessageMutation,
   useSuggestReplyMutation,
   useTelegramAccount
@@ -90,9 +91,10 @@ export default function ChatsPage() {
   const isPostTrialLimited = access?.subscriptionStatus === "expired";
   const queryClient = useQueryClient();
   const telegramAccount = useTelegramAccount();
+  const { selectedChannelAccountId } = useSelectedTelegramChannelAccountId();
   const telegramStatus = telegramAccount.data?.loginStatus ?? telegramAccount.data?.status ?? "login_required";
   const isTelegramConnected = telegramStatus === "connected";
-  const channelAccountId = telegramAccount.data?.channelAccountId ?? null;
+  const channelAccountId = selectedChannelAccountId || null;
   const unreadStorageKey = getUnreadStorageKey(company?.id, user?.id, channelAccountId);
   const selectedStorageKey = getSelectedStorageKey(company?.id, user?.id, channelAccountId);
 

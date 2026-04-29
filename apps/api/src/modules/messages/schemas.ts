@@ -10,9 +10,11 @@ export const listMessagesQuerySchema = z.object({
     .optional()
     .refine((value) => (value ? !Number.isNaN(Date.parse(value)) : true), "Invalid before timestamp"),
   cursor: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50)
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  channelAccountId: z.string().uuid().optional()
 });
 
 export const sendMessageBodySchema = z.object({
-  text: z.string().trim().min(1).max(4096)
+  text: z.string().trim().min(1).max(4096),
+  channelAccountId: z.string().uuid().optional()
 });

@@ -1,12 +1,10 @@
-import { ChannelAccountStatus, ChannelType, TelegramLoginStatus, type Prisma } from "@prisma/client";
+import { ChannelAccountStatus, type Prisma } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { invalidateCacheByPrefix, readThroughCache } from "../../lib/cache.js";
 import { decodeConversationCursor, encodeConversationCursor } from "../../lib/cursor.js";
 import { AppError } from "../../lib/errors.js";
+import { resolveTelegramAccountForRequest } from "../../lib/telegram-account-resolver.js";
 import { buildSupportedConversationWhere } from "./support.js";
-
-const TG_CONNECTED = "CONNECTED" as unknown as TelegramLoginStatus;
-const TG_ERROR = "ERROR" as unknown as TelegramLoginStatus;
 
 export const listConversations = async (
   app: FastifyInstance,
@@ -19,20 +17,13 @@ export const listConversations = async (
     assignedUserId?: string;
     waitingForReply?: boolean;
     leadStage?: string;
+    channelAccountId?: string;
   }
 ) => {
-  const activeTelegram = await app.prisma.telegramAccount.findFirst({
-    where: {
-      loginStatus: { in: [TG_CONNECTED, TG_ERROR] },
-      channelAccount: {
-        companyId: params.companyId,
-        channelType: ChannelType.TELEGRAM,
-        createdByUserId: params.userId,
-        status: { not: ChannelAccountStatus.DISCONNECTED }
-      }
-    },
-    orderBy: { updatedAt: "desc" },
-    select: { channelAccountId: true }
+  const activeTelegram = await resolveTelegramAccountForRequest(app.prisma, {
+    companyId: params.companyId,
+    userId: params.userId,
+    channelAccountId: params.channelAccountId
   });
 
   if (!activeTelegram) {

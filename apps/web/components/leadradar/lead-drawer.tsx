@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@/components/common/empty-state";
@@ -8,8 +8,9 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useLeadRadarActions, useLeadRadarLead } from "@/lib/hooks/use-app-data";
+import { useLeadRadarActions, useLeadRadarLead, useTelegramAccounts } from "@/lib/hooks/use-app-data";
 import type { LeadRadarLeadStatus } from "@/lib/api/types";
+import { isLeadRadarSendingSelectionError } from "@/lib/api/errors";
 import { cn } from "@/lib/utils/cn";
 
 const STATUS_OPTIONS: Array<{ label: string; value: LeadRadarLeadStatus }> = [
@@ -26,7 +27,7 @@ const STATUS_OPTIONS: Array<{ label: string; value: LeadRadarLeadStatus }> = [
 ];
 
 function formatDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
+  if (!iso) return "вЂ”";
   try {
     return new Date(iso).toLocaleString();
   } catch {
@@ -36,7 +37,7 @@ function formatDate(iso: string | null | undefined): string {
 
 function renderContextLine(m: { sender: string | null; text: string | null }) {
   const sender = m.sender?.trim() || "unknown";
-  const text = (m.text ?? "").trim() || "—";
+  const text = (m.text ?? "").trim() || "вЂ”";
   return `[${sender}]: ${text}`;
 }
 
@@ -66,6 +67,7 @@ export function LeadDrawer({
 }) {
   const leadQuery = useLeadRadarLead(leadId);
   const actions = useLeadRadarActions();
+  const telegramAccountsQuery = useTelegramAccounts();
 
   const lead = leadQuery.data?.lead ?? null;
   const events = leadQuery.data?.events ?? [];
@@ -76,6 +78,7 @@ export function LeadDrawer({
 
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerText, setComposerText] = useState("");
+  const [sendingChannelAccountId, setSendingChannelAccountId] = useState("");
   const [composerError, setComposerError] = useState<string | null>(null);
   const [composerSentAt, setComposerSentAt] = useState<Date | null>(null);
 
@@ -85,14 +88,42 @@ export function LeadDrawer({
     setNotesDirty(false);
     setComposerOpen(false);
     setComposerText("");
+    setSendingChannelAccountId("");
     setComposerError(null);
     setComposerSentAt(null);
   }, [leadId, lead?.notes]);
 
+  const sendableAccounts = useMemo(() => {
+    const rows = telegramAccountsQuery.data?.items ?? [];
+    return rows.filter((account) => {
+      const channelAccountId = (account.channelAccountId ?? "").trim();
+      if (!channelAccountId) return false;
+      if (account.sendingEnabled === false) return false;
+      if ((account.channelStatus ?? "").toLowerCase() === "disconnected") return false;
+      return true;
+    });
+  }, [telegramAccountsQuery.data?.items]);
+
+  useEffect(() => {
+    if (!composerOpen || !lead) return;
+    if (sendingChannelAccountId) {
+      const stillExists = sendableAccounts.some((account) => account.channelAccountId === sendingChannelAccountId);
+      if (stillExists) return;
+    }
+
+    const parsingAccount = sendableAccounts.find((account) => account.telegramAccountId === lead.telegramAccountId);
+    if (parsingAccount?.channelAccountId) {
+      setSendingChannelAccountId(parsingAccount.channelAccountId);
+      return;
+    }
+
+    setSendingChannelAccountId(sendableAccounts[0]?.channelAccountId ?? "");
+  }, [composerOpen, lead, sendableAccounts, sendingChannelAccountId]);
+
   const status = lead?.status ?? "new";
   const title = useMemo(() => {
     if (!lead) return "Lead";
-    const name = lead.displayName?.trim() || (lead.username ? `@${lead.username}` : "—");
+    const name = lead.displayName?.trim() || (lead.username ? `@${lead.username}` : "вЂ”");
     return name;
   }, [lead]);
 
@@ -110,6 +141,12 @@ export function LeadDrawer({
   if (!leadId) return null;
 
   const canMessageLead = Boolean((lead?.username ?? "").trim() || (lead?.telegramUserId ?? "").trim());
+  const parsingAccount = leadQuery.data?.parsingAccount ?? lead?.parsingAccount ?? null;
+  const isParsingAccountSendable = Boolean(
+    parsingAccount &&
+      parsingAccount.sendingEnabled &&
+      String(parsingAccount.status).toUpperCase() !== "DISCONNECTED"
+  );
 
   const generateFirstMessage = async () => {
     if (!lead) return;
@@ -122,10 +159,10 @@ export function LeadDrawer({
       const text = (res?.text ?? "").trim();
       setComposerText(text || "");
       if (!text) {
-        setComposerError("Не удалось сгенерировать текст сообщения");
+        setComposerError("РќРµ СѓРґР°Р»РѕСЃСЊ СЃРіРµРЅРµСЂРёСЂРѕРІР°С‚СЊ С‚РµРєСЃС‚ СЃРѕРѕР±С‰РµРЅРёСЏ");
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Не удалось сгенерировать сообщение";
+      const msg = err instanceof Error ? err.message : "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРіРµРЅРµСЂРёСЂРѕРІР°С‚СЊ СЃРѕРѕР±С‰РµРЅРёРµ";
       setComposerError(msg);
     }
   };
@@ -137,9 +174,18 @@ export function LeadDrawer({
     if (!text) return;
     setComposerError(null);
     try {
-      await actions.sendFirstMessage.mutateAsync({ leadId: lead.id, text });
+      await actions.sendFirstMessage.mutateAsync({
+        leadId: lead.id,
+        text,
+        channelAccountId: sendingChannelAccountId || undefined
+      });
       setComposerSentAt(new Date());
     } catch (err) {
+      if (isLeadRadarSendingSelectionError(err)) {
+        setSendingChannelAccountId("");
+        setComposerError("Аккаунт отправки недоступен. Выберите другой аккаунт.");
+        return;
+      }
       const msg = err instanceof Error ? err.message : "Не удалось отправить сообщение";
       setComposerError(msg);
     }
@@ -148,6 +194,7 @@ export function LeadDrawer({
   const genPending = actions.generateFirstMessage.isPending;
   const sendPending = actions.sendFirstMessage.isPending;
   const composerBusy = genPending || sendPending;
+  const hasSendableAccount = sendableAccounts.length > 0;
 
   return (
     <aside className="fixed right-0 top-0 z-40 flex h-dvh w-full max-w-[520px] flex-col border-l border-border bg-background shadow-xl">
@@ -155,7 +202,7 @@ export function LeadDrawer({
         <div className="min-w-0">
           <div className="truncate text-base font-semibold">{title}</div>
           <div className="truncate text-xs text-muted-foreground">
-            {lead?.chatTitle ?? lead?.chatId ?? "—"}
+            {lead?.chatTitle ?? lead?.chatId ?? "вЂ”"}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -165,14 +212,14 @@ export function LeadDrawer({
             disabled={!lead || actions.removeLead?.isPending}
             onClick={async () => {
               if (!lead) return;
-              const ok = window.confirm("Удалить лида из Inbox LeadRadar? Это удалит запись лида, а также его context/history. Действие необратимо.");
+              const ok = window.confirm("РЈРґР°Р»РёС‚СЊ Р»РёРґР° РёР· Inbox LeadRadar? Р­С‚Рѕ СѓРґР°Р»РёС‚ Р·Р°РїРёСЃСЊ Р»РёРґР°, Р° С‚Р°РєР¶Рµ РµРіРѕ context/history. Р”РµР№СЃС‚РІРёРµ РЅРµРѕР±СЂР°С‚РёРјРѕ.");
               if (!ok) return;
               try {
                 await actions.removeLead.mutateAsync(lead.id);
                 onClose();
               } catch (err) {
-                const msg = err instanceof Error ? err.message : "Не удалось удалить лид";
-                window.alert(`Ошибка удаления: ${msg}`);
+                const msg = err instanceof Error ? err.message : "РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ Р»РёРґ";
+                window.alert(`РћС€РёР±РєР° СѓРґР°Р»РµРЅРёСЏ: ${msg}`);
               }
             }}
           >
@@ -185,24 +232,24 @@ export function LeadDrawer({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {leadQuery.isLoading ? <LoadingState label="Загрузка лида..." /> : null}
+        {leadQuery.isLoading ? <LoadingState label="Р—Р°РіСЂСѓР·РєР° Р»РёРґР°..." /> : null}
 
         {leadQuery.error ? (
           <EmptyState
-            title="Ошибка"
-            description={leadQuery.error instanceof Error ? leadQuery.error.message : "Не удалось загрузить лид"}
+            title="РћС€РёР±РєР°"
+            description={leadQuery.error instanceof Error ? leadQuery.error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ Р»РёРґ"}
           />
         ) : null}
 
         {!leadQuery.isLoading && !leadQuery.error && !lead ? (
-          <EmptyState title="Лид не найден" description="Возможно, он был удалён или недоступен." />
+          <EmptyState title="Р›РёРґ РЅРµ РЅР°Р№РґРµРЅ" description="Р’РѕР·РјРѕР¶РЅРѕ, РѕРЅ Р±С‹Р» СѓРґР°Р»С‘РЅ РёР»Рё РЅРµРґРѕСЃС‚СѓРїРµРЅ." />
         ) : null}
 
         {lead ? (
           <div className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Основное</CardTitle>
+                <CardTitle>РћСЃРЅРѕРІРЅРѕРµ</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div className="flex flex-wrap items-center gap-2">
@@ -212,7 +259,7 @@ export function LeadDrawer({
                 <div>
                   <div className="text-xs text-muted-foreground">Message</div>
                   <div className="whitespace-pre-wrap rounded-md border border-border bg-muted/20 p-3">
-                    {(lead.messageText ?? "").trim() || "—"}
+                    {(lead.messageText ?? "").trim() || "вЂ”"}
                   </div>
                 </div>
                 {lead.sourceType === "channel_comments" ? (
@@ -220,16 +267,16 @@ export function LeadDrawer({
                     <div>
                       <div className="text-xs text-muted-foreground">Type</div>
                       <div className="font-medium">
-                        <Badge variant="outline">Комментарий канала</Badge>
+                        <Badge variant="outline">РљРѕРјРјРµРЅС‚Р°СЂРёР№ РєР°РЅР°Р»Р°</Badge>
                       </div>
                     </div>
                     <div>
                       <div className="text-xs text-muted-foreground">Post ID</div>
-                      <div className="font-medium">{lead.relatedPostId ?? "—"}</div>
+                      <div className="font-medium">{lead.relatedPostId ?? "вЂ”"}</div>
                     </div>
                     <div>
                       <div className="text-xs text-muted-foreground">Source type</div>
-                      <div className="font-medium">{lead.sourceType ?? "—"}</div>
+                      <div className="font-medium">{lead.sourceType ?? "вЂ”"}</div>
                     </div>
                   </div>
                 ) : null}
@@ -244,16 +291,33 @@ export function LeadDrawer({
                 <div className="grid gap-2 md:grid-cols-3">
                   <div>
                     <div className="text-xs text-muted-foreground">Username</div>
-                    <div className="font-medium">{lead.username ? `@${lead.username}` : "—"}</div>
+                    <div className="font-medium">{lead.username ? `@${lead.username}` : "вЂ”"}</div>
                   </div>
                   <div>
                     <div className="text-xs text-muted-foreground">Telegram ID</div>
-                    <div className="font-medium">{lead.telegramUserId ?? "—"}</div>
+                    <div className="font-medium">{lead.telegramUserId ?? "вЂ”"}</div>
                   </div>
                   <div>
                     <div className="text-xs text-muted-foreground">Created</div>
                     <div className="font-medium">{formatDate(lead.createdAt)}</div>
                   </div>
+                </div>
+                <div className="rounded-md border border-border bg-muted/10 p-2">
+                  <div className="text-xs text-muted-foreground">РќР°Р№РґРµРЅ С‡РµСЂРµР·</div>
+                  <div className="font-medium">
+                    {parsingAccount?.title?.trim()
+                      ? parsingAccount.title
+                      : parsingAccount?.channelAccountId
+                        ? `Account ${parsingAccount.channelAccountId.slice(0, 8)}`
+                        : "РЅРµРёР·РІРµСЃС‚РЅС‹Р№ Р°РєРєР°СѓРЅС‚"}
+                  </div>
+                  {parsingAccount ? (
+                    <div className="text-xs text-muted-foreground">
+                      {parsingAccount.status}
+                      {parsingAccount.isPrimary ? " В· РћСЃРЅРѕРІРЅРѕР№" : ""}
+                      {!parsingAccount.parsingEnabled ? " В· РџР°СЂСЃРёРЅРі РІС‹РєР»." : ""}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="pt-1">
@@ -265,11 +329,11 @@ export function LeadDrawer({
                         target="_blank"
                         rel="noreferrer"
                       >
-                        Открыть в Telegram
+                        РћС‚РєСЂС‹С‚СЊ РІ Telegram
                       </a>
                     ) : (
-                      <Button variant="outline" size="sm" disabled title="Нет username или Telegram ID">
-                        Открыть в Telegram
+                      <Button variant="outline" size="sm" disabled title="РќРµС‚ username РёР»Рё Telegram ID">
+                        РћС‚РєСЂС‹С‚СЊ РІ Telegram
                       </Button>
                     )}
 
@@ -277,41 +341,66 @@ export function LeadDrawer({
                       variant="secondary"
                       size="sm"
                       disabled={!lead || !canMessageLead || composerBusy}
-                      title={!canMessageLead ? "Нет username или Telegram ID" : undefined}
+                      title={!canMessageLead ? "РќРµС‚ username РёР»Рё Telegram ID" : undefined}
                       onClick={generateFirstMessage}
                     >
-                      Сгенерировать сообщение
+                      РЎРіРµРЅРµСЂРёСЂРѕРІР°С‚СЊ СЃРѕРѕР±С‰РµРЅРёРµ
                     </Button>
                   </div>
                 </div>
 
                 {composerOpen ? (
                   <div className="mt-2 space-y-2 rounded-md border border-border bg-muted/10 p-3">
-                    <div className="text-xs font-medium">Первое сообщение</div>
+                    <div className="text-xs font-medium">РџРµСЂРІРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ</div>
                     <Textarea
                       value={composerText}
                       onChange={(e) => setComposerText(e.target.value)}
-                      placeholder="Текст сообщения…"
+                      placeholder="РўРµРєСЃС‚ СЃРѕРѕР±С‰РµРЅРёСЏвЂ¦"
                       rows={4}
                       disabled={composerBusy}
                     />
-                    {genPending ? <div className="text-xs text-muted-foreground">Генерируем…</div> : null}
-                    {sendPending ? <div className="text-xs text-muted-foreground">Отправляем…</div> : null}
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">РћС‚РїСЂР°РІРёС‚СЊ СЃ Р°РєРєР°СѓРЅС‚Р°</div>
+                      <Select
+                        value={sendingChannelAccountId}
+                        onChange={(e) => setSendingChannelAccountId(e.target.value)}
+                        disabled={composerBusy || !hasSendableAccount}
+                        options={sendableAccounts.map((account) => ({
+                          value: account.channelAccountId ?? "",
+                          label: [
+                            account.displayName?.trim() ||
+                              (account.username ? `@${account.username}` : `Account ${String(account.channelAccountId).slice(0, 8)}`),
+                            account.isPrimary ? "РћСЃРЅРѕРІРЅРѕР№" : null,
+                            "РџРёСЃСЊРјР°"
+                          ]
+                            .filter(Boolean)
+                            .join(" В· ")
+                        }))}
+                      />
+                      {!hasSendableAccount ? <div className="text-xs text-destructive">РќРµС‚ РґРѕСЃС‚СѓРїРЅРѕРіРѕ Р°РєРєР°СѓРЅС‚Р° РґР»СЏ РѕС‚РїСЂР°РІРєРё</div> : null}
+                      {composerOpen && parsingAccount && !isParsingAccountSendable && hasSendableAccount ? (
+                        <div className="text-xs text-amber-700">
+                          РђРєРєР°СѓРЅС‚, РєРѕС‚РѕСЂС‹Р№ РЅР°С€С‘Р» Р»РёРґР°, РЅРµРґРѕСЃС‚СѓРїРµРЅ РґР»СЏ РѕС‚РїСЂР°РІРєРё. Р’С‹Р±РµСЂРёС‚Рµ РґСЂСѓРіРѕР№.
+                        </div>
+                      ) : null}
+                    </div>
+                    {genPending ? <div className="text-xs text-muted-foreground">Р“РµРЅРµСЂРёСЂСѓРµРјвЂ¦</div> : null}
+                    {sendPending ? <div className="text-xs text-muted-foreground">РћС‚РїСЂР°РІР»СЏРµРјвЂ¦</div> : null}
                     {composerError ? <div className="text-xs text-destructive">{composerError}</div> : null}
                     {composerSentAt ? (
                       <div className="text-xs text-emerald-700 dark:text-emerald-400">
-                        ✓ Сообщение отправлено · {formatDate(composerSentAt.toISOString())}
+                        вњ“ РЎРѕРѕР±С‰РµРЅРёРµ РѕС‚РїСЂР°РІР»РµРЅРѕ В· {formatDate(composerSentAt.toISOString())}
                       </div>
                     ) : null}
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <Button
                           size="sm"
-                          disabled={!composerText.trim() || !canMessageLead || composerBusy}
-                          title={!canMessageLead ? "Нет username или Telegram ID для отправки" : undefined}
+                          disabled={!composerText.trim() || !canMessageLead || composerBusy || !hasSendableAccount}
+                          title={!canMessageLead ? "РќРµС‚ username РёР»Рё Telegram ID РґР»СЏ РѕС‚РїСЂР°РІРєРё" : undefined}
                           onClick={sendFirstMessage}
                         >
-                          Отправить
+                          РћС‚РїСЂР°РІРёС‚СЊ
                         </Button>
                         <Button
                           variant="secondary"
@@ -319,7 +408,7 @@ export function LeadDrawer({
                           disabled={composerBusy}
                           onClick={generateFirstMessage}
                         >
-                          Сгенерировать заново
+                          РЎРіРµРЅРµСЂРёСЂРѕРІР°С‚СЊ Р·Р°РЅРѕРІРѕ
                         </Button>
                       </div>
                       <Button
@@ -332,7 +421,7 @@ export function LeadDrawer({
                           setComposerSentAt(null);
                         }}
                       >
-                        Отмена
+                        РћС‚РјРµРЅР°
                       </Button>
                     </div>
                   </div>
@@ -391,10 +480,10 @@ export function LeadDrawer({
                     setNotes(e.target.value);
                     setNotesDirty(true);
                   }}
-                  placeholder="Заметки по лиду…"
+                  placeholder="Р—Р°РјРµС‚РєРё РїРѕ Р»РёРґСѓвЂ¦"
                 />
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-xs text-muted-foreground">{notesDirty ? "Есть несохранённые изменения" : " "}</div>
+                  <div className="text-xs text-muted-foreground">{notesDirty ? "Р•СЃС‚СЊ РЅРµСЃРѕС…СЂР°РЅС‘РЅРЅС‹Рµ РёР·РјРµРЅРµРЅРёСЏ" : " "}</div>
                   <Button
                     size="sm"
                     disabled={!notesDirty || actions.updateLeadNotes.isPending}
@@ -418,7 +507,7 @@ export function LeadDrawer({
                   <div className="mb-1 text-xs text-muted-foreground">Before</div>
                   <div className="space-y-1">
                     {(context?.beforeMessages ?? []).length === 0 ? (
-                      <div className="text-muted-foreground">—</div>
+                      <div className="text-muted-foreground">вЂ”</div>
                     ) : (
                       (context?.beforeMessages ?? []).map((m, idx) => (
                         <div key={`b-${idx}`} className="rounded-md border border-border bg-muted/20 p-2">
@@ -433,7 +522,7 @@ export function LeadDrawer({
                   <div className="mb-1 text-xs text-muted-foreground">After</div>
                   <div className="space-y-1">
                     {(context?.afterMessages ?? []).length === 0 ? (
-                      <div className="text-muted-foreground">—</div>
+                      <div className="text-muted-foreground">вЂ”</div>
                     ) : (
                       (context?.afterMessages ?? []).map((m, idx) => (
                         <div key={`a-${idx}`} className="rounded-md border border-border bg-muted/20 p-2">
@@ -453,12 +542,12 @@ export function LeadDrawer({
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 {events.length === 0 ? (
-                  <div className="text-muted-foreground">—</div>
+                  <div className="text-muted-foreground">вЂ”</div>
                 ) : (
                   events.map((e) => (
                     <div key={e.id} className="rounded-md border border-border bg-muted/10 p-2">
                       <div className="font-medium">{e.eventType}</div>
-                      {e.newStatus ? <div className="text-muted-foreground">→ {e.newStatus}</div> : null}
+                      {e.newStatus ? <div className="text-muted-foreground">в†’ {e.newStatus}</div> : null}
                       {e.comment ? <div className="whitespace-pre-wrap pt-1">{e.comment}</div> : null}
                       <div className="pt-1 text-xs text-muted-foreground">{formatDate(e.createdAt)}</div>
                     </div>
@@ -472,4 +561,6 @@ export function LeadDrawer({
     </aside>
   );
 }
+
+
 

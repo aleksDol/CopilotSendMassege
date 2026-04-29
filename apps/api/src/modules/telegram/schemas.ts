@@ -22,6 +22,7 @@ export const telegramVerifyPasswordSchema = z.object({
 export const telegramSyncSchema = z
   .object({
     phone: phoneSchema.optional(),
+    channelAccountId: z.string().uuid().optional(),
     dialogsLimit: z.number().int().positive().max(500).optional(),
     messagesPerDialog: z.number().int().positive().max(500).optional()
   })
@@ -36,3 +37,20 @@ export const telegramVerifyPasswordQrSchema = z.object({
   qrSessionId: z.string().uuid(),
   password: z.string().min(1).max(256)
 });
+
+export const telegramAccountQuerySchema = z.object({
+  channelAccountId: z.string().uuid().optional()
+});
+
+export const telegramAccountIdParamsSchema = z.object({
+  id: z.string().uuid()
+});
+
+export const patchTelegramAccountBodySchema = z
+  .object({
+    sendingEnabled: z.boolean().optional(),
+    parsingEnabled: z.boolean().optional()
+  })
+  .refine((body) => body.sendingEnabled !== undefined || body.parsingEnabled !== undefined, {
+    message: "At least one flag must be provided"
+  });

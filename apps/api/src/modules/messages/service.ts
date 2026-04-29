@@ -1,13 +1,11 @@
-import { ChannelAccountStatus, ChannelType, TelegramLoginStatus } from "@prisma/client";
+import { ChannelAccountStatus, ChannelType } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { decodeMessageCursor, encodeMessageCursor } from "../../lib/cursor.js";
 import { AppError } from "../../lib/errors.js";
 import { invalidateConversationCaches } from "../conversations/service.js";
 import { buildSupportedConversationWhere } from "../conversations/support.js";
 import { TelegramWorkerClient } from "../../lib/telegram-worker-client.js";
-
-const TG_CONNECTED = "CONNECTED" as unknown as TelegramLoginStatus;
-const TG_ERROR = "ERROR" as unknown as TelegramLoginStatus;
+import { resolveTelegramAccountForRequest } from "../../lib/telegram-account-resolver.js";
 
 const getWorkerClient = (app: FastifyInstance): TelegramWorkerClient =>
   new TelegramWorkerClient(
@@ -19,20 +17,13 @@ const getWorkerClient = (app: FastifyInstance): TelegramWorkerClient =>
 async function requireActiveTelegramChannelAccountId(
   app: FastifyInstance,
   companyId: string,
-  userId: string
+  userId: string,
+  selectedChannelAccountId?: string
 ): Promise<string> {
-  const active = await app.prisma.telegramAccount.findFirst({
-    where: {
-      loginStatus: { in: [TG_CONNECTED, TG_ERROR] },
-      channelAccount: {
-        companyId,
-        channelType: ChannelType.TELEGRAM,
-        createdByUserId: userId,
-        status: { not: ChannelAccountStatus.DISCONNECTED }
-      }
-    },
-    orderBy: { updatedAt: "desc" },
-    select: { channelAccountId: true }
+  const active = await resolveTelegramAccountForRequest(app.prisma, {
+    companyId,
+    userId,
+    channelAccountId: selectedChannelAccountId
   });
 
   if (!active) {
@@ -51,9 +42,15 @@ export const listConversationMessages = async (
     before?: string;
     cursor?: string;
     limit: number;
+    channelAccountId?: string;
   }
 ) => {
-  const activeChannelAccountId = await requireActiveTelegramChannelAccountId(app, params.companyId, params.userId);
+  const activeChannelAccountId = await requireActiveTelegramChannelAccountId(
+    app,
+    params.companyId,
+    params.userId,
+    params.channelAccountId
+  );
   const conversation = await app.prisma.conversation.findFirst({
     where: {
       ...buildSupportedConversationWhere(),
@@ -153,9 +150,15 @@ export const sendConversationMessage = async (
     userId: string;
     conversationId: string;
     text: string;
+    channelAccountId?: string;
   }
 ) => {
-  const activeChannelAccountId = await requireActiveTelegramChannelAccountId(app, params.companyId, params.userId);
+  const activeChannelAccountId = await requireActiveTelegramChannelAccountId(
+    app,
+    params.companyId,
+    params.userId,
+    params.channelAccountId
+  );
   const conversation = await app.prisma.conversation.findFirst({
     where: {
       ...buildSupportedConversationWhere(),
@@ -183,6 +186,9 @@ export const sendConversationMessage = async (
 
   if (!conversation.channelAccount.telegram) {
     throw new AppError(400, "TELEGRAM_ACCOUNT_NOT_FOUND", "Telegram account not connected");
+  }
+  if (!conversation.channelAccount.sendingEnabled) {
+    throw new AppError(400, "TELEGRAM_SENDING_DISABLED", "Sending is disabled for this Telegram account");
   }
 
   const worker = getWorkerClient(app);

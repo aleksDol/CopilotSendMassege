@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { ChannelAccountStatus, ChannelType, TelegramLoginStatus } from "@prisma/client";
+import { ChannelType } from "@prisma/client";
 import { AppError } from "../../../lib/errors.js";
 import { requireTrialOrActive } from "../../../lib/access.js";
 import { ensureInternalToken } from "../../../lib/internal-auth.js";
@@ -26,9 +26,12 @@ import {
   updateSettingsBodySchema,
   updateSourceBodySchema,
   testIngestionBodySchema,
-  createManualLeadBodySchema
+  createManualLeadBodySchema,
+  leadradarScopeQuerySchema
 } from "./schemas.js";
 import { buildManualLeadCreateInput } from "../application/manual-lead.js";
+import { resolveActiveLeadRadarTelegramAccount } from "./account-guard.js";
+import { resolveLeadRadarSendingChannelAccount } from "./sending-account-resolver.js";
 
 /**
  * LeadRadar API controller (skeleton).
@@ -103,48 +106,23 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     };
   });
 
-  const TG_CONNECTED = "CONNECTED" as unknown as TelegramLoginStatus;
-  const TG_ERROR = "ERROR" as unknown as TelegramLoginStatus;
+  const getRequestedParsingChannelAccountId = (request: { query: unknown }) =>
+    parseWithSchema(leadradarScopeQuerySchema, request.query).channelAccountId;
 
-  const requireActiveTelegramChannelAccountId = async (params: { companyId: string; userId: string }) => {
-    const active = await app.prisma.telegramAccount.findFirst({
-      where: {
-        loginStatus: { in: [TG_CONNECTED, TG_ERROR] },
-        channelAccount: {
-          companyId: params.companyId,
-          channelType: ChannelType.TELEGRAM,
-          createdByUserId: params.userId,
-          status: { not: ChannelAccountStatus.DISCONNECTED }
-        }
-      },
-      orderBy: { updatedAt: "desc" },
-      select: { channelAccountId: true }
-    });
-
-    if (!active?.channelAccountId) {
-      throw new AppError(400, "TELEGRAM_NOT_CONNECTED", "Telegram account not connected");
-    }
-
-    return active.channelAccountId;
-  };
-
-  const requireActiveTelegramAccountId = async (params: { companyId: string; userId: string }) => {
-    const active = await app.prisma.telegramAccount.findFirst({
-      where: {
-        loginStatus: { in: [TG_CONNECTED, TG_ERROR] },
-        channelAccount: {
-          companyId: params.companyId,
-          channelType: ChannelType.TELEGRAM,
-          createdByUserId: params.userId,
-          status: { not: ChannelAccountStatus.DISCONNECTED }
-        }
-      },
-      orderBy: { updatedAt: "desc" },
-      select: { id: true }
+  const requireActiveTelegramAccountId = async (
+    params: { companyId: string; userId: string },
+    channelAccountId?: string
+  ) => {
+    const active = await resolveActiveLeadRadarTelegramAccount(app.prisma, {
+      ...params,
+      channelAccountId,
+      onFallbackMultiAccountWarning: () => {
+        app.log.warn("LeadRadar called without parsing channelAccountId in multi-account environment");
+      }
     });
 
     if (!active) {
-      throw new AppError(400, "TELEGRAM_NOT_CONNECTED", "Telegram account not connected");
+      throw new AppError(400, "TELEGRAM_PARSING_DISABLED", "Parsing is disabled for this Telegram account");
     }
 
     return active.id;
@@ -158,7 +136,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     const repo = request.server.leadradar.repositories.source;
 
     const items = await repo.listSources({
@@ -192,7 +170,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     const repo = request.server.leadradar.repositories.source;
 
     const createdOrExisting = await repo.addSource({
@@ -215,7 +193,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     const telegram = await app.prisma.telegramAccount.findUnique({
       where: { id: telegram_account_id },
       select: { channelAccountId: true }
@@ -259,7 +237,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     const repo = request.server.leadradar.repositories.source;
 
     const updated = await repo.updateSource({
@@ -282,7 +260,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     app.log.info(`[LeadRadar] DELETE source id=${params.id} userId=${scope.userId} tgAccountId=${telegram_account_id}`);
     const repo = request.server.leadradar.repositories.source;
 
@@ -303,7 +281,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     const repo = request.server.leadradar.repositories.keyword;
 
     const items = await repo.listKeywords({
@@ -328,7 +306,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     const repo = request.server.leadradar.repositories.keyword;
 
     const created = await repo.addKeyword({
@@ -354,7 +332,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     const repo = request.server.leadradar.repositories.keyword;
 
     const updated = await repo.updateKeyword({
@@ -382,7 +360,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     app.log.info(`[LeadRadar] DELETE keyword id=${params.id} userId=${scope.userId} tgAccountId=${telegram_account_id}`);
     const repo = request.server.leadradar.repositories.keyword;
 
@@ -402,7 +380,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     const repo = request.server.leadradar.repositories.keyword;
 
     const items = await repo.listNegativeKeywords({
@@ -421,7 +399,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     const repo = request.server.leadradar.repositories.keyword;
 
     const created = await repo.addNegativeKeyword({
@@ -443,7 +421,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     const repo = request.server.leadradar.repositories.keyword;
 
     const updated = await repo.updateNegativeKeyword({
@@ -467,7 +445,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     app.log.info(`[LeadRadar] DELETE negative-keyword id=${params.id} userId=${scope.userId} tgAccountId=${telegram_account_id}`);
     const repo = request.server.leadradar.repositories.keyword;
 
@@ -487,7 +465,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     const repo = request.server.leadradar.repositories.settings;
 
     const existing = await repo.getSettings({
@@ -522,7 +500,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     const repo = request.server.leadradar.repositories.settings;
 
     await repo.createDefaultIfNotExists({
@@ -574,7 +552,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
 
     await request.server.leadradar.services.ingestion.processMessage({
       userId: scope.userId,
@@ -595,6 +573,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
 
   const toLeadItem = (lead: {
     id: string;
+    telegram_account_id: string;
     username: string | null;
     display_name: string | null;
     telegram_user_id: string | null;
@@ -614,8 +593,16 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     contacted_at: Date | null;
     created_at: Date;
     updated_at: Date;
-  }) => ({
+  }, parsingAccount: {
+    channelAccountId: string;
+    title: string | null;
+    status: string;
+    sendingEnabled: boolean;
+    parsingEnabled: boolean;
+    isPrimary: boolean;
+  } | null = null) => ({
     id: lead.id,
+    telegramAccountId: lead.telegram_account_id,
     username: lead.username,
     displayName: lead.display_name,
     telegramUserId: lead.telegram_user_id,
@@ -634,8 +621,57 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     notes: lead.notes,
     contactedAt: lead.contacted_at ? lead.contacted_at.toISOString() : null,
     createdAt: lead.created_at.toISOString(),
-    updatedAt: lead.updated_at.toISOString()
+    updatedAt: lead.updated_at.toISOString(),
+    parsingAccount
   });
+
+  const getParsingAccountsByTelegramIds = async (companyId: string, telegramAccountIds: string[]) => {
+    const uniqueIds = [...new Set(telegramAccountIds.map((id) => id.trim()).filter(Boolean))];
+    if (!uniqueIds.length) return new Map<string, {
+      channelAccountId: string;
+      title: string | null;
+      status: string;
+      sendingEnabled: boolean;
+      parsingEnabled: boolean;
+      isPrimary: boolean;
+    }>();
+
+    const rows = await app.prisma.telegramAccount.findMany({
+      where: {
+        id: { in: uniqueIds },
+        channelAccount: {
+          companyId,
+          channelType: ChannelType.TELEGRAM
+        }
+      },
+      include: {
+        channelAccount: {
+          select: {
+            id: true,
+            displayName: true,
+            status: true,
+            sendingEnabled: true,
+            parsingEnabled: true,
+            isPrimary: true
+          }
+        }
+      }
+    });
+
+    return new Map(
+      rows.map((row) => [
+        row.id,
+        {
+          channelAccountId: row.channelAccount.id,
+          title: row.channelAccount.displayName ?? null,
+          status: row.channelAccount.status,
+          sendingEnabled: row.channelAccount.sendingEnabled,
+          parsingEnabled: row.channelAccount.parsingEnabled,
+          isPrimary: row.channelAccount.isPrimary
+        }
+      ])
+    );
+  };
 
   app.post("/api/leadradar/leads/manual", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
@@ -645,7 +681,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     const repo = request.server.leadradar.repositories.lead;
 
     const created = await repo.createLead(
@@ -658,7 +694,8 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       })
     );
 
-    return toLeadItem(created);
+    const parsingAccountMap = await getParsingAccountsByTelegramIds(scope.companyId, [created.telegram_account_id]);
+    return toLeadItem(created, parsingAccountMap.get(created.telegram_account_id) ?? null);
   });
 
   app.get("/api/leadradar/leads", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
@@ -669,7 +706,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+      const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     const repo = request.server.leadradar.repositories.lead;
 
     const result = await repo.findByFilters({
@@ -686,8 +723,13 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       sortOrder: query.sortOrder
     });
 
+    const parsingAccountMap = await getParsingAccountsByTelegramIds(
+      scope.companyId,
+      result.items.map((item) => item.telegram_account_id)
+    );
+
     return {
-      items: result.items.map(toLeadItem),
+      items: result.items.map((item) => toLeadItem(item, parsingAccountMap.get(item.telegram_account_id) ?? null)),
       page: result.page,
       limit: result.limit,
       total: result.total
@@ -702,7 +744,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+      const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     const repo = request.server.leadradar.repositories.lead;
 
     const lead = await repo.findById({
@@ -753,8 +795,11 @@ const leadradarController: FastifyPluginAsync = async (app) => {
         })
       : [];
 
+    const parsingAccountMap = await getParsingAccountsByTelegramIds(scope.companyId, [lead.telegram_account_id]);
+    const parsingAccount = parsingAccountMap.get(lead.telegram_account_id) ?? null;
     return {
-      lead: toLeadItem(lead),
+      lead: toLeadItem(lead, parsingAccount),
+      parsingAccount,
       context,
       events
     };
@@ -773,7 +818,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
         throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
       }
 
-      const telegram_account_id = await requireActiveTelegramAccountId(scope);
+      const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
       const repo = request.server.leadradar.repositories.lead;
       const lead = await repo.findById({
         id: params.id,
@@ -816,7 +861,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
         throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
       }
 
-      const telegram_account_id = await requireActiveTelegramAccountId(scope);
+      const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
       const repo = request.server.leadradar.repositories.lead;
       const lead = await repo.findById({
         id: params.id,
@@ -846,7 +891,11 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       }
       const externalConversationId = username;
 
-      const channelAccountId = await requireActiveTelegramChannelAccountId(scope);
+      const channelAccountId = await resolveLeadRadarSendingChannelAccount(app.prisma, {
+        companyId: scope.companyId,
+        leadTelegramAccountId: lead.telegram_account_id,
+        preferredChannelAccountId: body.channelAccountId
+      });
       const worker = new TelegramWorkerClient(
         app.config.env.TELEGRAM_WORKER_URL,
         app.config.env.INTERNAL_API_TOKEN,
@@ -873,7 +922,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       return {
         ok: true,
         sendStatus: response.status,
-        lead: toLeadItem(updated)
+        lead: toLeadItem(updated, (await getParsingAccountsByTelegramIds(scope.companyId, [updated.telegram_account_id])).get(updated.telegram_account_id) ?? null)
       };
     }
   );
@@ -887,7 +936,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     const repo = request.server.leadradar.repositories.lead;
 
     const updated = await repo.updateStatus({
@@ -897,7 +946,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       status: body.status
     });
 
-    return toLeadItem(updated);
+    return toLeadItem(updated, (await getParsingAccountsByTelegramIds(scope.companyId, [updated.telegram_account_id])).get(updated.telegram_account_id) ?? null);
   });
 
   app.patch("/api/leadradar/leads/:id/notes", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
@@ -909,7 +958,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     const repo = request.server.leadradar.repositories.lead;
 
     const updated = await repo.updateNotes({
@@ -919,7 +968,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       notes: body.notes
     });
 
-    return toLeadItem(updated);
+    return toLeadItem(updated, (await getParsingAccountsByTelegramIds(scope.companyId, [updated.telegram_account_id])).get(updated.telegram_account_id) ?? null);
   });
 
   app.delete("/api/leadradar/leads/:id", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
@@ -930,7 +979,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
     }
 
-    const telegram_account_id = await requireActiveTelegramAccountId(scope);
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, getRequestedParsingChannelAccountId(request));
     app.log.info(`[LeadRadar] DELETE lead id=${params.id} userId=${scope.userId} tgAccountId=${telegram_account_id}`);
     const repo = request.server.leadradar.repositories.lead;
 

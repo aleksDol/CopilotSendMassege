@@ -1,27 +1,143 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { aiApi, billingApi, conversationsApi, crmApi, dashboardApi, leadradarApi, settingsApi, tasksApi, teamApi, telegramApi, workspaceApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth/context";
+import type { TelegramAccountResponse } from "@/lib/api/types";
+import { isLeadRadarParsingSelectionError, isTelegramAccountSelectionError } from "@/lib/api/errors";
 
 /** Scope key so cache is never shared between users/companies (accounts). */
 const baseScopeKey = (companyId: string | undefined, userId: string | undefined) =>
   `${companyId ?? ""}:${userId ?? ""}`;
 
+const selectedTelegramStorageKey = (companyId?: string, userId?: string) =>
+  companyId && userId ? `selected-telegram-account:${companyId}:${userId}` : null;
+const selectedLeadRadarParsingStorageKey = (companyId?: string, userId?: string) =>
+  companyId && userId ? `selected-leadradar-parsing-account:${companyId}:${userId}` : null;
+
+let lastAccountRecoveryAlertAt = 0;
+const showAccountRecoveryAlert = (message: string) => {
+  if (typeof window === "undefined") return;
+  const now = Date.now();
+  if (now - lastAccountRecoveryAlertAt < 2000) return;
+  lastAccountRecoveryAlertAt = now;
+  window.alert(message);
+};
+
+export const useSelectedTelegramChannelAccountId = () => {
+  const { company, user } = useAuth();
+  const telegram = useTelegramAccount();
+  const key = selectedTelegramStorageKey(company?.id, user?.id);
+  const fallback = telegram.data?.channelAccountId ?? "";
+  const [selected, setSelected] = useState<string>("");
+
+  useEffect(() => {
+    if (!key || typeof window === "undefined") return;
+    const fromStorage = window.localStorage.getItem(key)?.trim() ?? "";
+    if (fromStorage) {
+      setSelected(fromStorage);
+      return;
+    }
+    if (fallback) {
+      setSelected(fallback);
+    }
+  }, [key, fallback]);
+
+  const setSelectedChannelAccountId = (value: string | null) => {
+    const next = (value ?? "").trim();
+    setSelected(next);
+    if (!key || typeof window === "undefined") return;
+    if (next) window.localStorage.setItem(key, next);
+    else window.localStorage.removeItem(key);
+  };
+
+  return {
+    selectedChannelAccountId: selected || fallback || "",
+    setSelectedChannelAccountId
+  };
+};
+
+export const useSelectedLeadRadarParsingChannelAccountId = () => {
+  const { company, user } = useAuth();
+  const { selectedChannelAccountId } = useSelectedTelegramChannelAccountId();
+  const telegramAccounts = useTelegramAccounts();
+  const key = selectedLeadRadarParsingStorageKey(company?.id, user?.id);
+  const [selected, setSelected] = useState<string>("");
+
+  const parsingAccounts = (telegramAccounts.data?.items ?? []).filter((account: TelegramAccountResponse) => {
+    const channelAccountId = (account.channelAccountId ?? "").trim();
+    if (!channelAccountId) return false;
+    const status = String(account.status ?? "").toUpperCase();
+    return account.parsingEnabled && status !== "DISCONNECTED";
+  });
+  const fallback = (() => {
+    const selectedChatsAccount = parsingAccounts.find((account: TelegramAccountResponse) => account.channelAccountId === selectedChannelAccountId);
+    if (selectedChatsAccount?.channelAccountId) return selectedChatsAccount.channelAccountId;
+    return parsingAccounts[0]?.channelAccountId ?? "";
+  })();
+
+  useEffect(() => {
+    if (!key || typeof window === "undefined") return;
+    const fromStorage = window.localStorage.getItem(key)?.trim() ?? "";
+    if (fromStorage && parsingAccounts.some((account: TelegramAccountResponse) => account.channelAccountId === fromStorage)) {
+      setSelected(fromStorage);
+      return;
+    }
+    setSelected(fallback);
+  }, [key, fallback, parsingAccounts]);
+
+  const setSelectedLeadRadarParsingChannelAccountId = (value: string | null) => {
+    const next = (value ?? "").trim();
+    setSelected(next);
+    if (!key || typeof window === "undefined") return;
+    if (next) window.localStorage.setItem(key, next);
+    else window.localStorage.removeItem(key);
+  };
+
+  return {
+    selectedLeadRadarParsingChannelAccountId: selected || fallback || "",
+    setSelectedLeadRadarParsingChannelAccountId,
+    parsingAccounts
+  };
+};
+
 export const useDashboardOverview = () => {
   const { token, company, user } = useAuth();
+  const { selectedChannelAccountId, setSelectedChannelAccountId } = useSelectedTelegramChannelAccountId();
   return useQuery({
-    queryKey: ["dashboard-overview", baseScopeKey(company?.id, user?.id)],
-    queryFn: () => dashboardApi.overview(token ?? ""),
+    queryKey: ["dashboard-overview", baseScopeKey(company?.id, user?.id), selectedChannelAccountId],
+    queryFn: async () => {
+      try {
+        return await dashboardApi.overview(token ?? "", undefined, selectedChannelAccountId || undefined);
+      } catch (error) {
+        if (selectedChannelAccountId && isTelegramAccountSelectionError(error)) {
+          setSelectedChannelAccountId(null);
+          showAccountRecoveryAlert("Выбранный Telegram-аккаунт недоступен. Выберите аккаунт заново.");
+        }
+        throw error;
+      }
+    },
     enabled: Boolean(token)
   });
 };
 
 export const useDashboardSales = (period: import("@/lib/api/types").SalesDashboardPeriod) => {
   const { token, company, user } = useAuth();
+  const { selectedChannelAccountId, setSelectedChannelAccountId } = useSelectedTelegramChannelAccountId();
   return useQuery({
-    queryKey: ["dashboard-sales", baseScopeKey(company?.id, user?.id), period],
-    queryFn: () => dashboardApi.sales(token ?? "", period),
+    queryKey: ["dashboard-sales", baseScopeKey(company?.id, user?.id), selectedChannelAccountId, period],
+    queryFn: async () => {
+      try {
+        return await dashboardApi.sales(token ?? "", period, selectedChannelAccountId || undefined);
+      } catch (error) {
+        if (selectedChannelAccountId && isTelegramAccountSelectionError(error)) {
+          setSelectedChannelAccountId(null);
+          showAccountRecoveryAlert("Выбранный Telegram-аккаунт недоступен. Выберите аккаунт заново.");
+        }
+        throw error;
+      }
+    },
     enabled: Boolean(token)
   });
 };
@@ -34,14 +150,26 @@ export const useConversations = (filters: {
 }) => {
   const { token, company, user } = useAuth();
   const telegram = useTelegramAccount();
+  const { selectedChannelAccountId } = useSelectedTelegramChannelAccountId();
+  const { setSelectedChannelAccountId } = useSelectedTelegramChannelAccountId();
   const telegramStatus = telegram.data?.loginStatus ?? telegram.data?.status ?? "login_required";
-  const channelAccountId = telegram.data?.channelAccountId ?? "";
+  const channelAccountId = selectedChannelAccountId;
   const isTelegramConnected = telegramStatus === "connected" && Boolean(channelAccountId);
   const scope = `${baseScopeKey(company?.id, user?.id)}:${channelAccountId}`;
   const { refetchInterval, ...queryFilters } = filters;
   return useQuery({
     queryKey: ["conversations", scope, queryFilters],
-    queryFn: () => conversationsApi.list(token ?? "", queryFilters),
+    queryFn: async () => {
+      try {
+        return await conversationsApi.list(token ?? "", { ...queryFilters, channelAccountId });
+      } catch (error) {
+        if (channelAccountId && isTelegramAccountSelectionError(error)) {
+          setSelectedChannelAccountId(null);
+          showAccountRecoveryAlert("Выбранный Telegram-аккаунт недоступен. Выберите аккаунт заново.");
+        }
+        throw error;
+      }
+    },
     enabled: Boolean(token && isTelegramConnected),
     refetchInterval: refetchInterval ?? false,
     refetchIntervalInBackground: true
@@ -55,13 +183,25 @@ export const useConversationMessages = (
 ) => {
   const { token, company, user } = useAuth();
   const telegram = useTelegramAccount();
+  const { selectedChannelAccountId } = useSelectedTelegramChannelAccountId();
+  const { setSelectedChannelAccountId } = useSelectedTelegramChannelAccountId();
   const telegramStatus = telegram.data?.loginStatus ?? telegram.data?.status ?? "login_required";
-  const channelAccountId = telegram.data?.channelAccountId ?? "";
+  const channelAccountId = selectedChannelAccountId;
   const isTelegramConnected = telegramStatus === "connected" && Boolean(channelAccountId);
   const scope = `${baseScopeKey(company?.id, user?.id)}:${channelAccountId}`;
   return useQuery({
     queryKey: ["messages", scope, conversationId, limit],
-    queryFn: () => conversationsApi.messages(token ?? "", conversationId ?? "", { limit }),
+    queryFn: async () => {
+      try {
+        return await conversationsApi.messages(token ?? "", conversationId ?? "", { limit, channelAccountId });
+      } catch (error) {
+        if (channelAccountId && isTelegramAccountSelectionError(error)) {
+          setSelectedChannelAccountId(null);
+          showAccountRecoveryAlert("Выбранный Telegram-аккаунт недоступен. Выберите аккаунт заново.");
+        }
+        throw error;
+      }
+    },
     enabled: Boolean(token && conversationId && isTelegramConnected),
     refetchInterval: refetchInterval ?? false,
     refetchIntervalInBackground: true
@@ -77,12 +217,24 @@ export const useTasks = (filters: Record<string, string | number | boolean | und
   });
 };
 
-export const useCrmLeads = (filters: { stage?: string; search?: string; limit?: number; cursor?: string }) => {
+export const useCrmLeads = (filters: {
+  stage?: string;
+  search?: string;
+  limit?: number;
+  cursor?: string;
+  crmAccountFilter?: "all" | string;
+}) => {
   const { token, company, user } = useAuth();
-  const scope = baseScopeKey(company?.id, user?.id);
+  const crmAccountFilter = filters.crmAccountFilter ?? "all";
+  const scope = `${baseScopeKey(company?.id, user?.id)}:${crmAccountFilter}`;
+  const { crmAccountFilter: _unused, ...queryFilters } = filters;
   return useQuery({
     queryKey: ["crm-leads", scope, filters],
-    queryFn: () => crmApi.listLeads(token ?? "", filters),
+    queryFn: () =>
+      crmApi.listLeads(token ?? "", {
+        ...queryFilters,
+        channelAccountId: crmAccountFilter === "all" ? undefined : crmAccountFilter
+      }),
     enabled: Boolean(token)
   });
 };
@@ -92,6 +244,15 @@ export const useTelegramAccount = () => {
   return useQuery({
     queryKey: ["telegram-account", baseScopeKey(company?.id, user?.id)],
     queryFn: () => telegramApi.account(token ?? ""),
+    enabled: Boolean(token)
+  });
+};
+
+export const useTelegramAccounts = () => {
+  const { token, company, user } = useAuth();
+  return useQuery({
+    queryKey: ["telegram-accounts", baseScopeKey(company?.id, user?.id)],
+    queryFn: () => telegramApi.accounts(token ?? ""),
     enabled: Boolean(token)
   });
 };
@@ -119,8 +280,9 @@ export const useReplyPolicy = () => {
 export const useAiSuggestions = (conversationId?: string) => {
   const { token, company, user } = useAuth();
   const telegram = useTelegramAccount();
+  const { selectedChannelAccountId } = useSelectedTelegramChannelAccountId();
   const telegramStatus = telegram.data?.loginStatus ?? telegram.data?.status ?? "login_required";
-  const channelAccountId = telegram.data?.channelAccountId ?? "";
+  const channelAccountId = selectedChannelAccountId;
   const isTelegramConnected = telegramStatus === "connected" && Boolean(channelAccountId);
   const scope = `${baseScopeKey(company?.id, user?.id)}:${channelAccountId}`;
   return useQuery({
@@ -175,43 +337,94 @@ export const useLeadRadarLeads = (params: {
   sortOrder?: "asc" | "desc";
 }) => {
   const { token, company, user } = useAuth();
-  const scope = baseScopeKey(company?.id, user?.id);
+  const { selectedLeadRadarParsingChannelAccountId } = useSelectedLeadRadarParsingChannelAccountId();
+  const { setSelectedLeadRadarParsingChannelAccountId } = useSelectedLeadRadarParsingChannelAccountId();
+  const scope = `${baseScopeKey(company?.id, user?.id)}:${selectedLeadRadarParsingChannelAccountId}`;
   return useQuery({
     queryKey: ["leadradar-leads", scope, params],
-    queryFn: () => leadradarApi.listLeads(token ?? "", params),
+    queryFn: async () => {
+      try {
+        return await leadradarApi.listLeads(token ?? "", { ...params, channelAccountId: selectedLeadRadarParsingChannelAccountId || undefined });
+      } catch (error) {
+        if (selectedLeadRadarParsingChannelAccountId && isLeadRadarParsingSelectionError(error)) {
+          setSelectedLeadRadarParsingChannelAccountId(null);
+          showAccountRecoveryAlert("Аккаунт парсинга недоступен. Выберите аккаунт заново.");
+        }
+        throw error;
+      }
+    },
     enabled: Boolean(token)
   });
 };
 
 export const useLeadRadarLead = (leadId: string | null) => {
   const { token, company, user } = useAuth();
-  const scope = baseScopeKey(company?.id, user?.id);
+  const { selectedLeadRadarParsingChannelAccountId } = useSelectedLeadRadarParsingChannelAccountId();
+  const { setSelectedLeadRadarParsingChannelAccountId } = useSelectedLeadRadarParsingChannelAccountId();
+  const scope = `${baseScopeKey(company?.id, user?.id)}:${selectedLeadRadarParsingChannelAccountId}`;
   return useQuery({
     queryKey: ["leadradar-lead", scope, leadId],
-    queryFn: () => leadradarApi.getLead(token ?? "", leadId ?? ""),
+    queryFn: async () => {
+      try {
+        return await leadradarApi.getLead(token ?? "", leadId ?? "", selectedLeadRadarParsingChannelAccountId || undefined);
+      } catch (error) {
+        if (selectedLeadRadarParsingChannelAccountId && isLeadRadarParsingSelectionError(error)) {
+          setSelectedLeadRadarParsingChannelAccountId(null);
+          showAccountRecoveryAlert("Аккаунт парсинга недоступен. Выберите аккаунт заново.");
+        }
+        throw error;
+      }
+    },
     enabled: Boolean(token && leadId)
   });
 };
 
 export const useLeadRadarActions = () => {
   const { token, company, user } = useAuth();
+  const { selectedLeadRadarParsingChannelAccountId } = useSelectedLeadRadarParsingChannelAccountId();
+  const { setSelectedLeadRadarParsingChannelAccountId } = useSelectedLeadRadarParsingChannelAccountId();
   const qc = useQueryClient();
-  const scope = baseScopeKey(company?.id, user?.id);
+  const scope = `${baseScopeKey(company?.id, user?.id)}:${selectedLeadRadarParsingChannelAccountId}`;
 
+  const handleParsingError = (error: unknown) => {
+    if (selectedLeadRadarParsingChannelAccountId && isLeadRadarParsingSelectionError(error)) {
+      setSelectedLeadRadarParsingChannelAccountId(null);
+      showAccountRecoveryAlert("Аккаунт парсинга недоступен. Выберите аккаунт заново.");
+    }
+  };
   const invalidateList = () => void qc.invalidateQueries({ queryKey: ["leadradar-leads", scope] });
   const invalidateLead = (leadId: string) => void qc.invalidateQueries({ queryKey: ["leadradar-lead", scope, leadId] });
 
   return {
     generateFirstMessage: useMutation({
-      mutationFn: (leadId: string) => leadradarApi.generateFirstMessage(token ?? "", leadId),
+      mutationFn: async (leadId: string) => {
+        try {
+          return await leadradarApi.generateFirstMessage(token ?? "", leadId, selectedLeadRadarParsingChannelAccountId || undefined);
+        } catch (error) {
+          handleParsingError(error);
+          throw error;
+        }
+      },
       onSuccess: (_data, leadId) => {
         // Does not change lead status, but refresh lead details is cheap and keeps UI consistent.
         invalidateLead(leadId);
       }
     }),
     sendFirstMessage: useMutation({
-      mutationFn: (input: { leadId: string; text: string }) =>
-        leadradarApi.sendFirstMessage(token ?? "", input.leadId, input.text),
+      mutationFn: async (input: { leadId: string; text: string; channelAccountId?: string }) => {
+        try {
+          return await leadradarApi.sendFirstMessage(
+          token ?? "",
+          input.leadId,
+          input.text,
+          input.channelAccountId,
+          selectedLeadRadarParsingChannelAccountId || undefined
+          );
+        } catch (error) {
+          handleParsingError(error);
+          throw error;
+        }
+      },
       onSuccess: (_data, vars) => {
         // Backend updates status only after successful send.
         invalidateList();
@@ -220,31 +433,56 @@ export const useLeadRadarActions = () => {
       }
     }),
     updateLeadStatus: useMutation({
-      mutationFn: (input: { leadId: string; status: import("@/lib/api/types").LeadRadarLeadStatus }) =>
-        leadradarApi.updateLeadStatus(token ?? "", input.leadId, input.status),
+      mutationFn: async (input: { leadId: string; status: import("@/lib/api/types").LeadRadarLeadStatus }) => {
+        try {
+          return await leadradarApi.updateLeadStatus(token ?? "", input.leadId, input.status, selectedLeadRadarParsingChannelAccountId || undefined);
+        } catch (error) {
+          handleParsingError(error);
+          throw error;
+        }
+      },
       onSuccess: (_data, vars) => {
         invalidateList();
         invalidateLead(vars.leadId);
       }
     }),
     updateLeadNotes: useMutation({
-      mutationFn: (input: { leadId: string; notes: string | null }) =>
-        leadradarApi.updateLeadNotes(token ?? "", input.leadId, input.notes),
+      mutationFn: async (input: { leadId: string; notes: string | null }) => {
+        try {
+          return await leadradarApi.updateLeadNotes(token ?? "", input.leadId, input.notes, selectedLeadRadarParsingChannelAccountId || undefined);
+        } catch (error) {
+          handleParsingError(error);
+          throw error;
+        }
+      },
       onSuccess: (_data, vars) => {
         invalidateList();
         invalidateLead(vars.leadId);
       }
     }),
     removeLead: useMutation({
-      mutationFn: (leadId: string) => leadradarApi.removeLead(token ?? "", leadId),
+      mutationFn: async (leadId: string) => {
+        try {
+          return await leadradarApi.removeLead(token ?? "", leadId, selectedLeadRadarParsingChannelAccountId || undefined);
+        } catch (error) {
+          handleParsingError(error);
+          throw error;
+        }
+      },
       onSuccess: (_data, leadId) => {
         invalidateList();
         void qc.invalidateQueries({ queryKey: ["leadradar-lead", scope, leadId] });
       }
     }),
     createManualLead: useMutation({
-      mutationFn: (input: { name?: string | null; username: string; comment: string }) =>
-        leadradarApi.createManualLead(token ?? "", input),
+      mutationFn: async (input: { name?: string | null; username: string; comment: string }) => {
+        try {
+          return await leadradarApi.createManualLead(token ?? "", input, selectedLeadRadarParsingChannelAccountId || undefined);
+        } catch (error) {
+          handleParsingError(error);
+          throw error;
+        }
+      },
       onSuccess: () => {
         invalidateList();
       }
@@ -254,66 +492,115 @@ export const useLeadRadarActions = () => {
 
 export const useLeadRadarSources = () => {
   const { token, company, user } = useAuth();
-  const scope = baseScopeKey(company?.id, user?.id);
+  const { selectedLeadRadarParsingChannelAccountId } = useSelectedLeadRadarParsingChannelAccountId();
+  const { setSelectedLeadRadarParsingChannelAccountId } = useSelectedLeadRadarParsingChannelAccountId();
+  const scope = `${baseScopeKey(company?.id, user?.id)}:${selectedLeadRadarParsingChannelAccountId}`;
   return useQuery({
     queryKey: ["leadradar-sources", scope],
-    queryFn: () => leadradarApi.listSources(token ?? ""),
+    queryFn: async () => {
+      try {
+        return await leadradarApi.listSources(token ?? "", selectedLeadRadarParsingChannelAccountId || undefined);
+      } catch (error) {
+        if (selectedLeadRadarParsingChannelAccountId && isLeadRadarParsingSelectionError(error)) {
+          setSelectedLeadRadarParsingChannelAccountId(null);
+          showAccountRecoveryAlert("Аккаунт парсинга недоступен. Выберите аккаунт заново.");
+        }
+        throw error;
+      }
+    },
     enabled: Boolean(token)
   });
 };
 
 export const useLeadRadarKeywords = (params?: { is_active?: boolean; category?: string }) => {
   const { token, company, user } = useAuth();
-  const scope = baseScopeKey(company?.id, user?.id);
+  const { selectedLeadRadarParsingChannelAccountId } = useSelectedLeadRadarParsingChannelAccountId();
+  const { setSelectedLeadRadarParsingChannelAccountId } = useSelectedLeadRadarParsingChannelAccountId();
+  const scope = `${baseScopeKey(company?.id, user?.id)}:${selectedLeadRadarParsingChannelAccountId}`;
   return useQuery({
     queryKey: ["leadradar-keywords", scope, params ?? {}],
-    queryFn: () => leadradarApi.listKeywords(token ?? "", params),
+    queryFn: async () => {
+      try {
+        return await leadradarApi.listKeywords(token ?? "", { ...params, channelAccountId: selectedLeadRadarParsingChannelAccountId || undefined });
+      } catch (error) {
+        if (selectedLeadRadarParsingChannelAccountId && isLeadRadarParsingSelectionError(error)) {
+          setSelectedLeadRadarParsingChannelAccountId(null);
+          showAccountRecoveryAlert("Аккаунт парсинга недоступен. Выберите аккаунт заново.");
+        }
+        throw error;
+      }
+    },
     enabled: Boolean(token)
   });
 };
 
 export const useLeadRadarNegativeKeywords = () => {
   const { token, company, user } = useAuth();
-  const scope = baseScopeKey(company?.id, user?.id);
+  const { selectedLeadRadarParsingChannelAccountId } = useSelectedLeadRadarParsingChannelAccountId();
+  const { setSelectedLeadRadarParsingChannelAccountId } = useSelectedLeadRadarParsingChannelAccountId();
+  const scope = `${baseScopeKey(company?.id, user?.id)}:${selectedLeadRadarParsingChannelAccountId}`;
   return useQuery({
     queryKey: ["leadradar-negative-keywords", scope],
-    queryFn: () => leadradarApi.listNegativeKeywords(token ?? ""),
+    queryFn: async () => {
+      try {
+        return await leadradarApi.listNegativeKeywords(token ?? "", selectedLeadRadarParsingChannelAccountId || undefined);
+      } catch (error) {
+        if (selectedLeadRadarParsingChannelAccountId && isLeadRadarParsingSelectionError(error)) {
+          setSelectedLeadRadarParsingChannelAccountId(null);
+          showAccountRecoveryAlert("Аккаунт парсинга недоступен. Выберите аккаунт заново.");
+        }
+        throw error;
+      }
+    },
     enabled: Boolean(token)
   });
 };
 
 export const useLeadRadarSettings = () => {
   const { token, company, user } = useAuth();
-  const scope = baseScopeKey(company?.id, user?.id);
+  const { selectedLeadRadarParsingChannelAccountId } = useSelectedLeadRadarParsingChannelAccountId();
+  const { setSelectedLeadRadarParsingChannelAccountId } = useSelectedLeadRadarParsingChannelAccountId();
+  const scope = `${baseScopeKey(company?.id, user?.id)}:${selectedLeadRadarParsingChannelAccountId}`;
   return useQuery({
     queryKey: ["leadradar-settings", scope],
-    queryFn: () => leadradarApi.getSettings(token ?? ""),
+    queryFn: async () => {
+      try {
+        return await leadradarApi.getSettings(token ?? "", selectedLeadRadarParsingChannelAccountId || undefined);
+      } catch (error) {
+        if (selectedLeadRadarParsingChannelAccountId && isLeadRadarParsingSelectionError(error)) {
+          setSelectedLeadRadarParsingChannelAccountId(null);
+          showAccountRecoveryAlert("Аккаунт парсинга недоступен. Выберите аккаунт заново.");
+        }
+        throw error;
+      }
+    },
     enabled: Boolean(token)
   });
 };
 
 export const useLeadRadarConfigActions = () => {
   const { token, company, user } = useAuth();
+  const { selectedLeadRadarParsingChannelAccountId } = useSelectedLeadRadarParsingChannelAccountId();
   const qc = useQueryClient();
-  const scope = baseScopeKey(company?.id, user?.id);
+  const scope = `${baseScopeKey(company?.id, user?.id)}:${selectedLeadRadarParsingChannelAccountId}`;
   const invalidate = (key: string) => void qc.invalidateQueries({ queryKey: [key, scope] });
 
   return {
     addSource: useMutation({
       mutationFn: (input: { telegramChatId: string; chatTitle?: string | null; chatType?: string | null }) =>
-        leadradarApi.addSource(token ?? "", input),
+        leadradarApi.addSource(token ?? "", input, selectedLeadRadarParsingChannelAccountId || undefined),
       onSuccess: () => invalidate("leadradar-sources")
     }),
     addSourceByLink: useMutation({
-      mutationFn: (input: { link: string }) => leadradarApi.addSourceByLink(token ?? "", input),
+      mutationFn: (input: { link: string }) => leadradarApi.addSourceByLink(token ?? "", input, selectedLeadRadarParsingChannelAccountId || undefined),
       onSuccess: () => invalidate("leadradar-sources")
     }),
     updateSource: useMutation({
-      mutationFn: (input: { id: string; isActive: boolean }) => leadradarApi.updateSource(token ?? "", input.id, { isActive: input.isActive }),
+      mutationFn: (input: { id: string; isActive: boolean }) => leadradarApi.updateSource(token ?? "", input.id, { isActive: input.isActive }, selectedLeadRadarParsingChannelAccountId || undefined),
       onSuccess: () => invalidate("leadradar-sources")
     }),
     removeSource: useMutation({
-      mutationFn: (id: string) => leadradarApi.removeSource(token ?? "", id),
+      mutationFn: (id: string) => leadradarApi.removeSource(token ?? "", id, selectedLeadRadarParsingChannelAccountId || undefined),
       onSuccess: () => invalidate("leadradar-sources")
     }),
 
@@ -325,7 +612,7 @@ export const useLeadRadarConfigActions = () => {
         category: string;
         priority?: number;
       }) =>
-        leadradarApi.addKeyword(token ?? "", input),
+        leadradarApi.addKeyword(token ?? "", input, selectedLeadRadarParsingChannelAccountId || undefined),
       onSuccess: () => invalidate("leadradar-keywords")
     }),
     updateKeyword: useMutation({
@@ -339,31 +626,31 @@ export const useLeadRadarConfigActions = () => {
           priority: number;
           isActive: boolean;
         }>;
-      }) => leadradarApi.updateKeyword(token ?? "", input.id, input.patch),
+      }) => leadradarApi.updateKeyword(token ?? "", input.id, input.patch, selectedLeadRadarParsingChannelAccountId || undefined),
       onSuccess: () => invalidate("leadradar-keywords")
     }),
     removeKeyword: useMutation({
-      mutationFn: (id: string) => leadradarApi.removeKeyword(token ?? "", id),
+      mutationFn: (id: string) => leadradarApi.removeKeyword(token ?? "", id, selectedLeadRadarParsingChannelAccountId || undefined),
       onSuccess: () => invalidate("leadradar-keywords")
     }),
 
     addNegativeKeyword: useMutation({
-      mutationFn: (input: { phrase: string }) => leadradarApi.addNegativeKeyword(token ?? "", input),
+      mutationFn: (input: { phrase: string }) => leadradarApi.addNegativeKeyword(token ?? "", input, selectedLeadRadarParsingChannelAccountId || undefined),
       onSuccess: () => invalidate("leadradar-negative-keywords")
     }),
     updateNegativeKeyword: useMutation({
       mutationFn: (input: { id: string; patch: Partial<{ phrase: string; isActive: boolean }> }) =>
-        leadradarApi.updateNegativeKeyword(token ?? "", input.id, input.patch),
+        leadradarApi.updateNegativeKeyword(token ?? "", input.id, input.patch, selectedLeadRadarParsingChannelAccountId || undefined),
       onSuccess: () => invalidate("leadradar-negative-keywords")
     }),
     removeNegativeKeyword: useMutation({
-      mutationFn: (id: string) => leadradarApi.removeNegativeKeyword(token ?? "", id),
+      mutationFn: (id: string) => leadradarApi.removeNegativeKeyword(token ?? "", id, selectedLeadRadarParsingChannelAccountId || undefined),
       onSuccess: () => invalidate("leadradar-negative-keywords")
     }),
 
     updateSettings: useMutation({
       mutationFn: (patch: Partial<import("@/lib/api/types").LeadRadarSettingsResponse>) =>
-        leadradarApi.updateSettings(token ?? "", patch),
+        leadradarApi.updateSettings(token ?? "", patch, selectedLeadRadarParsingChannelAccountId || undefined),
       onSuccess: () => invalidate("leadradar-settings")
     })
   };
@@ -371,12 +658,12 @@ export const useLeadRadarConfigActions = () => {
 
 export const useSendMessageMutation = (conversationId: string) => {
   const { token, company, user } = useAuth();
-  const telegram = useTelegramAccount();
-  const channelAccountId = telegram.data?.channelAccountId ?? "";
+  const { selectedChannelAccountId } = useSelectedTelegramChannelAccountId();
+  const channelAccountId = selectedChannelAccountId;
   const qc = useQueryClient();
   const scope = `${baseScopeKey(company?.id, user?.id)}:${channelAccountId}`;
   return useMutation({
-    mutationFn: (text: string) => conversationsApi.sendMessage(token ?? "", conversationId, text),
+    mutationFn: (text: string) => conversationsApi.sendMessage(token ?? "", conversationId, text, channelAccountId || undefined),
     onSuccess: () => {
       // Scope can be stale briefly during Telegram account switching.
       // Invalidate by conversationId to guarantee correct dialog refresh.
@@ -393,8 +680,8 @@ export const useSendMessageMutation = (conversationId: string) => {
 
 export const useSuggestReplyMutation = (conversationId: string) => {
   const { token, company, user } = useAuth();
-  const telegram = useTelegramAccount();
-  const channelAccountId = telegram.data?.channelAccountId ?? "";
+  const { selectedChannelAccountId } = useSelectedTelegramChannelAccountId();
+  const channelAccountId = selectedChannelAccountId;
   const qc = useQueryClient();
   const scope = `${baseScopeKey(company?.id, user?.id)}:${channelAccountId}`;
   return useMutation({
@@ -450,11 +737,13 @@ export const useTaskActions = () => {
 
 export const useTelegramActions = () => {
   const { token, company, user } = useAuth();
+  const { selectedChannelAccountId } = useSelectedTelegramChannelAccountId();
   const qc = useQueryClient();
   const scope = baseScopeKey(company?.id, user?.id);
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["telegram-account", scope] });
+    void qc.invalidateQueries({ queryKey: ["telegram-accounts", scope] });
     void qc.invalidateQueries({ queryKey: ["dashboard-overview", scope] });
     void qc.invalidateQueries({ queryKey: ["dashboard-sales", scope] });
     void qc.invalidateQueries({ queryKey: ["conversations", scope] });
@@ -491,7 +780,8 @@ export const useTelegramActions = () => {
       onSuccess: refresh
     }),
     sync: useMutation({
-      mutationFn: () => telegramApi.sync(token ?? ""),
+      mutationFn: () =>
+        telegramApi.sync(token ?? "", selectedChannelAccountId ? { channelAccountId: selectedChannelAccountId } : undefined),
       onSuccess: refresh
     }),
     logout: useMutation({
@@ -503,6 +793,14 @@ export const useTelegramActions = () => {
         qc.removeQueries({ queryKey: ["messages"] });
         qc.removeQueries({ queryKey: ["ai-suggestions"] });
       }
+    }),
+    patchAccountFlags: useMutation({
+      mutationFn: (input: { channelAccountId: string; sendingEnabled?: boolean; parsingEnabled?: boolean }) =>
+        telegramApi.patchAccount(token ?? "", input.channelAccountId, {
+          sendingEnabled: input.sendingEnabled,
+          parsingEnabled: input.parsingEnabled
+        }),
+      onSuccess: refresh
     })
   };
 };

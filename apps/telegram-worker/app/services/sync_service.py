@@ -244,6 +244,7 @@ async def list_connected_accounts() -> list[dict[str, Any]]:
                 FROM "TelegramAccount" ta
                 JOIN "ChannelAccount" ca ON ca."id" = ta."channelAccountId"
                 WHERE ca."channelType" = 'TELEGRAM'
+                  AND ca."parsingEnabled" = true
                   AND ta."loginStatus" IN ('CONNECTED', 'ERROR', 'RECONNECT_REQUIRED')
                   AND ta."sessionDataEncrypted" IS NOT NULL
                 '''

@@ -404,6 +404,8 @@ model ChannelAccount {
   externalAccountId String
   status            ChannelAccountStatus @default(ACTIVE)
   isPrimary         Boolean              @default(false)
+  sendingEnabled    Boolean              @default(true)
+  parsingEnabled    Boolean              @default(true)
   createdByUserId   String?              @db.Uuid
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt

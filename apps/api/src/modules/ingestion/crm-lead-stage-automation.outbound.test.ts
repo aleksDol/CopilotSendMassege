@@ -7,6 +7,7 @@ function makePrisma(overrides: Partial<any> = {}) {
   return {
     lead: {
       findUnique: async () => null,
+      findFirst: async () => null,
       create: async () => null,
       ...(overrides.lead ?? {})
     },
@@ -178,6 +179,7 @@ test("P2002 race is handled by refetch", async () => {
   const prisma = makePrisma({
     lead: {
       findUnique: async () => ({ id: "l-existing", conversationId: "conv1" }),
+      findFirst: async () => null,
       create: async () => {
         createAttempts += 1;
         const err: any = new Error("Unique constraint failed");
@@ -202,3 +204,30 @@ test("P2002 race is handled by refetch", async () => {
   assert.equal(lead.id, "l-existing");
 });
 
+test("outbound-first returns existing lead when same telegramUserId already exists in company", async () => {
+  let created = false;
+  const prisma = makePrisma({
+    lead: {
+      findUnique: async () => null,
+      findFirst: async () => ({ id: "l-existing", conversationId: "conv-old" }),
+      create: async () => {
+        created = true;
+        return null;
+      }
+    }
+  });
+
+  const lead = await ensureCrmLeadForOutbound(prisma, {
+    companyId: "co1",
+    conversationId: "conv-new",
+    conversationType: "DIRECT",
+    peerExternalId: "6516814090",
+    peerIsBot: false,
+    isServiceDialog: false,
+    senderExternalId: "self1"
+  });
+
+  assert.ok(lead);
+  assert.equal(lead.id, "l-existing");
+  assert.equal(created, false);
+});

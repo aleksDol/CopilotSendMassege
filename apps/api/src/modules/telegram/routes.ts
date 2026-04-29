@@ -3,6 +3,9 @@ import { getCompanyScope } from "../../lib/request-context.js";
 import { parseWithSchema } from "../../lib/validation.js";
 import {
   telegramConnectStartSchema,
+  telegramAccountQuerySchema,
+  telegramAccountIdParamsSchema,
+  patchTelegramAccountBodySchema,
   telegramPollQrSchema,
   telegramSyncSchema,
   telegramVerifyCodeSchema,
@@ -11,6 +14,7 @@ import {
 } from "./schemas.js";
 import {
   getTelegramAccount,
+  listTelegramAccounts,
   disconnectTelegram,
   pollLoginQr,
   startConnect,
@@ -18,7 +22,8 @@ import {
   triggerInitialSync,
   verifyCode,
   verifyPassword,
-  verifyPasswordQr
+  verifyPasswordQr,
+  patchTelegramAccountFlags
 } from "./service.js";
 
 const telegramRoutes: FastifyPluginAsync = async (app) => {
@@ -146,8 +151,25 @@ const telegramRoutes: FastifyPluginAsync = async (app) => {
 
   app.get("/telegram/account", { preHandler: [app.authenticate] }, async (request) => {
     const scope = getCompanyScope(request);
+    const query = parseWithSchema(telegramAccountQuerySchema, request.query);
 
-    return getTelegramAccount(app, scope);
+    return getTelegramAccount(app, scope, query);
+  });
+
+  app.get("/telegram/accounts", { preHandler: [app.authenticate] }, async (request) => {
+    const scope = getCompanyScope(request);
+    return listTelegramAccounts(app, scope);
+  });
+
+  app.patch("/telegram/account/:id", { preHandler: [app.authenticate] }, async (request) => {
+    const scope = getCompanyScope(request);
+    const params = parseWithSchema(telegramAccountIdParamsSchema, request.params);
+    const body = parseWithSchema(patchTelegramAccountBodySchema, request.body);
+    return patchTelegramAccountFlags(app, scope, {
+      channelAccountId: params.id,
+      sendingEnabled: body.sendingEnabled,
+      parsingEnabled: body.parsingEnabled
+    });
   });
 
   app.post(

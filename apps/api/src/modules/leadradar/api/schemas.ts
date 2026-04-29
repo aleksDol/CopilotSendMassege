@@ -19,7 +19,8 @@ export const sourceIdParamsSchema = z.object({
 
 export const listSourcesQuerySchema = z.object({
   is_active: booleanFromQuery.optional(),
-  search: z.string().max(255).optional()
+  search: z.string().max(255).optional(),
+  channelAccountId: z.string().uuid().optional()
 });
 
 export const createSourceBodySchema = z.object({
@@ -38,7 +39,11 @@ export const updateSourceBodySchema = z.object({
 
 export const listKeywordsQuerySchema = z.object({
   is_active: booleanFromQuery.optional(),
-  category: z.nativeEnum(LeadCategory).optional()
+  category: z.nativeEnum(LeadCategory).optional(),
+  channelAccountId: z.string().uuid().optional()
+});
+export const leadradarScopeQuerySchema = z.object({
+  channelAccountId: z.string().uuid().optional()
 });
 
 export const createKeywordBodySchema = z.object({
@@ -123,6 +128,7 @@ export const listLeadsQuerySchema = z.object({
   status: z.nativeEnum(LeadStatus).optional(),
   chatId: z.string().min(1).max(128).optional(),
   search: z.string().max(255).optional(),
+  channelAccountId: z.string().uuid().optional(),
   date_from: isoDateSchema.optional(),
   date_to: isoDateSchema.optional(),
   page: z.coerce.number().int().min(1).max(10_000).default(1),
@@ -140,7 +146,8 @@ export const updateLeadNotesBodySchema = z.object({
 });
 
 export const sendLeadFirstMessageBodySchema = z.object({
-  text: z.string().trim().min(1).max(4096)
+  text: z.string().trim().min(1).max(4096),
+  channelAccountId: z.string().uuid().optional()
 });
 
 export const createManualLeadBodySchema = z

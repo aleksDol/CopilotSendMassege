@@ -29,6 +29,31 @@ const isEligibleDirectHumanPeer = (params: {
   return true;
 };
 
+const findCrmLeadByTelegramUserId = async (
+  prisma: PrismaClient,
+  params: { companyId: string; telegramUserId: string }
+) => {
+  const telegramUserId = params.telegramUserId.trim();
+  if (!telegramUserId) return null;
+
+  return prisma.lead.findFirst({
+    where: {
+      companyId: params.companyId,
+      conversation: {
+        participants: {
+          some: {
+            participant: {
+              externalParticipantId: telegramUserId,
+              isSelf: false
+            }
+          }
+        }
+      }
+    },
+    select: { id: true, conversationId: true }
+  });
+};
+
 export async function ensureCrmLeadForOutbound(
   prisma: PrismaClient,
   params: {
@@ -50,6 +75,19 @@ export async function ensureCrmLeadForOutbound(
     where: { conversationId: params.conversationId }
   });
   if (existing) return existing;
+
+  if (params.peerExternalId) {
+    const existingByTelegramUserId = await findCrmLeadByTelegramUserId(prisma, {
+      companyId: params.companyId,
+      telegramUserId: params.peerExternalId
+    });
+    if (existingByTelegramUserId) {
+      console.info(
+        `[Ingestion] Skipped CRM Lead creation: user already exists in company companyId=${params.companyId} telegramUserId=${params.peerExternalId}`
+      );
+      return existingByTelegramUserId;
+    }
+  }
 
   try {
     const created = await prisma.lead.create({
@@ -99,6 +137,19 @@ export async function ensureCrmLeadForInbound(
     where: { conversationId: params.conversationId }
   });
   if (existing) return existing;
+
+  if (params.peerExternalId) {
+    const existingByTelegramUserId = await findCrmLeadByTelegramUserId(prisma, {
+      companyId: params.companyId,
+      telegramUserId: params.peerExternalId
+    });
+    if (existingByTelegramUserId) {
+      console.info(
+        `[Ingestion] Skipped CRM Lead creation: user already exists in company companyId=${params.companyId} telegramUserId=${params.peerExternalId}`
+      );
+      return existingByTelegramUserId;
+    }
+  }
 
   try {
     const created = await prisma.lead.create({
@@ -190,4 +241,3 @@ export async function applyInboundRepliedStage(
 
   return lead;
 }
-

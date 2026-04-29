@@ -11,6 +11,7 @@ function makePrisma(overrides: Partial<any> = {}) {
   return {
     lead: {
       findUnique: async () => null,
+      findFirst: async () => null,
       create: async () => null,
       update: async () => null,
       ...(overrides.lead ?? {})
@@ -76,6 +77,7 @@ test("ensureCrmLeadForInbound is idempotent on unique constraint race (P2002)", 
   const prisma = makePrisma({
     lead: {
       findUnique: async (_args: any) => ({ id: "l-existing", conversationId: "conv1", stage: "NEW" }),
+      findFirst: async () => null,
       create: async () => {
         createAttempts += 1;
         const err: any = new Error("Unique constraint failed");
@@ -198,6 +200,94 @@ test("ensureCrmLeadForInbound does NOT create lead for bot/service/self/system s
   });
   assert.equal(system, null);
 
+  assert.equal(created, false);
+});
+
+test("ensureCrmLeadForInbound returns existing lead when same telegramUserId already exists in company", async () => {
+  let created = false;
+  const prisma = makePrisma({
+    lead: {
+      findUnique: async () => null,
+      findFirst: async () => ({ id: "existing-lead", conversationId: "conv-old" }),
+      create: async () => {
+        created = true;
+        return null;
+      }
+    }
+  });
+
+  const lead = await ensureCrmLeadForInbound(prisma, {
+    companyId: "co1",
+    conversationId: "conv-new",
+    conversationType: "DIRECT",
+    peerExternalId: "6516814090",
+    peerIsBot: false,
+    isServiceDialog: false,
+    senderExternalId: null,
+    senderType: "user"
+  });
+
+  assert.ok(lead);
+  assert.equal(lead.id, "existing-lead");
+  assert.equal(created, false);
+});
+
+test("ensureCrmLeadForInbound creates new lead for different telegramUserId (username is ignored)", async () => {
+  const calls: any[] = [];
+  const prisma = makePrisma({
+    lead: {
+      findUnique: async () => null,
+      findFirst: async () => null,
+      create: async (args: any) => {
+        calls.push(args);
+        return { id: "l-new", conversationId: args.data.conversationId, stage: args.data.stage };
+      }
+    },
+    conversationState: {
+      upsert: async () => ({})
+    }
+  });
+
+  const lead = await ensureCrmLeadForInbound(prisma, {
+    companyId: "co1",
+    conversationId: "conv-new",
+    conversationType: "DIRECT",
+    peerExternalId: "different-user-id",
+    peerIsBot: false,
+    isServiceDialog: false,
+    senderExternalId: null,
+    senderType: "user"
+  });
+
+  assert.ok(lead);
+  assert.equal(calls.length, 1);
+});
+
+test("ensureCrmLeadForInbound keeps behavior when telegramUserId is missing", async () => {
+  let created = false;
+  const prisma = makePrisma({
+    lead: {
+      findUnique: async () => null,
+      findFirst: async () => ({ id: "should-not-be-used" }),
+      create: async () => {
+        created = true;
+        return null;
+      }
+    }
+  });
+
+  const lead = await ensureCrmLeadForInbound(prisma, {
+    companyId: "co1",
+    conversationId: "conv-missing-peer",
+    conversationType: "DIRECT",
+    peerExternalId: null,
+    peerIsBot: false,
+    isServiceDialog: false,
+    senderExternalId: null,
+    senderType: "user"
+  });
+
+  assert.equal(lead, null);
   assert.equal(created, false);
 });
 
@@ -355,4 +445,3 @@ test("no downgrade: QUALIFIED/PROPOSAL/NEGOTIATION/WON/LOST never auto-change", 
     assert.equal(updated, false, `stage ${stage} should not be updated`);
   }
 });
-

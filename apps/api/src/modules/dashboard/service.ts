@@ -1,30 +1,20 @@
-import { Prisma, SuggestionStatus, SuggestionType, TaskStatus, TaskType, ChannelAccountStatus, ChannelType, TelegramLoginStatus } from "@prisma/client";
+import { Prisma, SuggestionStatus, SuggestionType, TaskStatus, TaskType } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { readThroughCache } from "../../lib/cache.js";
+import { resolveTelegramAccountForRequest } from "../../lib/telegram-account-resolver.js";
 import { buildSupportedConversationWhere } from "../conversations/support.js";
 import { buildCountMetric, buildRateMetricPp, buildTimeMetricMinutesLowerIsBetter, getSalesDashboardRanges, type SalesDashboardPeriod } from "./sales-utils.js";
 
-const TG_CONNECTED = "CONNECTED" as unknown as TelegramLoginStatus;
-const TG_ERROR = "ERROR" as unknown as TelegramLoginStatus;
-
 export const getDashboardOverview = async (
   app: FastifyInstance,
-  params: { companyId: string; userId: string; windowDays?: number }
+  params: { companyId: string; userId: string; windowDays?: number; channelAccountId?: string }
 ) => {
   // We intentionally scope dashboard metrics to the "current active Telegram account"
   // for this user, to avoid mixing unrelated Telegram accounts inside the same company.
-  const activeTelegram = await app.prisma.telegramAccount.findFirst({
-    where: {
-      loginStatus: { in: [TG_CONNECTED, TG_ERROR] },
-      channelAccount: {
-        companyId: params.companyId,
-        channelType: ChannelType.TELEGRAM,
-        createdByUserId: params.userId,
-        status: { not: ChannelAccountStatus.DISCONNECTED }
-      }
-    },
-    orderBy: { updatedAt: "desc" },
-    select: { channelAccountId: true }
+  const activeTelegram = await resolveTelegramAccountForRequest(app.prisma, {
+    companyId: params.companyId,
+    userId: params.userId,
+    channelAccountId: params.channelAccountId
   });
 
   const activeChannelAccountId = activeTelegram?.channelAccountId ?? null;
@@ -225,20 +215,12 @@ export const getDashboardOverview = async (
 
 export const getDashboardSales = async (
   app: FastifyInstance,
-  params: { companyId: string; userId: string; period: SalesDashboardPeriod; timezone: string }
+  params: { companyId: string; userId: string; period: SalesDashboardPeriod; timezone: string; channelAccountId?: string }
 ) => {
-  const activeTelegram = await app.prisma.telegramAccount.findFirst({
-    where: {
-      loginStatus: { in: [TG_CONNECTED, TG_ERROR] },
-      channelAccount: {
-        companyId: params.companyId,
-        channelType: ChannelType.TELEGRAM,
-        createdByUserId: params.userId,
-        status: { not: ChannelAccountStatus.DISCONNECTED }
-      }
-    },
-    orderBy: { updatedAt: "desc" },
-    select: { channelAccountId: true }
+  const activeTelegram = await resolveTelegramAccountForRequest(app.prisma, {
+    companyId: params.companyId,
+    userId: params.userId,
+    channelAccountId: params.channelAccountId
   });
 
   const activeChannelAccountId = activeTelegram?.channelAccountId ?? null;

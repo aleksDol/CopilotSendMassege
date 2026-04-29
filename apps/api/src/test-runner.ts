@@ -1,5 +1,6 @@
 import "./modules/telegram/service.test.js";
 import "./modules/telegram/sql-placeholder.test.js";
+import "./lib/telegram-account-resolver.test.js";
 import "./modules/conversations/service.test.js";
 import "./modules/messages/service.test.js";
 import "./modules/auth/service.test.js";
@@ -14,6 +15,8 @@ import "./modules/leadradar/application/manual-lead.test.js";
 import "./modules/leadradar/application/services/author-profile-cache-builder.test.js";
 import "./modules/leadradar/application/services/author-profile-lead-dedupe-service.test.js";
 import "./modules/leadradar/api/schemas.test.js";
+import "./modules/leadradar/api/account-guard.test.js";
+import "./modules/leadradar/api/sending-account-resolver.test.js";
 import "./modules/leadradar/infrastructure/repositories/prisma/prisma-lead-keyword-repository.test.js";
 import "./modules/leadradar/infrastructure/mappers.test.js";
 import "./modules/leadradar/infrastructure/repositories/prisma/prisma-lead-author-profile-cache-repository.test.js";

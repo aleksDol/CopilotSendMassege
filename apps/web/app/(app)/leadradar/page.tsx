@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@/components/common/empty-state";
@@ -7,8 +7,8 @@ import { TrialPaywallCard } from "@/components/billing/trial-paywall-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
-import { useLeadRadarActions, useLeadRadarLeads } from "@/lib/hooks/use-app-data";
-import type { LeadRadarLeadItem, LeadRadarLeadStatus } from "@/lib/api/types";
+import { useLeadRadarActions, useLeadRadarLeads, useSelectedLeadRadarParsingChannelAccountId } from "@/lib/hooks/use-app-data";
+import type { LeadRadarLeadItem, LeadRadarLeadStatus, TelegramAccountResponse } from "@/lib/api/types";
 import { LeadDrawer } from "@/components/leadradar/lead-drawer";
 import { LeadRadarNav } from "@/components/leadradar/leadradar-nav";
 import Link from "next/link";
@@ -54,8 +54,8 @@ function ManualLeadAddModal({
     const u = username.trim();
     const c = comment.trim();
     const next: { username?: string; comment?: string } = {};
-    if (!u) next.username = "Укажите username";
-    if (!c) next.comment = "Укажите комментарий";
+    if (!u) next.username = "РЈРєР°Р¶РёС‚Рµ username";
+    if (!c) next.comment = "РЈРєР°Р¶РёС‚Рµ РєРѕРјРјРµРЅС‚Р°СЂРёР№";
     if (Object.keys(next).length) {
       setFieldError(next);
       return;
@@ -72,7 +72,7 @@ function ManualLeadAddModal({
       onClose();
     } catch (err) {
       const msg =
-        err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Не удалось создать лида";
+        err instanceof ApiError ? err.message : err instanceof Error ? err.message : "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ Р»РёРґР°";
       setRequestError(msg);
     }
   };
@@ -93,7 +93,7 @@ function ManualLeadAddModal({
       >
         <div className="flex items-start justify-between gap-2">
           <h2 id="manual-lead-title" className="text-lg font-semibold">
-            Добавить лида
+            Р”РѕР±Р°РІРёС‚СЊ Р»РёРґР°
           </h2>
           <button
             type="button"
@@ -101,18 +101,18 @@ function ManualLeadAddModal({
             onClick={onClose}
             disabled={mutation.isPending}
           >
-            Закрыть
+            Р—Р°РєСЂС‹С‚СЊ
           </button>
         </div>
-        <p className="mt-1 text-xs text-muted-foreground">Лид из контактов вне автоматического мониторинга Telegram.</p>
+        <p className="mt-1 text-xs text-muted-foreground">Р›РёРґ РёР· РєРѕРЅС‚Р°РєС‚РѕРІ РІРЅРµ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРѕРіРѕ РјРѕРЅРёС‚РѕСЂРёРЅРіР° Telegram.</p>
 
         <div className="mt-4 grid gap-3">
           <label className="grid gap-1 text-sm">
-            <span className="text-muted-foreground">Имя (необязательно)</span>
+            <span className="text-muted-foreground">РРјСЏ (РЅРµРѕР±СЏР·Р°С‚РµР»СЊРЅРѕ)</span>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Как к вам обращаться"
+              placeholder="РљР°Рє Рє РІР°Рј РѕР±СЂР°С‰Р°С‚СЊСЃСЏ"
               className="h-10 rounded-md border border-border bg-background px-3 text-sm"
               disabled={mutation.isPending}
             />
@@ -122,18 +122,18 @@ function ManualLeadAddModal({
             <input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="@username или username"
+              placeholder="@username РёР»Рё username"
               className="h-10 rounded-md border border-border bg-background px-3 text-sm"
               disabled={mutation.isPending}
             />
             {fieldError.username ? <span className="text-xs text-destructive">{fieldError.username}</span> : null}
           </label>
           <label className="grid gap-1 text-sm">
-            <span className="text-muted-foreground">Комментарий *</span>
+            <span className="text-muted-foreground">РљРѕРјРјРµРЅС‚Р°СЂРёР№ *</span>
             <textarea
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="Откуда лид, контекст, договорённости"
+              placeholder="РћС‚РєСѓРґР° Р»РёРґ, РєРѕРЅС‚РµРєСЃС‚, РґРѕРіРѕРІРѕСЂС‘РЅРЅРѕСЃС‚Рё"
               rows={4}
               className="rounded-md border border-border bg-background px-3 py-2 text-sm"
               disabled={mutation.isPending}
@@ -145,10 +145,10 @@ function ManualLeadAddModal({
 
         <div className="mt-4 flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose} disabled={mutation.isPending}>
-            Отмена
+            РћС‚РјРµРЅР°
           </Button>
           <Button type="button" onClick={() => void submit()} disabled={mutation.isPending}>
-            {mutation.isPending ? "Добавляем…" : "Добавить"}
+            {mutation.isPending ? "Р”РѕР±Р°РІР»СЏРµРјвЂ¦" : "Р”РѕР±Р°РІРёС‚СЊ"}
           </Button>
         </div>
       </div>
@@ -205,7 +205,7 @@ function formatDate(iso: string): string {
 function truncate(text: string | null, max = 120): string {
   const t = (text ?? "").trim();
   if (!t) return "";
-  return t.length > max ? `${t.slice(0, max)}…` : t;
+  return t.length > max ? `${t.slice(0, max)}вЂ¦` : t;
 }
 
 function isChannelCommentLead(lead: LeadRadarLeadItem): boolean {
@@ -219,7 +219,7 @@ function isAuthorProfileLead(lead: LeadRadarLeadItem): boolean {
 function displayName(lead: LeadRadarLeadItem) {
   if (lead.displayName?.trim()) return lead.displayName.trim();
   if (lead.username?.trim()) return `@${lead.username.trim()}`;
-  return "—";
+  return "вЂ”";
 }
 
 function secondaryId(lead: LeadRadarLeadItem): string | null {
@@ -238,6 +238,11 @@ export default function LeadRadarInboxPage() {
   const limit = 20;
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [manualModalOpen, setManualModalOpen] = useState(false);
+  const {
+    selectedLeadRadarParsingChannelAccountId,
+    setSelectedLeadRadarParsingChannelAccountId,
+    parsingAccounts
+  } = useSelectedLeadRadarParsingChannelAccountId();
 
   const leads = useLeadRadarLeads({
     status: filters.status,
@@ -254,12 +259,19 @@ export default function LeadRadarInboxPage() {
     return Math.max(1, Math.ceil(total / limit));
   }, [leads.data?.total]);
 
+  const parsingAccountOptions = parsingAccounts
+    .filter((account: TelegramAccountResponse) => Boolean(account.channelAccountId))
+    .map((account: TelegramAccountResponse) => ({
+      value: String(account.channelAccountId),
+      label: account.displayName?.trim() ? account.displayName : `Account ${String(account.channelAccountId).slice(0, 8)}`
+    }));
+
   if (access?.subscriptionStatus === "expired") {
     return (
       <div className="space-y-4">
         <div>
           <h1 className="text-2xl font-semibold">LeadRadar</h1>
-          <p className="text-sm text-muted-foreground">Inbox лидов.</p>
+          <p className="text-sm text-muted-foreground">Inbox Р»РёРґРѕРІ.</p>
           <div className="pt-2">
             <LeadRadarNav />
           </div>
@@ -270,11 +282,15 @@ export default function LeadRadarInboxPage() {
   }
 
   if (leads.isLoading) {
-    return <LoadingState label="Загрузка лидов..." />;
+    return <LoadingState label="Р—Р°РіСЂСѓР·РєР° Р»РёРґРѕРІ..." />;
   }
 
   if (leads.error) {
-    return <EmptyState title="Ошибка" description={leads.error instanceof Error ? leads.error.message : "Не удалось загрузить лиды"} />;
+    return <EmptyState title="РћС€РёР±РєР°" description={leads.error instanceof Error ? leads.error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ Р»РёРґС‹"} />;
+  }
+
+  if (!parsingAccountOptions.length) {
+    return <EmptyState title="LeadRadar" description="Нет аккаунта с включённым парсингом" />;
   }
 
   const data = leads.data;
@@ -285,18 +301,29 @@ export default function LeadRadarInboxPage() {
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold">LeadRadar</h1>
-            <p className="text-sm text-muted-foreground">Inbox лидов (первые результаты работы LeadRadar).</p>
+            <p className="text-sm text-muted-foreground">Inbox Р»РёРґРѕРІ (РїРµСЂРІС‹Рµ СЂРµР·СѓР»СЊС‚Р°С‚С‹ СЂР°Р±РѕС‚С‹ LeadRadar).</p>
             <div className="pt-2">
               <LeadRadarNav />
             </div>
           </div>
+          <div className="min-w-[260px]">
+            <div className="mb-1 text-xs text-muted-foreground">Аккаунт парсинга</div>
+            <Select
+              value={selectedLeadRadarParsingChannelAccountId}
+              onChange={(event) => {
+                setSelectedLeadRadarParsingChannelAccountId(event.target.value);
+                setPage(1);
+              }}
+              options={parsingAccountOptions}
+            />
+          </div>
           <Button type="button" variant="outline" onClick={() => setManualModalOpen(true)}>
-            Добавить лида
+            Р”РѕР±Р°РІРёС‚СЊ Р»РёРґР°
           </Button>
         </div>
         <Card>
           <CardHeader>
-            <CardTitle>Фильтры</CardTitle>
+            <CardTitle>Р¤РёР»СЊС‚СЂС‹</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-2 md:grid-cols-2">
             <Select
@@ -313,14 +340,14 @@ export default function LeadRadarInboxPage() {
                 setFilters((prev) => ({ ...prev, search: e.target.value }));
                 setPage(1);
               }}
-              placeholder="Поиск по сообщению / имени / username"
+              placeholder="РџРѕРёСЃРє РїРѕ СЃРѕРѕР±С‰РµРЅРёСЋ / РёРјРµРЅРё / username"
               className="h-10 rounded-md border border-border bg-background px-3 text-sm"
             />
           </CardContent>
         </Card>
         {isFiltered ? (
           <div className="space-y-3">
-            <EmptyState title="Нет результатов" description="По текущим фильтрам лидов не найдено." />
+            <EmptyState title="РќРµС‚ СЂРµР·СѓР»СЊС‚Р°С‚РѕРІ" description="РџРѕ С‚РµРєСѓС‰РёРј С„РёР»СЊС‚СЂР°Рј Р»РёРґРѕРІ РЅРµ РЅР°Р№РґРµРЅРѕ." />
             <Button
               variant="outline"
               onClick={() => {
@@ -328,14 +355,14 @@ export default function LeadRadarInboxPage() {
                 setPage(1);
               }}
             >
-              Сбросить фильтры
+              РЎР±СЂРѕСЃРёС‚СЊ С„РёР»СЊС‚СЂС‹
             </Button>
           </div>
         ) : (
           <EmptyState
-            title="Лидов пока нет"
+            title="Р›РёРґРѕРІ РїРѕРєР° РЅРµС‚"
             description={
-              "Добавьте Sources (чаты) и Keywords (фразы), включите LeadRadar в Settings — после этого лиды будут появляться автоматически."
+              "Р”РѕР±Р°РІСЊС‚Рµ Sources (С‡Р°С‚С‹) Рё Keywords (С„СЂР°Р·С‹), РІРєР»СЋС‡РёС‚Рµ LeadRadar РІ Settings вЂ” РїРѕСЃР»Рµ СЌС‚РѕРіРѕ Р»РёРґС‹ Р±СѓРґСѓС‚ РїРѕСЏРІР»СЏС‚СЊСЃСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё."
             }
           />
         )}
@@ -373,22 +400,33 @@ export default function LeadRadarInboxPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">LeadRadar</h1>
-          <p className="text-sm text-muted-foreground">Inbox лидов (таблица).</p>
+          <p className="text-sm text-muted-foreground">Inbox Р»РёРґРѕРІ (С‚Р°Р±Р»РёС†Р°).</p>
           <div className="pt-2">
             <LeadRadarNav />
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-[260px]">
+            <div className="mb-1 text-xs text-muted-foreground">Аккаунт парсинга</div>
+            <Select
+              value={selectedLeadRadarParsingChannelAccountId}
+              onChange={(event) => {
+                setSelectedLeadRadarParsingChannelAccountId(event.target.value);
+                setPage(1);
+              }}
+              options={parsingAccountOptions}
+            />
+          </div>
           <Button type="button" variant="outline" onClick={() => setManualModalOpen(true)}>
-            Добавить лида
+            Р”РѕР±Р°РІРёС‚СЊ Р»РёРґР°
           </Button>
-          <div className="text-sm text-muted-foreground">Всего: {data.total}</div>
+          <div className="text-sm text-muted-foreground">Р’СЃРµРіРѕ: {data.total}</div>
         </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Фильтры</CardTitle>
+          <CardTitle>Р¤РёР»СЊС‚СЂС‹</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-2 md:grid-cols-2">
           <Select
@@ -405,7 +443,7 @@ export default function LeadRadarInboxPage() {
               setFilters((prev) => ({ ...prev, search: e.target.value }));
               setPage(1);
             }}
-            placeholder="Поиск по сообщению / имени / username"
+            placeholder="РџРѕРёСЃРє РїРѕ СЃРѕРѕР±С‰РµРЅРёСЋ / РёРјРµРЅРё / username"
             className="h-10 rounded-md border border-border bg-background px-3 text-sm"
           />
         </CardContent>
@@ -419,12 +457,12 @@ export default function LeadRadarInboxPage() {
           <table className="w-full min-w-[900px] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-muted-foreground">
-                <th className="py-2 pr-3">Клиент</th>
-                <th className="py-2 pr-3">Чат</th>
-                <th className="py-2 pr-3">Сообщение</th>
+                <th className="py-2 pr-3">РљР»РёРµРЅС‚</th>
+                <th className="py-2 pr-3">Р§Р°С‚</th>
+                <th className="py-2 pr-3">РЎРѕРѕР±С‰РµРЅРёРµ</th>
                 <th className="py-2 pr-3">Score</th>
                 <th className="py-2 pr-3">Created</th>
-                <th className="py-2 pr-3 w-[240px]">Статус</th>
+                <th className="py-2 pr-3 w-[240px]">РЎС‚Р°С‚СѓСЃ</th>
               </tr>
             </thead>
             <tbody>
@@ -447,15 +485,15 @@ export default function LeadRadarInboxPage() {
                     ) : null}
                   </td>
                   <td className="py-3 pr-3">
-                    <div className="max-w-[420px] whitespace-pre-wrap text-foreground/90">{truncate(lead.messageText, 160) || "—"}</div>
+                    <div className="max-w-[420px] whitespace-pre-wrap text-foreground/90">{truncate(lead.messageText, 160) || "вЂ”"}</div>
                     {isAuthorProfileLead(lead) ? (
                       <div className="pt-1 text-xs text-muted-foreground">
-                        <span className="rounded border border-border bg-muted/30 px-1.5 py-0.5">Профиль</span>
+                        <span className="rounded border border-border bg-muted/30 px-1.5 py-0.5">РџСЂРѕС„РёР»СЊ</span>
                       </div>
                     ) : null}
                     {isChannelCommentLead(lead) ? (
                       <div className="pt-1 text-xs text-muted-foreground">
-                        <span className="rounded border border-border bg-muted/30 px-1.5 py-0.5">Комментарий канала</span>
+                        <span className="rounded border border-border bg-muted/30 px-1.5 py-0.5">РљРѕРјРјРµРЅС‚Р°СЂРёР№ РєР°РЅР°Р»Р°</span>
                         {lead.relatedPostId?.trim() ? <span className="pl-2">post: {lead.relatedPostId}</span> : null}
                       </div>
                     ) : null}
@@ -509,17 +547,17 @@ export default function LeadRadarInboxPage() {
               disabled={page <= 1 || leads.isFetching}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
-              Назад
+              РќР°Р·Р°Рґ
             </button>
             <div className="text-sm text-muted-foreground">
-              Стр. {page} / {totalPages}
+              РЎС‚СЂ. {page} / {totalPages}
             </div>
             <button
               className="rounded-md border border-border bg-background px-3 py-2 text-sm disabled:opacity-50"
               disabled={page >= totalPages || leads.isFetching}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             >
-              Вперёд
+              Р’РїРµСЂС‘Рґ
             </button>
           </div>
         </CardContent>
@@ -539,3 +577,7 @@ export default function LeadRadarInboxPage() {
     </div>
   );
 }
+
+
+
+

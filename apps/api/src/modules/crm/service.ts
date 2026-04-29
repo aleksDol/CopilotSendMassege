@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import type { LeadStage, LeadSource, LeadStatus } from "@prisma/client";
+import { ChannelType, type LeadStage, type LeadSource, type LeadStatus } from "@prisma/client";
+import { AppError } from "../../lib/errors.js";
 
 type OffsetCursorPayload = { offset: number };
 
@@ -30,6 +31,14 @@ export type CrmLeadListItem = {
   lastOutboundAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  account: {
+    channelAccountId: string;
+    title: string | null;
+    status: string;
+    sendingEnabled: boolean;
+    parsingEnabled: boolean;
+    isPrimary: boolean;
+  } | null;
 };
 
 export async function listCrmLeads(
@@ -40,11 +49,27 @@ export async function listCrmLeads(
     cursor?: string;
     stage?: LeadStage;
     search?: string;
+    channelAccountId?: string;
   }
 ): Promise<{ items: CrmLeadListItem[]; nextCursor: string | null }> {
   const offset = params.cursor ? decodeOffsetCursor(params.cursor).offset : 0;
 
   const search = params.search?.trim() ? params.search.trim() : null;
+  const requestedChannelAccountId = params.channelAccountId?.trim() ?? null;
+
+  if (requestedChannelAccountId) {
+    const account = await app.prisma.channelAccount.findFirst({
+      where: {
+        id: requestedChannelAccountId,
+        companyId: params.companyId,
+        channelType: ChannelType.TELEGRAM
+      },
+      select: { id: true }
+    });
+    if (!account) {
+      throw new AppError(403, "CHANNEL_ACCOUNT_FORBIDDEN", "Channel account does not belong to company");
+    }
+  }
 
   // IMPORTANT:
   // Telegram sometimes identifies the same peer by numeric id or by username.
@@ -59,6 +84,7 @@ export async function listCrmLeads(
     ...(params.stage ? { stage: params.stage } : {}),
     conversation: {
       isArchived: false,
+      ...(params.channelAccountId ? { channelAccountId: params.channelAccountId } : {}),
       ...(search
         ? {
             OR: [
@@ -95,6 +121,16 @@ export async function listCrmLeads(
             title: true,
             externalConversationId: true,
             conversationType: true,
+            channelAccount: {
+              select: {
+                id: true,
+                displayName: true,
+                status: true,
+                sendingEnabled: true,
+                parsingEnabled: true,
+                isPrimary: true
+              }
+            },
             state: {
               select: {
                 lastMessageAt: true,
@@ -156,7 +192,17 @@ export async function listCrmLeads(
         lastInboundAt: row.conversation.state?.lastInboundAt ?? null,
         lastOutboundAt: row.conversation.state?.lastOutboundAt ?? null,
         createdAt: row.createdAt,
-        updatedAt: row.updatedAt
+        updatedAt: row.updatedAt,
+        account: row.conversation.channelAccount
+          ? {
+              channelAccountId: row.conversation.channelAccount.id,
+              title: row.conversation.channelAccount.displayName ?? null,
+              status: row.conversation.channelAccount.status,
+              sendingEnabled: row.conversation.channelAccount.sendingEnabled,
+              parsingEnabled: row.conversation.channelAccount.parsingEnabled,
+              isPrimary: row.conversation.channelAccount.isPrimary
+            }
+          : null
       });
 
       if (items.length >= params.limit) break;
