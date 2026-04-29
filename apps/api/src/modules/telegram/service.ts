@@ -326,9 +326,11 @@ export const getTelegramAccount = async (
 export const listTelegramAccounts = async (app: FastifyInstance, scope: Scope) => {
   const rows = await app.prisma.telegramAccount.findMany({
     where: {
+      loginStatus: { in: [TG_CONNECTED, TG_ERROR] },
       channelAccount: {
         companyId: scope.companyId,
-        channelType: ChannelType.TELEGRAM
+        channelType: ChannelType.TELEGRAM,
+        status: { not: ChannelAccountStatus.DISCONNECTED }
       }
     },
     include: { channelAccount: true },

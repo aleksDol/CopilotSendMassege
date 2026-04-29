@@ -113,7 +113,7 @@ export function TelegramConnectCard({
           </Badge>
         </div>
 
-        {!isConnected && !qrUrl ? (
+        {!qrUrl ? (
           <Button className="w-full" disabled={loading} onClick={() => void handleStartQr()}>
             {connectButtonLabel}
           </Button>
