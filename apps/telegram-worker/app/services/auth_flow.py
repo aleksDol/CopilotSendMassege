@@ -205,6 +205,20 @@ async def _qr_login_wait_task(
                     )
                     row = await cur.fetchone()
                     target_channel_id = str(row["id"])
+                else:
+                    # Existing account may be DISCONNECTED from previous logout.
+                    # Re-activating status ensures API account lists include it after successful QR login.
+                    await cur.execute(
+                        '''
+                        UPDATE "ChannelAccount"
+                        SET
+                          "displayName" = %s,
+                          "status" = 'ACTIVE',
+                          "updatedAt" = %s
+                        WHERE "id" = %s
+                        ''',
+                        (display_name, now, target_channel_id),
+                    )
 
                 # Upsert session into the target channel account (dedicated per identity).
                 new_telegram_account_id = str(uuid.uuid4())
@@ -448,6 +462,20 @@ async def verify_password_qr(qr_session_id: str, password: str, crypto: SessionC
                     )
                     row = await cur.fetchone()
                     target_channel_id = str(row["id"])
+                else:
+                    # Existing account may be DISCONNECTED from previous logout.
+                    # Re-activating status ensures API account lists include it after successful QR login.
+                    await cur.execute(
+                        '''
+                        UPDATE "ChannelAccount"
+                        SET
+                          "displayName" = %s,
+                          "status" = 'ACTIVE',
+                          "updatedAt" = %s
+                        WHERE "id" = %s
+                        ''',
+                        (display_name, now, target_channel_id),
+                    )
 
                 await cur.execute(
                     '''

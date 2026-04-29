@@ -18,7 +18,8 @@ import {
   useSelectedTelegramChannelAccountId,
   useSendMessageMutation,
   useSuggestReplyMutation,
-  useTelegramAccount
+  useTelegramAccount,
+  useTelegramAccounts
 } from "@/lib/hooks/use-app-data";
 import { useChatsRealtime, type NewMessagePayload } from "@/lib/hooks/use-chats-realtime";
 import { aiApi } from "@/lib/api/ai";
@@ -91,12 +92,27 @@ export default function ChatsPage() {
   const isPostTrialLimited = access?.subscriptionStatus === "expired";
   const queryClient = useQueryClient();
   const telegramAccount = useTelegramAccount();
-  const { selectedChannelAccountId } = useSelectedTelegramChannelAccountId();
+  const { selectedChannelAccountId, setSelectedChannelAccountId } = useSelectedTelegramChannelAccountId();
+  const telegramAccounts = useTelegramAccounts();
   const telegramStatus = telegramAccount.data?.loginStatus ?? telegramAccount.data?.status ?? "login_required";
   const isTelegramConnected = telegramStatus === "connected";
   const channelAccountId = selectedChannelAccountId || null;
   const unreadStorageKey = getUnreadStorageKey(company?.id, user?.id, channelAccountId);
   const selectedStorageKey = getSelectedStorageKey(company?.id, user?.id, channelAccountId);
+  const sendAccountOptions = (telegramAccounts.data?.items ?? [])
+    .filter((account) => {
+      const id = (account.channelAccountId ?? "").trim();
+      if (!id) return false;
+      if (account.sendingEnabled === false) return false;
+      if ((account.channelStatus ?? "").toLowerCase() === "disconnected") return false;
+      return true;
+    })
+    .map((account) => ({
+      value: account.channelAccountId ?? "",
+      label:
+        account.displayName?.trim() ||
+        (account.username ? `@${account.username}` : `Account ${(account.channelAccountId ?? "").slice(0, 8)}`)
+    }));
 
   const prevChannelAccountIdRef = useRef<string | null>(null);
 
@@ -408,6 +424,17 @@ export default function ChatsPage() {
       <aside className="flex min-h-0 w-full shrink-0 flex-col overflow-hidden border-r border-border bg-card/50">
         <div className="shrink-0 border-b border-border px-4 py-3">
           <h2 className="font-semibold">Chats</h2>
+          {sendAccountOptions.length > 1 ? (
+            <div className="pt-2">
+              <div className="pb-1 text-xs text-muted-foreground">Аккаунт отправки</div>
+              <Select
+                aria-label="Аккаунт отправки"
+                options={sendAccountOptions}
+                value={selectedChannelAccountId}
+                onChange={(e) => setSelectedChannelAccountId(e.target.value)}
+              />
+            </div>
+          ) : null}
         </div>
         <div className="min-h-0 flex-1 overflow-hidden p-2">
           <ConversationList
