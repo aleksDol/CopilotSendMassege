@@ -216,20 +216,20 @@ export default function BasePage() {
                     </td>
                     <td className="py-3 pr-3">
                       <div className="text-sm">
-                        Источник:{" "}
+                        Source:{" "}
                         {lead.account?.title?.trim()
                           ? lead.account.title
                           : lead.account?.channelAccountId
                             ? lead.account.channelAccountId.slice(0, 8)
-                            : "неизвестен"}
+                            : "unknown"}
                       </div>
                       {lead.account ? (
                         <div className="mt-1 flex flex-wrap gap-1 text-xs">
                           {!lead.account.sendingEnabled ? (
-                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">Письма выкл.</span>
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">Sending off</span>
                           ) : null}
                           {!lead.account.parsingEnabled ? (
-                            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-slate-800">Парсинг выкл.</span>
+                            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-slate-800">Parsing off</span>
                           ) : null}
                           {String(lead.account.status).toUpperCase() !== "ACTIVE" ? (
                             <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-800">{lead.account.status}</span>
