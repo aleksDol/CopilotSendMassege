@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@/components/common/empty-state";
@@ -159,10 +159,10 @@ export function LeadDrawer({
       const text = (res?.text ?? "").trim();
       setComposerText(text || "");
       if (!text) {
-        setComposerError("Could not generate message draft");
+        setComposerError("Не удалось сгенерировать черновик сообщения");
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Could not generate message";
+      const msg = err instanceof Error ? err.message : "Не удалось сгенерировать сообщение";
       setComposerError(msg);
     }
   };
@@ -183,10 +183,10 @@ export function LeadDrawer({
     } catch (err) {
       if (isLeadRadarSendingSelectionError(err)) {
         setSendingChannelAccountId("");
-        setComposerError("Sending account unavailable. Pick another.");
+        setComposerError("Аккаунт отправки недоступен. Выберите другой.");
         return;
       }
-      const msg = err instanceof Error ? err.message : "Could not send message";
+      const msg = err instanceof Error ? err.message : "Не удалось отправить сообщение";
       setComposerError(msg);
     }
   };
@@ -213,53 +213,53 @@ export function LeadDrawer({
             onClick={async () => {
               if (!lead) return;
               const ok = window.confirm(
-                "Delete this lead from Inbox LeadRadar? This deletes the lead record and its context/history. This cannot be undone."
+                "Удалить этого лида из LeadRadar? Будут удалены запись лида и его контекст/история. Это действие нельзя отменить."
               );
               if (!ok) return;
               try {
                 await actions.removeLead.mutateAsync(lead.id);
                 onClose();
               } catch (err) {
-                const msg = err instanceof Error ? err.message : "Could not delete lead";
-                window.alert(`Delete failed: ${msg}`);
+                const msg = err instanceof Error ? err.message : "Не удалось удалить лида";
+                window.alert(`Ошибка удаления: ${msg}`);
               }
             }}
           >
-            Delete
+            Удалить
           </Button>
           <Button variant="outline" size="sm" onClick={onClose}>
-            Close
+            Закрыть
           </Button>
         </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {leadQuery.isLoading ? <LoadingState label="Loading lead\u2026" /> : null}
+        {leadQuery.isLoading ? <LoadingState label="Загрузка лида…" /> : null}
 
         {leadQuery.error ? (
           <EmptyState
-            title="Error"
-            description={leadQuery.error instanceof Error ? leadQuery.error.message : "Could not load lead"}
+            title="Ошибка"
+            description={leadQuery.error instanceof Error ? leadQuery.error.message : "Не удалось загрузить лида"}
           />
         ) : null}
 
         {!leadQuery.isLoading && !leadQuery.error && !lead ? (
-          <EmptyState title="Lead not found" description="It may have been deleted or is unavailable." />
+          <EmptyState title="Лид не найден" description="Лид был удален или недоступен." />
         ) : null}
 
         {lead ? (
           <div className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Overview</CardTitle>
+                <CardTitle>Обзор</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge className={statusBadgeClassName(lead.status)}>{lead.status}</Badge>
-                  <span className="text-muted-foreground">score:</span> <span className="font-medium">{lead.score}</span>
+                  <span className="text-muted-foreground">балл:</span> <span className="font-medium">{lead.score}</span>
                 </div>
                 <div>
-                  <div className="text-xs text-muted-foreground">Message</div>
+                  <div className="text-xs text-muted-foreground">Сообщение</div>
                   <div className="whitespace-pre-wrap rounded-md border border-border bg-muted/20 p-3">
                     {(lead.messageText ?? "").trim() || "\u2014"}
                   </div>
@@ -267,24 +267,24 @@ export function LeadDrawer({
                 {lead.sourceType === "channel_comments" ? (
                   <div className="grid gap-2 md:grid-cols-3">
                     <div>
-                      <div className="text-xs text-muted-foreground">Type</div>
+                      <div className="text-xs text-muted-foreground">Тип</div>
                       <div className="font-medium">
-                        <Badge variant="outline">Channel comment</Badge>
+                        <Badge variant="outline">Комментарий канала</Badge>
                       </div>
                     </div>
                     <div>
-                      <div className="text-xs text-muted-foreground">Post ID</div>
+                      <div className="text-xs text-muted-foreground">ID поста</div>
                       <div className="font-medium">{lead.relatedPostId ?? "\u2014"}</div>
                     </div>
                     <div>
-                      <div className="text-xs text-muted-foreground">Source type</div>
+                      <div className="text-xs text-muted-foreground">Тип источника</div>
                       <div className="font-medium">{lead.sourceType ?? "\u2014"}</div>
                     </div>
                   </div>
                 ) : null}
                 {lead.contextPreview?.trim() ? (
                   <div>
-                    <div className="text-xs text-muted-foreground">Context preview (post)</div>
+                    <div className="text-xs text-muted-foreground">Контекст (пост)</div>
                     <div className="whitespace-pre-wrap rounded-md border border-border bg-muted/20 p-3">
                       {lead.contextPreview}
                     </div>
@@ -300,24 +300,24 @@ export function LeadDrawer({
                     <div className="font-medium">{lead.telegramUserId ?? "\u2014"}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-muted-foreground">Created</div>
+                    <div className="text-xs text-muted-foreground">Создан</div>
                     <div className="font-medium">{formatDate(lead.createdAt)}</div>
                   </div>
                 </div>
                 <div className="rounded-md border border-border bg-muted/10 p-2">
-                  <div className="text-xs text-muted-foreground">Found via</div>
+                  <div className="text-xs text-muted-foreground">Найдено через</div>
                   <div className="font-medium">
                     {parsingAccount?.title?.trim()
                       ? parsingAccount.title
                       : parsingAccount?.channelAccountId
                         ? `Account ${parsingAccount.channelAccountId.slice(0, 8)}`
-                        : "unknown account"}
+                        : "неизвестный аккаунт"}
                   </div>
                   {parsingAccount ? (
                     <div className="text-xs text-muted-foreground">
                       {parsingAccount.status}
-                      {parsingAccount.isPrimary ? " \u00b7 Primary" : ""}
-                      {!parsingAccount.parsingEnabled ? " \u00b7 Parsing off" : ""}
+                      {parsingAccount.isPrimary ? " \u00b7 Основной" : ""}
+                      {!parsingAccount.parsingEnabled ? " \u00b7 Парсинг выкл." : ""}
                     </div>
                   ) : null}
                 </div>
@@ -331,11 +331,11 @@ export function LeadDrawer({
                         target="_blank"
                         rel="noreferrer"
                       >
-                        Open in Telegram
+                        Открыть в Telegram
                       </a>
                     ) : (
-                      <Button variant="outline" size="sm" disabled title="Missing username or Telegram ID">
-                        Open in Telegram
+                      <Button variant="outline" size="sm" disabled title="Не указан username или Telegram ID">
+                        Открыть в Telegram
                       </Button>
                     )}
 
@@ -343,26 +343,26 @@ export function LeadDrawer({
                       variant="secondary"
                       size="sm"
                       disabled={!lead || !canMessageLead || composerBusy}
-                      title={!canMessageLead ? "Missing username or Telegram ID" : undefined}
+                      title={!canMessageLead ? "Не указан username или Telegram ID" : undefined}
                       onClick={generateFirstMessage}
                     >
-                      Generate message
+                      Сгенерировать сообщение
                     </Button>
                   </div>
                 </div>
 
                 {composerOpen ? (
                   <div className="mt-2 space-y-2 rounded-md border border-border bg-muted/10 p-3">
-                    <div className="text-xs font-medium">First message</div>
+                    <div className="text-xs font-medium">Первое сообщение</div>
                     <Textarea
                       value={composerText}
                       onChange={(e) => setComposerText(e.target.value)}
-                      placeholder={"Message text\u2026"}
+                      placeholder={"Текст сообщения…"}
                       rows={4}
                       disabled={composerBusy}
                     />
                     <div className="space-y-1">
-                      <div className="text-xs text-muted-foreground">Send from account</div>
+                      <div className="text-xs text-muted-foreground">Отправить с аккаунта</div>
                       <Select
                         value={sendingChannelAccountId}
                         onChange={(e) => setSendingChannelAccountId(e.target.value)}
@@ -372,28 +372,28 @@ export function LeadDrawer({
                           label: [
                             account.displayName?.trim() ||
                               (account.username ? `@${account.username}` : `Account ${String(account.channelAccountId).slice(0, 8)}`),
-                            account.isPrimary ? "Primary" : null,
-                            "Outbound"
+                            account.isPrimary ? "Основной" : null,
+                            "Исходящие"
                           ]
                             .filter(Boolean)
                             .join(" \u00b7 ")
                         }))}
                       />
                       {!hasSendableAccount ? (
-                        <div className="text-xs text-destructive">No sending account available</div>
+                        <div className="text-xs text-destructive">Нет доступного аккаунта для отправки</div>
                       ) : null}
                       {composerOpen && parsingAccount && !isParsingAccountSendable && hasSendableAccount ? (
                         <div className="text-xs text-amber-700">
-                          The account that matched this lead cannot send messages. Pick another sending account.
+                          Аккаунт, который нашел этот лид, не может отправлять сообщения. Выберите другой аккаунт отправки.
                         </div>
                       ) : null}
                     </div>
-                    {genPending ? <div className="text-xs text-muted-foreground">Generating\u2026</div> : null}
-                    {sendPending ? <div className="text-xs text-muted-foreground">Sending\u2026</div> : null}
+                    {genPending ? <div className="text-xs text-muted-foreground">Генерация…</div> : null}
+                    {sendPending ? <div className="text-xs text-muted-foreground">Отправка…</div> : null}
                     {composerError ? <div className="text-xs text-destructive">{composerError}</div> : null}
                     {composerSentAt ? (
                       <div className="text-xs text-emerald-700 dark:text-emerald-400">
-                        {`\u2713 Sent \u00b7 ${formatDate(composerSentAt.toISOString())}`}
+                        {`\u2713 Отправлено \u00b7 ${formatDate(composerSentAt.toISOString())}`}
                       </div>
                     ) : null}
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -401,10 +401,10 @@ export function LeadDrawer({
                         <Button
                           size="sm"
                           disabled={!composerText.trim() || !canMessageLead || composerBusy || !hasSendableAccount}
-                          title={!canMessageLead ? "Missing username or Telegram ID to send" : undefined}
+                          title={!canMessageLead ? "Не указан username или Telegram ID для отправки" : undefined}
                           onClick={sendFirstMessage}
                         >
-                          Send
+                          Отправить
                         </Button>
                         <Button
                           variant="secondary"
@@ -412,7 +412,7 @@ export function LeadDrawer({
                           disabled={composerBusy}
                           onClick={generateFirstMessage}
                         >
-                          Regenerate
+                          Перегенерировать
                         </Button>
                       </div>
                       <Button
@@ -425,7 +425,7 @@ export function LeadDrawer({
                           setComposerSentAt(null);
                         }}
                       >
-                        Cancel
+                        Отмена
                       </Button>
                     </div>
                   </div>
@@ -435,7 +435,7 @@ export function LeadDrawer({
 
             <Card>
               <CardHeader>
-                <CardTitle>Status</CardTitle>
+                <CardTitle>Статус</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-wrap items-center gap-2">
                 <Select
@@ -452,7 +452,7 @@ export function LeadDrawer({
                   disabled={actions.updateLeadStatus.isPending}
                   onClick={() => actions.updateLeadStatus.mutateAsync({ leadId: lead.id, status: "hot" })}
                 >
-                  Mark hot
+                  Горячий
                 </Button>
                 <Button
                   variant="secondary"
@@ -460,7 +460,7 @@ export function LeadDrawer({
                   disabled={actions.updateLeadStatus.isPending}
                   onClick={() => actions.updateLeadStatus.mutateAsync({ leadId: lead.id, status: "contacted" })}
                 >
-                  Contacted
+                  Связались
                 </Button>
                 <Button
                   variant="outline"
@@ -468,14 +468,14 @@ export function LeadDrawer({
                   disabled={actions.updateLeadStatus.isPending}
                   onClick={() => actions.updateLeadStatus.mutateAsync({ leadId: lead.id, status: "ignored" })}
                 >
-                  Ignore
+                  Игнор
                 </Button>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Notes</CardTitle>
+                <CardTitle>Заметки</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 <Textarea
@@ -484,7 +484,7 @@ export function LeadDrawer({
                     setNotes(e.target.value);
                     setNotesDirty(true);
                   }}
-                  placeholder={"Notes about this lead\u2026"}
+                  placeholder={"Заметки по этому лиду…"}
                 />
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-xs text-muted-foreground">
@@ -498,7 +498,7 @@ export function LeadDrawer({
                       setNotesDirty(false);
                     }}
                   >
-                    Save
+                    Сохранить
                   </Button>
                 </div>
               </CardContent>
@@ -506,11 +506,11 @@ export function LeadDrawer({
 
             <Card>
               <CardHeader>
-                <CardTitle>Context</CardTitle>
+                <CardTitle>Контекст</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <div>
-                  <div className="mb-1 text-xs text-muted-foreground">Before</div>
+                  <div className="mb-1 text-xs text-muted-foreground">До</div>
                   <div className="space-y-1">
                     {(context?.beforeMessages ?? []).length === 0 ? (
                       <div className="text-muted-foreground">{"\u2014"}</div>
@@ -525,7 +525,7 @@ export function LeadDrawer({
                   </div>
                 </div>
                 <div>
-                  <div className="mb-1 text-xs text-muted-foreground">After</div>
+                  <div className="mb-1 text-xs text-muted-foreground">После</div>
                   <div className="space-y-1">
                     {(context?.afterMessages ?? []).length === 0 ? (
                       <div className="text-muted-foreground">{"\u2014"}</div>
@@ -544,7 +544,7 @@ export function LeadDrawer({
 
             <Card>
               <CardHeader>
-                <CardTitle>History</CardTitle>
+                <CardTitle>История</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 {events.length === 0 ? (
@@ -569,6 +569,3 @@ export function LeadDrawer({
     </aside>
   );
 }
-
-
-

@@ -292,10 +292,13 @@ async def internal_sync(payload: SyncRequest) -> dict:
 
 @app.post("/internal/telegram/send-message", dependencies=[Depends(verify_internal_token)])
 async def internal_send_message(payload: SendMessageRequest) -> dict:
+    source = (payload.source or "chat").strip().lower() or "chat"
     logger.info(
-        "send-message requested for company=%s channelAccount=%s conversation=%s",
+        "send-message requested for company=%s channelAccount=%s source=%s recipientType=%s conversation=%s",
         payload.company_id,
         payload.channel_account_id,
+        source,
+        "numeric_id" if payload.external_conversation_id.lstrip("-").isdigit() else "username_or_alias",
         payload.external_conversation_id,
     )
     async with concurrency_limiter:
@@ -304,12 +307,14 @@ async def internal_send_message(payload: SendMessageRequest) -> dict:
                 company_id=payload.company_id,
                 channel_account_id=payload.channel_account_id,
                 external_conversation_id=payload.external_conversation_id,
+                source=source,
                 send_coro_factory=lambda: send_message(
                     company_id=payload.company_id,
                     channel_account_id=payload.channel_account_id,
                     external_conversation_id=payload.external_conversation_id,
                     text=payload.text,
                     crypto=crypto,
+                    source=source,
                 ),
             )
         except WorkerError:

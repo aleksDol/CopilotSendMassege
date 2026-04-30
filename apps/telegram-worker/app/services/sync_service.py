@@ -813,6 +813,7 @@ async def send_message(
     external_conversation_id: str,
     text: str,
     crypto: SessionCrypto,
+    source: str = "chat",
 ) -> dict[str, Any]:
     peer = _parse_peer_id(external_conversation_id)
 
@@ -835,6 +836,14 @@ async def send_message(
                 raise WorkerError("RECONNECT_REQUIRED", "Telegram session expired, reconnect required", 400)
 
             me = await client.get_me()
+            logger.info(
+                "send-message execute company=%s channelAccount=%s telegramAccountId=%s source=%s recipientType=%s",
+                company_id,
+                channel_account_id,
+                str(account["telegramAccountId"]),
+                source,
+                "numeric_id" if str(external_conversation_id).lstrip("-").isdigit() else "username_or_alias",
+            )
             # Resolve to InputPeer; for bare IDs Telethon only looks in cache, so we may need to fill cache via get_dialogs first
             try:
                 input_entity = await client.get_input_entity(peer)

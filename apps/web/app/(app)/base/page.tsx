@@ -14,16 +14,16 @@ import { ApiError } from "@/lib/api/errors";
 import type { CrmLeadListItem } from "@/lib/api/types";
 
 const STAGE_OPTIONS: Array<{ label: string; value: string }> = [
-  { label: "All", value: "all" },
-  { label: "New", value: "NEW" },
-  { label: "Contacted", value: "CONTACTED" },
-  { label: "Replied", value: "REPLIED" },
-  { label: "Ignored", value: "IGNORED" },
-  { label: "Qualified", value: "QUALIFIED" },
-  { label: "Proposal", value: "PROPOSAL" },
-  { label: "Negotiation", value: "NEGOTIATION" },
-  { label: "Won", value: "WON" },
-  { label: "Lost", value: "LOST" }
+  { label: "Все", value: "all" },
+  { label: "Новый", value: "NEW" },
+  { label: "Связались", value: "CONTACTED" },
+  { label: "Ответили", value: "REPLIED" },
+  { label: "Игнор", value: "IGNORED" },
+  { label: "Квалифицирован", value: "QUALIFIED" },
+  { label: "Предложение", value: "PROPOSAL" },
+  { label: "Переговоры", value: "NEGOTIATION" },
+  { label: "Успешно", value: "WON" },
+  { label: "Потерян", value: "LOST" }
 ];
 
 const stageChipClassName = (stage: string): string => {
@@ -110,7 +110,7 @@ export default function BasePage() {
 
   const stageOptionsNoAll = useMemo(() => STAGE_OPTIONS.filter((o) => o.value !== "all"), []);
   const accountFilterOptions = useMemo(() => {
-    const base = [{ label: "All accounts", value: "all" }];
+    const base = [{ label: "Все аккаунты", value: "all" }];
     const extra =
       telegramAccounts.data?.items
         ?.filter((a): a is { channelAccountId: string; displayName?: string | null } => Boolean(a.channelAccountId))
@@ -132,7 +132,7 @@ export default function BasePage() {
   });
 
   if (leads.isLoading) {
-    return <LoadingState label="Loading leads..." />;
+    return <LoadingState label="Загрузка лидов..." />;
   }
 
   if (leads.error) {
@@ -142,14 +142,14 @@ export default function BasePage() {
         : leads.error instanceof Error
           ? leads.error.message
           : "Failed to load";
-    return <EmptyState title="Failed to load" description={msg} />;
+    return <EmptyState title="Не удалось загрузить" description={msg} />;
   }
 
   return (
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>CRM Base</CardTitle>
+          <CardTitle>CRM база</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="w-full sm:w-[220px]">
@@ -171,34 +171,34 @@ export default function BasePage() {
           <input
             value={filters.search}
             onChange={(e) => handleFilterChange({ search: e.target.value })}
-            placeholder="Search by name / externalConversationId"
+            placeholder="Поиск по имени / ID диалога"
             className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
           />
           <div className="text-sm text-muted-foreground sm:ml-auto">
-            {items.length} pcs{hasMore ? "+" : ""}
+            {items.length} шт.{hasMore ? "+" : ""}
           </div>
         </CardContent>
       </Card>
 
       {items.length === 0 ? (
-        <EmptyState title="No leads yet" description="Leads will appear after inbound/outbound message activity." />
+        <EmptyState title="Пока нет лидов" description="Лиды появятся после входящей/исходящей активности в сообщениях." />
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>Leads</CardTitle>
+            <CardTitle>Лиды</CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-auto">
             <table className="w-full min-w-[1200px] text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-muted-foreground">
-                  <th className="py-2 pr-3">Client</th>
-                  <th className="py-2 pr-3">Source</th>
-                  <th className="py-2 pr-3">Account</th>
-                  <th className="py-2 pr-3 w-[220px]">Stage</th>
-                  <th className="py-2 pr-3">Status</th>
-                  <th className="py-2 pr-3">Activity</th>
-                  <th className="py-2 pr-3">Created</th>
-                  <th className="py-2 pr-3">Actions</th>
+                  <th className="py-2 pr-3">Клиент</th>
+                  <th className="py-2 pr-3">Источник</th>
+                  <th className="py-2 pr-3">Аккаунт</th>
+                  <th className="py-2 pr-3 w-[220px]">Этап</th>
+                  <th className="py-2 pr-3">Статус</th>
+                  <th className="py-2 pr-3">Активность</th>
+                  <th className="py-2 pr-3">Создан</th>
+                  <th className="py-2 pr-3">Действия</th>
                 </tr>
               </thead>
               <tbody>
@@ -216,7 +216,7 @@ export default function BasePage() {
                     </td>
                     <td className="py-3 pr-3">
                       <div className="text-sm">
-                        Source:{" "}
+                        Источник:{" "}
                         {lead.account?.title?.trim()
                           ? lead.account.title
                           : lead.account?.channelAccountId
@@ -226,10 +226,10 @@ export default function BasePage() {
                       {lead.account ? (
                         <div className="mt-1 flex flex-wrap gap-1 text-xs">
                           {!lead.account.sendingEnabled ? (
-                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">Sending off</span>
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">Отправка выкл.</span>
                           ) : null}
                           {!lead.account.parsingEnabled ? (
-                            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-slate-800">Parsing off</span>
+                            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-slate-800">Парсинг выкл.</span>
                           ) : null}
                           {String(lead.account.status).toUpperCase() !== "ACTIVE" ? (
                             <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-800">{lead.account.status}</span>
@@ -260,7 +260,7 @@ export default function BasePage() {
                         href={`/chats?conversationId=${encodeURIComponent(lead.conversationId)}`}
                         className="rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
                       >
-                        Open chat
+                        Открыть чат
                       </Link>
                     </td>
                   </tr>
@@ -275,7 +275,7 @@ export default function BasePage() {
                 disabled={isLoadingMore}
                 className="rounded-md border border-border bg-background px-5 py-2 text-sm hover:bg-muted disabled:opacity-50"
               >
-                {isLoadingMore ? "Loading..." : "Load more"}
+                {isLoadingMore ? "Загрузка..." : "Показать еще"}
               </button>
             </div>
           )}
@@ -284,7 +284,5 @@ export default function BasePage() {
     </div>
   );
 }
-
-
 
 

@@ -6,6 +6,7 @@ import { ensureInternalToken } from "../../../lib/internal-auth.js";
 import { getCompanyScope } from "../../../lib/request-context.js";
 import { TelegramWorkerClient } from "../../../lib/telegram-worker-client.js";
 import { parseWithSchema } from "../../../lib/validation.js";
+import { remapTelegramSendError } from "../../../lib/telegram-send-errors.js";
 import { invalidateConversationCaches } from "../../conversations/service.js";
 import { LeadRadarOutreachService } from "../../ai/leadradar-outreach-service.js";
 import { LeadStatus } from "../domain/enums/lead-status.js";
@@ -896,18 +897,35 @@ const leadradarController: FastifyPluginAsync = async (app) => {
         leadTelegramAccountId: lead.telegram_account_id,
         preferredChannelAccountId: body.channelAccountId
       });
+      const sendingTelegramAccount = await app.prisma.telegramAccount.findFirst({
+        where: { channelAccountId },
+        select: { id: true },
+      });
       const worker = new TelegramWorkerClient(
         app.config.env.TELEGRAM_WORKER_URL,
         app.config.env.INTERNAL_API_TOKEN,
         app.config.env.TELEGRAM_WORKER_TIMEOUT_MS
       );
 
+      app.log.info(
+        {
+          companyId: scope.companyId,
+          source: "leadradar",
+          parsingTelegramAccountId: telegram_account_id,
+          selectedSendingChannelAccountId: channelAccountId,
+          selectedSendingTelegramAccountId: sendingTelegramAccount?.id ?? null,
+          recipientType: externalConversationId.replace(/^-/, "").match(/^\d+$/) ? "numeric_id" : "username_or_alias"
+        },
+        "LeadRadar send-message dispatch"
+      );
+
       const response = await worker.sendMessage({
         companyId: scope.companyId,
         channelAccountId,
         externalConversationId,
-        text: body.text
-      });
+        text: body.text,
+        source: "leadradar"
+      }).catch((error) => remapTelegramSendError(error));
 
       // Status update happens ONLY after successful send.
       const updated = await repo.updateStatus({

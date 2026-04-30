@@ -2,6 +2,7 @@ import { ChannelAccountStatus, ChannelType } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { decodeMessageCursor, encodeMessageCursor } from "../../lib/cursor.js";
 import { AppError } from "../../lib/errors.js";
+import { remapTelegramSendError } from "../../lib/telegram-send-errors.js";
 import { invalidateConversationCaches } from "../conversations/service.js";
 import { buildSupportedConversationWhere } from "../conversations/support.js";
 import { TelegramWorkerClient } from "../../lib/telegram-worker-client.js";
@@ -192,12 +193,25 @@ export const sendConversationMessage = async (
   }
 
   const worker = getWorkerClient(app);
+  app.log.info(
+    {
+      companyId: params.companyId,
+      source: "chat",
+      channelAccountId: conversation.channelAccountId,
+      telegramAccountId: conversation.channelAccount.telegram.id,
+      recipientType: conversation.externalConversationId.replace(/^-/, "").match(/^\d+$/)
+        ? "numeric_id"
+        : "username_or_alias",
+    },
+    "Chat send-message dispatch"
+  );
   const response = await worker.sendMessage({
     companyId: params.companyId,
     channelAccountId: conversation.channelAccountId,
     externalConversationId: conversation.externalConversationId,
-    text: params.text
-  });
+    text: params.text,
+    source: "chat"
+  }).catch((error) => remapTelegramSendError(error));
 
   await invalidateConversationCaches(app, params.companyId);
 

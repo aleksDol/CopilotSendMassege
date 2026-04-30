@@ -29,6 +29,7 @@ class AccountSafetyState:
     new_conversation_timestamps: deque[datetime] = field(default_factory=deque)
     recent_error_timestamps: deque[datetime] = field(default_factory=deque)
     safety_mode_until: datetime | None = None
+    telegram_flood_until: datetime | None = None
     last_send_at: datetime | None = None
     last_sync_at: datetime | None = None
 
@@ -135,6 +136,7 @@ class TelegramSafetyService:
         company_id: str,
         channel_account_id: str,
         external_conversation_id: str,
+        source: str = "chat",
         send_coro_factory: Callable[[], Awaitable[dict[str, Any]]],
     ) -> dict[str, Any]:
         state = await self._state(channel_account_id)
@@ -144,11 +146,57 @@ class TelegramSafetyService:
             queue_wait_ms = int((_now() - queue_started).total_seconds() * 1000)
             now = _now()
 
+            # Clear expired Telegram flood-wait guard so attempts can reach Telethon again.
+            if state.telegram_flood_until and now >= state.telegram_flood_until:
+                logger.info(
+                    "telegram flood-wait expired company=%s channelAccount=%s source=%s limiterSource=telegram_flood_wait",
+                    company_id,
+                    channel_account_id,
+                    source,
+                )
+                state.telegram_flood_until = None
+
+            # If we still have active flood-wait window for this account, block early.
+            if state.telegram_flood_until and now < state.telegram_flood_until:
+                retry_after = max(1, int((state.telegram_flood_until - now).total_seconds()))
+                logger.warning(
+                    "telegram flood-wait active company=%s channelAccount=%s source=%s retryAfterSeconds=%s limiterSource=telegram_flood_wait",
+                    company_id,
+                    channel_account_id,
+                    source,
+                    retry_after,
+                )
+                raise WorkerError(
+                    "TELEGRAM_LIMITED",
+                    f"Telegram rate limited. Retry in {retry_after} seconds.",
+                    429,
+                    details={"retryAfterSeconds": retry_after, "limiterSource": "telegram_flood_wait"},
+                )
+
+            # Clear expired safety-mode guard to prevent stale internal limiter bans.
+            if state.safety_mode_until and now >= state.safety_mode_until:
+                logger.info(
+                    "safety mode expired company=%s channelAccount=%s source=%s limiterSource=internal_limiter",
+                    company_id,
+                    channel_account_id,
+                    source,
+                )
+                state.safety_mode_until = None
+
             if state.safety_mode_until and state.safety_mode_until > now:
+                retry_after = max(1, int((state.safety_mode_until - now).total_seconds()))
+                logger.warning(
+                    "safety mode active company=%s channelAccount=%s source=%s retryAfterSeconds=%s limiterSource=internal_limiter",
+                    company_id,
+                    channel_account_id,
+                    source,
+                    retry_after,
+                )
                 raise WorkerError(
                     "SAFETY_MODE_ACTIVE",
                     "Safety mode is temporarily enabled for this account. Please try again later.",
                     429,
+                    details={"retryAfterSeconds": retry_after, "limiterSource": "internal_limiter"},
                 )
 
             self._trim_window(state.send_timestamps, now - timedelta(minutes=5))
@@ -166,7 +214,7 @@ class TelegramSafetyService:
                     "SEND_RATE_LIMIT_PER_MINUTE",
                     "Send rate limit reached. Try again shortly.",
                     429,
-                    details={"retryAfterSeconds": retry_after},
+                    details={"retryAfterSeconds": retry_after, "limiterSource": "internal_limiter"},
                 )
             if per_five_minutes >= max(1, settings.telegram_max_sends_per_5_minutes):
                 window = now - timedelta(minutes=5)
@@ -176,7 +224,7 @@ class TelegramSafetyService:
                     "SEND_RATE_LIMIT_PER_5_MINUTES",
                     "Send limit reached for recent window. Try later.",
                     429,
-                    details={"retryAfterSeconds": retry_after},
+                    details={"retryAfterSeconds": retry_after, "limiterSource": "internal_limiter"},
                 )
 
             # Conservative cap only for outbound-first/new dialogue behavior.
@@ -191,7 +239,7 @@ class TelegramSafetyService:
                     "NEW_CONVERSATION_RATE_LIMIT",
                     "Too many new outgoing conversations in a short period. Please slow down.",
                     429,
-                    details={"retryAfterSeconds": retry_after},
+                    details={"retryAfterSeconds": retry_after, "limiterSource": "internal_limiter"},
                 )
 
             if state.last_send_at:
@@ -215,10 +263,14 @@ class TelegramSafetyService:
                     state.last_send_at = _now()
                     state.send_timestamps.append(state.last_send_at)
                     state.recent_error_timestamps.clear()
+                    # Successful delivery means there is no active limiter ban for this account.
+                    state.safety_mode_until = None
+                    state.telegram_flood_until = None
                     logger.info(
-                        "send job executed company=%s channelAccount=%s queued=%s queueWaitMs=%s attempt=%s",
+                        "send job executed company=%s channelAccount=%s source=%s queued=%s queueWaitMs=%s attempt=%s",
                         company_id,
                         channel_account_id,
+                        source,
                         int(was_queued),
                         queue_wait_ms,
                         attempt,
@@ -233,12 +285,14 @@ class TelegramSafetyService:
                 except Exception as exc:
                     category = TelegramErrorClassifier.classify(exc)
                     logger.warning(
-                        "telegram send error company=%s channelAccount=%s conversation=%s category=%s attempt=%s err=%s",
+                        "telegram send error company=%s channelAccount=%s source=%s conversation=%s category=%s attempt=%s errorClass=%s err=%s",
                         company_id,
                         channel_account_id,
+                        source,
                         external_conversation_id,
                         category,
                         attempt,
+                        exc.__class__.__name__,
                         exc,
                     )
 
@@ -264,11 +318,21 @@ class TelegramSafetyService:
                         raise WorkerError("RECONNECT_REQUIRED", "Telegram session expired, reconnect required", 400) from exc
                     if category == "throttling":
                         if isinstance(exc, FloodWaitError):
+                            retry_after = max(1, int(exc.seconds))
+                            state.telegram_flood_until = _now() + timedelta(seconds=retry_after)
+                            logger.warning(
+                                "telegram flood-wait company=%s channelAccount=%s source=%s conversation=%s retryAfterSeconds=%s limiterSource=telegram_flood_wait",
+                                company_id,
+                                channel_account_id,
+                                source,
+                                external_conversation_id,
+                                retry_after,
+                            )
                             raise WorkerError(
                                 "TELEGRAM_LIMITED",
-                                f"Telegram rate limited. Retry in {max(1, int(exc.seconds))} seconds.",
+                                f"Telegram rate limited. Retry in {retry_after} seconds.",
                                 429,
-                                details={"retryAfterSeconds": max(1, int(exc.seconds))},
+                                details={"retryAfterSeconds": retry_after, "limiterSource": "telegram_flood_wait"},
                             ) from exc
                         raise WorkerError(
                             "TELEGRAM_THROTTLED",
