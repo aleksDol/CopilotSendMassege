@@ -384,13 +384,17 @@ export default function ChatsPage() {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to send message";
       if (err instanceof ApiError) {
-        if (err.code === "SEND_RATE_LIMIT_PER_MINUTE" || err.code === "SEND_RATE_LIMIT_PER_5_MINUTES") {
+        const details = (err.details ?? {}) as { upstreamCode?: string };
+        const effectiveCode = err.code === "TELEGRAM_SEND_RATE_LIMITED" ? details.upstreamCode ?? err.code : err.code;
+        if (effectiveCode === "SEND_RATE_LIMIT_PER_MINUTE" || effectiveCode === "SEND_RATE_LIMIT_PER_5_MINUTES") {
           setSendInfo("Safety rate limit is active for this account.");
-        } else if (err.code === "NEW_CONVERSATION_RATE_LIMIT") {
+        } else if (effectiveCode === "NEW_CONVERSATION_RATE_LIMIT") {
           setSendInfo("New-conversation safety limit reached. Try later.");
-        } else if (err.code === "SAFETY_MODE_ACTIVE") {
+        } else if (effectiveCode === "SAFETY_MODE_ACTIVE") {
           setSendInfo("Safety mode is temporarily enabled for this account.");
-        } else if (err.code === "TELEGRAM_THROTTLED") {
+        } else if (effectiveCode === "TELEGRAM_THROTTLED" || effectiveCode === "TELEGRAM_LIMITED") {
+          setSendInfo("Telegram temporary restriction detected. Please wait.");
+        } else if (err.code === "TELEGRAM_SEND_RATE_LIMITED") {
           setSendInfo("Telegram temporary restriction detected. Please wait.");
         } else {
           setSendInfo(null);

@@ -76,6 +76,24 @@ async def _has_outbound_history(channel_account_id: str, external_conversation_i
             return bool(await cur.fetchone())
 
 
+async def _has_inbound_history(channel_account_id: str, external_conversation_id: str) -> bool:
+    async with get_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT 1
+                FROM "Message" m
+                JOIN "Conversation" c ON c."id" = m."conversationId"
+                WHERE c."channelAccountId" = %s
+                  AND c."externalConversationId" = %s
+                  AND m."direction" = 'INBOUND'
+                LIMIT 1
+                """,
+                (channel_account_id, external_conversation_id),
+            )
+            return bool(await cur.fetchone())
+
+
 class TelegramSafetyService:
     def __init__(self) -> None:
         self._states: dict[str, AccountSafetyState] = {}
@@ -227,20 +245,26 @@ class TelegramSafetyService:
                     details={"retryAfterSeconds": retry_after, "limiterSource": "internal_limiter"},
                 )
 
-            # Conservative cap only for outbound-first/new dialogue behavior.
+            # Conservative cap only for truly outbound-first dialogs.
+            # If there is inbound history in this chat, sending is a reply and should not
+            # be blocked by "new conversation" limits.
+            should_count_as_new_conversation = False
             has_outbound_history = await _has_outbound_history(channel_account_id, external_conversation_id)
             if not has_outbound_history:
-                state.new_conversation_timestamps.append(now)
-            if len(state.new_conversation_timestamps) > max(1, settings.telegram_max_new_conversations_per_hour):
-                window = now - timedelta(hours=1)
-                oldest = min((ts for ts in state.new_conversation_timestamps if ts >= window), default=now)
-                retry_after = max(60, 3600 - int((now - oldest).total_seconds()))
-                raise WorkerError(
-                    "NEW_CONVERSATION_RATE_LIMIT",
-                    "Too many new outgoing conversations in a short period. Please slow down.",
-                    429,
-                    details={"retryAfterSeconds": retry_after, "limiterSource": "internal_limiter"},
-                )
+                has_inbound_history = await _has_inbound_history(channel_account_id, external_conversation_id)
+                if not has_inbound_history:
+                    should_count_as_new_conversation = True
+                    projected_count = len(state.new_conversation_timestamps) + 1
+                    if projected_count > max(1, settings.telegram_max_new_conversations_per_hour):
+                        window = now - timedelta(hours=1)
+                        oldest = min((ts for ts in state.new_conversation_timestamps if ts >= window), default=now)
+                        retry_after = max(60, 3600 - int((now - oldest).total_seconds()))
+                        raise WorkerError(
+                            "NEW_CONVERSATION_RATE_LIMIT",
+                            "Too many new outgoing conversations in a short period. Please slow down.",
+                            429,
+                            details={"retryAfterSeconds": retry_after, "limiterSource": "internal_limiter"},
+                        )
 
             if state.last_send_at:
                 min_interval_ms = max(250, settings.telegram_min_send_interval_ms)
@@ -262,6 +286,8 @@ class TelegramSafetyService:
                     response = await send_coro_factory()
                     state.last_send_at = _now()
                     state.send_timestamps.append(state.last_send_at)
+                    if should_count_as_new_conversation:
+                        state.new_conversation_timestamps.append(state.last_send_at)
                     state.recent_error_timestamps.clear()
                     # Successful delivery means there is no active limiter ban for this account.
                     state.safety_mode_until = None
