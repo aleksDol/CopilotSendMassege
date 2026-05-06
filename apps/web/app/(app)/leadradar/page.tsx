@@ -461,16 +461,34 @@ function secondaryId(lead: LeadRadarLeadItem): string | null {
 }
 
 function firstMatchEvidence(lead: LeadRadarLeadItem) {
-  const payload = lead.matchedKeywords;
-  if (!payload?.matched) return null;
-  const firstEvidence = payload.evidence?.[0];
-  const firstKeyword = firstEvidence?.keyword ?? payload.matchedKeywords?.[0] ?? null;
-  const field = firstEvidence?.matchedField ?? null;
-  return {
-    keyword: firstKeyword,
-    field,
-    suspicious: !firstKeyword || field !== "messageText"
-  };
+  try {
+    const payload = lead.matchedKeywords as unknown;
+    if (!payload || typeof payload !== "object") return null;
+    const rec = payload as {
+      matched?: unknown;
+      matchedKeywords?: unknown;
+      evidence?: unknown;
+    };
+    if (rec.matched !== true) return null;
+    const keywords = Array.isArray(rec.matchedKeywords) ? rec.matchedKeywords : [];
+    const evidence = Array.isArray(rec.evidence) ? rec.evidence : [];
+    const firstEvidence = evidence[0] as { keyword?: unknown; matchedField?: unknown } | undefined;
+    const firstKeywordFromEvidence = typeof firstEvidence?.keyword === "string" ? firstEvidence.keyword : null;
+    const firstKeywordFromList = typeof keywords[0] === "string" ? keywords[0] : null;
+    const fieldRaw = firstEvidence?.matchedField;
+    const field =
+      fieldRaw === "messageText" || fieldRaw === "profile" || fieldRaw === "chatTitle" || fieldRaw === "contextPreview"
+        ? fieldRaw
+        : null;
+    const keyword = firstKeywordFromEvidence ?? firstKeywordFromList;
+    return {
+      keyword,
+      field,
+      suspicious: !keyword || field !== "messageText"
+    };
+  } catch {
+    return null;
+  }
 }
 
 
@@ -1218,4 +1236,3 @@ export default function LeadRadarInboxPage() {
   );
 
 }
-
