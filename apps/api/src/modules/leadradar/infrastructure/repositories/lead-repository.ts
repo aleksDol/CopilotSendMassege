@@ -28,6 +28,12 @@ export interface LeadRepository {
     telegram_user_id: string;
     since: Date;
   }): Promise<boolean>;
+  findRecentNewLeadByTelegramUser(input: {
+    user_id: string;
+    telegram_account_id: string;
+    telegram_user_id: string;
+    since: Date;
+  }): Promise<Lead | null>;
 
   findRecentLeadForMultiChatMerge(input: FindRecentLeadMultiChatInput): Promise<Lead | null>;
 

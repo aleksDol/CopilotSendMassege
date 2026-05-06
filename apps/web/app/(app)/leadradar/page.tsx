@@ -460,6 +460,19 @@ function secondaryId(lead: LeadRadarLeadItem): string | null {
 
 }
 
+function firstMatchEvidence(lead: LeadRadarLeadItem) {
+  const payload = lead.matchedKeywords;
+  if (!payload?.matched) return null;
+  const firstEvidence = payload.evidence?.[0];
+  const firstKeyword = firstEvidence?.keyword ?? payload.matchedKeywords?.[0] ?? null;
+  const field = firstEvidence?.matchedField ?? null;
+  return {
+    keyword: firstKeyword,
+    field,
+    suspicious: !firstKeyword || field !== "messageText"
+  };
+}
+
 
 
 export default function LeadRadarInboxPage() {
@@ -1002,6 +1015,28 @@ export default function LeadRadarInboxPage() {
 
                     <div className="max-w-[420px] whitespace-pre-wrap text-foreground/90">{truncate(lead.messageText, 160) || "—"}</div>
 
+                    {firstMatchEvidence(lead)?.keyword ? (
+
+                      <div className="pt-1 text-xs text-muted-foreground">Совпадение: {firstMatchEvidence(lead)?.keyword}</div>
+
+                    ) : null}
+
+                    {firstMatchEvidence(lead)?.field ? (
+
+                      <div className="text-xs text-muted-foreground">
+
+                        Поле: {firstMatchEvidence(lead)?.field === "messageText" ? "сообщение" : firstMatchEvidence(lead)?.field}
+
+                      </div>
+
+                    ) : null}
+
+                    {firstMatchEvidence(lead)?.suspicious ? (
+
+                      <div className="text-xs text-amber-700">suspicious match</div>
+
+                    ) : null}
+
                     {isAuthorProfileLead(lead) ? (
 
                       <div className="pt-1 text-xs text-muted-foreground">
@@ -1183,6 +1218,4 @@ export default function LeadRadarInboxPage() {
   );
 
 }
-
-
 

@@ -393,6 +393,25 @@ export class PrismaLeadRepository implements LeadRepository {
     return Boolean(row?.id);
   }
 
+  async findRecentNewLeadByTelegramUser(input: {
+    user_id: string;
+    telegram_account_id: string;
+    telegram_user_id: string;
+    since: Date;
+  }): Promise<Lead | null> {
+    const row = await this.prisma.leadRadarLead.findFirst({
+      where: {
+        userId: input.user_id,
+        telegramAccountId: input.telegram_account_id,
+        telegramUserId: input.telegram_user_id,
+        status: "new",
+        OR: [{ createdAt: { gte: input.since } }, { lastSeenAt: { gte: input.since } }]
+      },
+      orderBy: [{ lastSeenAt: "desc" }, { createdAt: "desc" }]
+    });
+    return row ? leadRadarMappers.lead(row) : null;
+  }
+
   async findRecentLeadForMultiChatMerge(input: FindRecentLeadMultiChatInput): Promise<Lead | null> {
     const base = {
       userId: input.user_id,

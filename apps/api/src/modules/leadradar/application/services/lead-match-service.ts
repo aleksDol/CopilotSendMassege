@@ -3,6 +3,14 @@ import type { LeadRadarMessageInput } from "../../types/ingestion.js";
 import { normalizeLeadRadarText } from "../../lib/text-normalization.js";
 import { LeadKeywordTarget } from "../../domain/enums/lead-keyword-target.js";
 
+type LeadMatchEvidence = {
+  keyword: string;
+  matchType: string;
+  matchedField: "messageText";
+  matchedFragment: string | null;
+  reason: string | null;
+};
+
 export type LeadRadarMatchOutput =
   | {
       matched: false;
@@ -14,9 +22,10 @@ export type LeadRadarMatchOutput =
         negative_keyword_matches: string[];
         positive_keyword_matches: string[];
         positive_keyword_matches_detailed: Array<{ keyword: string; match_type: string; matched_against: "normalized_text" | "raw_text" }>;
+        evidence: LeadMatchEvidence[];
       };
     }
-  | { matched: true; matchedKeywords: string[]; categories: string[] };
+  | { matched: true; matchedKeywords: string[]; categories: string[]; evidence: LeadMatchEvidence[] };
 
 export class LeadMatchService {
   constructor(private readonly deps: { keywordRepo: LeadKeywordRepository }) {}
@@ -49,7 +58,8 @@ export class LeadMatchService {
           normalized_text,
           negative_keyword_matches,
           positive_keyword_matches: [],
-          positive_keyword_matches_detailed: []
+          positive_keyword_matches_detailed: [],
+          evidence: []
         }
       };
     }
@@ -61,6 +71,7 @@ export class LeadMatchService {
       match_type: string;
       matched_against: "normalized_text" | "raw_text";
     }> = [];
+    const evidence: LeadMatchEvidence[] = [];
 
     const positiveActive = positive.filter(
       (k) => k.is_active && (!k.target || k.target === LeadKeywordTarget.MESSAGE)
@@ -91,6 +102,13 @@ export class LeadMatchService {
           match_type: String(kw.match_type),
           matched_against: kw.match_type === "regex" ? "raw_text" : "normalized_text"
         });
+        evidence.push({
+          keyword: rule,
+          matchType: String(kw.match_type),
+          matchedField: "messageText",
+          matchedFragment: (input.text ?? "").slice(0, 180) || null,
+          reason: null
+        });
       }
     }
 
@@ -104,11 +122,12 @@ export class LeadMatchService {
           normalized_text,
           negative_keyword_matches: [],
           positive_keyword_matches: [],
-          positive_keyword_matches_detailed
+          positive_keyword_matches_detailed,
+          evidence
         }
       };
     }
 
-    return { matched: true, matchedKeywords, categories: [...categories] };
+    return { matched: true, matchedKeywords, categories: [...categories], evidence };
   }
 }

@@ -321,6 +321,21 @@ export type LeadRadarLeadStatus =
   | "ignored"
   | "spam";
 
+export type LeadRadarMatchedKeywordEvidence = {
+  keyword: string;
+  matchType: string;
+  matchedField: "messageText" | "profile" | "chatTitle" | "contextPreview";
+  matchedFragment: string | null;
+  reason: string | null;
+};
+
+export type LeadRadarMatchedKeywordsPayload = {
+  matched: boolean;
+  matchedKeywords: string[];
+  categories?: string[];
+  evidence?: LeadRadarMatchedKeywordEvidence[];
+};
+
 export type LeadRadarLeadItem = {
   id: string;
   username: string | null;
@@ -331,6 +346,7 @@ export type LeadRadarLeadItem = {
   sourceType?: string | null;
   relatedPostId?: string | null;
   contextPreview?: string | null;
+  matchedKeywords?: LeadRadarMatchedKeywordsPayload | null;
   messageText: string | null;
   score: number;
   status: LeadRadarLeadStatus;
@@ -388,6 +404,7 @@ export type LeadRadarLeadDetailsResponse = {
     sourceType?: string | null;
     relatedPostId?: string | null;
     contextPreview?: string | null;
+    matchedKeywords?: LeadRadarMatchedKeywordsPayload | null;
     messageText: string | null;
     score: number;
     status: LeadRadarLeadStatus;

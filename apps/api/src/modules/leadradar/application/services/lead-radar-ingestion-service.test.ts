@@ -57,6 +57,13 @@ function makeService(params?: {
       },
       existsByMessage: async () => false,
       existsRecentFromSenderInChat: async () => false,
+      findRecentNewLeadByTelegramUser: async () => {
+        if (calls.createLead.length === 0) return null;
+        return {
+          id: "existing-24h",
+          status: "new"
+        } as any;
+      },
       findRecentLeadForMultiChatMerge: async () => null,
       findCrmLeadByTelegramUserId: async (input: { telegram_account_id: string; telegram_user_id: string }) => {
         calls.findCrmLeadByTelegramUserId.push(input);
@@ -96,7 +103,20 @@ function makeService(params?: {
         params?.match ??
         (async (input: LeadRadarMessageInput) => {
           if ((input.text ?? "").includes("KEY")) {
-            return { matched: true, matchedKeywords: ["KEY"], categories: ["default"] };
+            return {
+              matched: true,
+              matchedKeywords: ["KEY"],
+              categories: ["default"],
+              evidence: [
+                {
+                  keyword: "KEY",
+                  matchType: "contains",
+                  matchedField: "messageText",
+                  matchedFragment: input.text ?? null,
+                  reason: null
+                }
+              ]
+            };
           }
           return {
             matched: false,
@@ -124,6 +144,15 @@ function makeService(params?: {
       isSoftDuplicate: async () => false
     } as any,
     prisma: {
+      $transaction: async (fn: (tx: any) => Promise<void>) =>
+        fn({
+          leadRadarLead: {
+            update: async () => ({ id: "existing-24h" })
+          },
+          leadRadarMessageContext: {
+            upsert: async () => ({})
+          }
+        }),
       leadRadarLead: {
         findFirst: async () => null
       }
@@ -154,17 +183,15 @@ test("Case 2: message without match -> no lead", async () => {
   assert.equal(calls.createLead.length, 0);
 });
 
-test("Case 3: A has match, B has match -> both evaluated as current messages (2 leads when no dedupe)", async () => {
+test("Case 3: A has match, B has match -> second message deduped within 24h by numeric sender id", async () => {
   const { service, calls } = makeService();
 
   await service.processMessage(baseMessage({ messageId: "A", text: "KEY one" }));
   await service.processMessage(baseMessage({ messageId: "B", text: "KEY two" }));
 
-  assert.equal(calls.createLead.length, 2);
+  assert.equal(calls.createLead.length, 1);
   assert.equal(calls.createLead[0].message_id, "A");
   assert.equal(calls.createLead[0].message_text, "KEY one");
-  assert.equal(calls.createLead[1].message_id, "B");
-  assert.equal(calls.createLead[1].message_text, "KEY two");
 });
 
 test("Case 4: GROUP with relatedChannelId resolves active source registered on group chat id (not only channel)", async () => {

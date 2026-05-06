@@ -19,6 +19,7 @@ type LeadRadarSkipReason =
   | "no_positive_match_on_current_message"
   | "negative_match"
   | "below_threshold"
+  | "promotional_spam"
   | "duplicate_hard"
   | "duplicate_soft"
   | "already_in_crm"
@@ -35,10 +36,25 @@ const shouldTraceMessage = (messageId: string): boolean => {
   return isLeadRadarDebugEnabled();
 };
 
-const normalizeUsernameForMerge = (u: string | null | undefined): string | null => {
-  const t = u?.trim();
-  if (!t) return null;
-  return t.replace(/^@+/u, "").toLowerCase();
+const PROMOTIONAL_PATTERNS = [
+  "приглашаю вас",
+  "подписывайтесь",
+  "переходите",
+  "наш канал",
+  "t.me/",
+  "https://t.me/",
+  "ищем спикеров",
+  "разместиться",
+  "реклама",
+  "партнерский пост"
+] as const;
+
+const findPromotionalSpamMarker = (text: string): string | null => {
+  const lowered = text.toLowerCase();
+  for (const marker of PROMOTIONAL_PATTERNS) {
+    if (lowered.includes(marker)) return marker;
+  }
+  return null;
 };
 
 export class LeadRadarIngestionService {
@@ -137,6 +153,13 @@ export class LeadRadarIngestionService {
     let skip_reason: LeadRadarSkipReason | null = null;
     let source_monitored = false;
     let positive_keyword_matches: string[] = [];
+    let positive_keyword_evidence: Array<{
+      keyword: string;
+      matchType: string;
+      matchedField: "messageText";
+      matchedFragment: string | null;
+      reason: string | null;
+    }> = [];
     let negative_keyword_matches: string[] = [];
     let score_breakdown: Record<string, number> | null = null;
     let threshold_passed = false;
@@ -364,6 +387,20 @@ export class LeadRadarIngestionService {
     }
     log(`[LeadRadar] matched keywords: ${JSON.stringify(match.matchedKeywords)}`);
     positive_keyword_matches = match.matchedKeywords;
+    positive_keyword_evidence = match.evidence ?? [];
+    if (!positive_keyword_evidence.some((item) => item.matchedField === "messageText")) {
+      log("[LeadRadar] skipped: matched keyword is not from messageText");
+      skip_reason = "no_positive_match_on_current_message";
+      final_action = "skipped";
+      return;
+    }
+    const spamMarker = findPromotionalSpamMarker(raw_text);
+    if (spamMarker) {
+      log(`[LeadRadar] skipped: promotional spam marker='${spamMarker}'`);
+      skip_reason = "promotional_spam";
+      final_action = "skipped";
+      return;
+    }
 
     // 4) Scoring (real)
     const scoring = await this.deps.scoringService.score({
@@ -469,15 +506,14 @@ export class LeadRadarIngestionService {
 
     // 6b) Multi-chat merge: same Telegram user (strict id OR username), different chat, within window — no new lead
     const senderExternalId = input.senderId?.trim() || null;
-    const usernameKey = normalizeUsernameForMerge(input.senderUsername);
-    if (senderExternalId || usernameKey) {
+    if (senderExternalId) {
       const windowMs = Math.max(1, this.deps.multiChatDedupeWindowHours) * 60 * 60 * 1000;
       const since = new Date(Date.now() - windowMs);
       const existing = await this.deps.leadRepo.findRecentLeadForMultiChatMerge({
         user_id: input.userId,
         telegram_account_id: input.telegramAccountId,
         telegram_user_id: senderExternalId,
-        username_normalized: senderExternalId ? null : usernameKey,
+        username_normalized: null,
         since
       });
       if (existing && existing.chat_id !== source.telegram_chat_id) {
@@ -549,28 +585,21 @@ export class LeadRadarIngestionService {
       log("[LeadRadar] context skipped");
     }
 
-    // 7) Same-chat merge: one Telegram user in one chat => one lead.
-    // If the same sender matches again, we update the existing lead instead of creating a new one.
-    const senderExternalIdForSameChat = input.senderId?.trim() || null;
-    const usernameKeyForSameChat = normalizeUsernameForMerge(input.senderUsername);
-    if (senderExternalIdForSameChat || usernameKeyForSameChat) {
-      const existingSameChat = await this.deps.prisma.leadRadarLead.findFirst({
-        where: {
-          userId: input.userId,
-          telegramAccountId: input.telegramAccountId,
-          chatId: source.telegram_chat_id,
-          ...(senderExternalIdForSameChat
-            ? { telegramUserId: senderExternalIdForSameChat }
-            : { username: { equals: usernameKeyForSameChat!, mode: "insensitive" } })
-        },
-        select: { id: true, status: true }
+    // 7) Application-level 24h dedupe for NEW leads by numeric Telegram user id.
+    const senderExternalIdForNewDedupe = input.senderId?.trim() || null;
+    if (senderExternalIdForNewDedupe) {
+      const existingRecentNewLead = await this.deps.leadRepo.findRecentNewLeadByTelegramUser({
+        user_id: input.userId,
+        telegram_account_id: input.telegramAccountId,
+        telegram_user_id: senderExternalIdForNewDedupe,
+        since: new Date(Date.now() - 24 * 60 * 60 * 1000)
       });
 
-      if (existingSameChat?.id) {
+      if (existingRecentNewLead?.id) {
         lead_created_from_message_id = input.messageId;
         await this.deps.prisma.$transaction(async (tx) => {
           await tx.leadRadarLead.update({
-            where: { id: existingSameChat.id },
+            where: { id: existingRecentNewLead.id },
             data: {
               telegramUserId: input.senderId ?? null,
               username: input.senderUsername ?? null,
@@ -585,7 +614,8 @@ export class LeadRadarIngestionService {
               matchedKeywords: {
                 matched: true,
                 matchedKeywords: match.matchedKeywords,
-                categories: match.categories
+                categories: match.categories,
+                evidence: positive_keyword_evidence
               } as any,
               score,
               lastSeenAt: input.date
@@ -595,9 +625,9 @@ export class LeadRadarIngestionService {
 
           if (settings.store_context_enabled && (contextBefore.length > 0 || contextAfter.length > 0)) {
             await tx.leadRadarMessageContext.upsert({
-              where: { leadId: existingSameChat.id },
+              where: { leadId: existingRecentNewLead.id },
               create: {
-                leadId: existingSameChat.id,
+                leadId: existingRecentNewLead.id,
                 beforeMessages: contextBefore as any,
                 afterMessages: contextAfter as any
               },
@@ -609,7 +639,7 @@ export class LeadRadarIngestionService {
           }
         });
 
-        log(`[LeadRadar] Lead updated (same-chat merge) status=${String(existingSameChat.status)}`);
+        log("[LeadRadar] Lead updated (24h numeric-id dedupe)");
         log(`[LeadRadar-DEBUG] lead_updated_from_message_id=${lead_created_from_message_id}`);
         log("[LeadRadar] message processed");
         dedupe_result = "merged_existing_lead";
@@ -701,7 +731,8 @@ export class LeadRadarIngestionService {
       matched_keywords_json: {
         matched: true,
         matchedKeywords: match.matchedKeywords,
-        categories: match.categories
+        categories: match.categories,
+        evidence: positive_keyword_evidence
       },
       score,
       lead_type: null,
