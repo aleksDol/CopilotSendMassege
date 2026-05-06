@@ -11,6 +11,15 @@ type LeadMatchEvidence = {
   reason: string | null;
 };
 
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const containsWholeToken = (text: string, phrase: string): boolean => {
+  const trimmed = phrase.trim();
+  if (!trimmed) return false;
+  const pattern = new RegExp(`(^|[^\\p{L}\\p{N}_])${escapeRegExp(trimmed)}($|[^\\p{L}\\p{N}_])`, "iu");
+  return pattern.test(text);
+};
+
 export type LeadRadarMatchOutput =
   | {
       matched: false;
@@ -83,7 +92,7 @@ export class LeadMatchService {
 
       let ok = false;
       if (kw.match_type === "contains") {
-        ok = Boolean(ruleNorm) && normalized_text.includes(ruleNorm);
+        ok = Boolean(ruleNorm) && containsWholeToken(normalized_text, ruleNorm);
       } else if (kw.match_type === "exact") {
         ok = Boolean(ruleNorm) && normalized_text === ruleNorm;
       } else if (kw.match_type === "regex") {
