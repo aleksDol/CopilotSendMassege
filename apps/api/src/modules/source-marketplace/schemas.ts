@@ -7,7 +7,12 @@ const slugSchema = z
   .string()
   .min(1)
   .max(128)
-  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Slug must be lowercase alphanumeric with optional hyphens");
+  .regex(/^[a-z0-9\u0400-\u04FF]+(?:-[a-z0-9\u0400-\u04FF]+)*$/u, "Slug must be lowercase alphanumeric with optional hyphens");
+
+const entryTitleSchema = z.preprocess(
+  (value) => (typeof value === "string" ? value.trim().slice(0, 255) : value),
+  z.string().min(1).max(255)
+);
 
 export const listTopicsQuerySchema = z.object({
   status: topicStatusSchema.optional(),
@@ -43,7 +48,7 @@ export const entryIdParamsSchema = z.object({
 });
 
 const entryBodyFieldsSchema = z.object({
-  title: z.string().min(1).max(255),
+  title: entryTitleSchema,
   telegramUsername: z.string().max(128).optional().nullable(),
   telegramChatId: z.string().max(128).optional().nullable(),
   chatType: z.string().max(64).optional().nullable(),

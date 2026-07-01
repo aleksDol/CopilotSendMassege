@@ -139,7 +139,7 @@ export function CatalogEntryQuickForm({ token, topics, entries, onCreated }: Cat
 
     try {
       await sourceMarketplaceApi.createEntry(token, {
-        title: resolved.title,
+        title: resolved.title.trim().slice(0, 255),
         telegramUsername: resolved.username,
         telegramChatId: resolved.telegramChatId,
         chatType: resolved.chatType,
