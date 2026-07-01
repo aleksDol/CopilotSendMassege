@@ -9,11 +9,13 @@ import { parseWithSchema } from "../../../lib/validation.js";
 import { remapTelegramSendError } from "../../../lib/telegram-send-errors.js";
 import { invalidateConversationCaches } from "../../conversations/service.js";
 import { LeadRadarOutreachService } from "../../ai/leadradar-outreach-service.js";
+import { LeadRadarAiSetupService } from "../../ai/leadradar-ai-setup-service.js";
 import { LeadStatus } from "../domain/enums/lead-status.js";
 import {
   createSourceBodySchema,
   createSourceByLinkBodySchema,
   createKeywordBodySchema,
+  bulkKeywordsBodySchema,
   createNegativeKeywordBodySchema,
   listLeadsQuerySchema,
   listKeywordsQuerySchema,
@@ -28,20 +30,13 @@ import {
   updateSourceBodySchema,
   testIngestionBodySchema,
   createManualLeadBodySchema,
-  leadradarScopeQuerySchema
+  leadradarScopeQuerySchema,
+  aiSetupGenerateBodySchema
 } from "./schemas.js";
 import { buildManualLeadCreateInput } from "../application/manual-lead.js";
 import { resolveActiveLeadRadarTelegramAccount } from "./account-guard.js";
 import { resolveLeadRadarSendingChannelAccount } from "./sending-account-resolver.js";
 
-/**
- * LeadRadar API controller (skeleton).
- *
- * IMPORTANT:
- * - No Telegram integration here.
- * - No ingestion side-effects.
- * - Endpoints will be added in later steps.
- */
 const leadradarController: FastifyPluginAsync = async (app) => {
   const requireAccess = requireTrialOrActive(app);
 
@@ -102,8 +97,7 @@ const leadradarController: FastifyPluginAsync = async (app) => {
   app.get("/api/leadradar", async () => {
     return {
       ok: true,
-      module: "leadradar",
-      status: "todo"
+      module: "LeadRadar"
     };
   });
 
@@ -322,6 +316,31 @@ const leadradarController: FastifyPluginAsync = async (app) => {
     });
 
     return created;
+  });
+
+  app.post("/api/leadradar/keywords/bulk", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
+    const scope = getCompanyScope(request);
+    const body = parseWithSchema(bulkKeywordsBodySchema, request.body);
+
+    if (!request.server.leadradar) {
+      throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
+    }
+
+    const telegram_account_id = await requireActiveTelegramAccountId(scope, body.channelAccountId);
+    const repo = request.server.leadradar.repositories.keyword;
+
+    return repo.bulkAddKeywords({
+      user_id: scope.userId,
+      telegram_account_id,
+      keywords: body.keywords.map((item) => ({
+        keyword: item.keyword,
+        target: item.target,
+        match_type: item.matchType,
+        category: item.category,
+        priority: item.priority ?? 0,
+        is_active: true
+      }))
+    });
   });
 
   app.patch("/api/leadradar/keywords/:id", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
@@ -807,6 +826,31 @@ const leadradarController: FastifyPluginAsync = async (app) => {
   });
 
   const outreachService = new LeadRadarOutreachService(app);
+  const aiSetupService = new LeadRadarAiSetupService(app);
+
+  app.post(
+    "/api/leadradar/ai-setup/generate",
+    {
+      preHandler: [
+        app.authenticate,
+        requireAccess,
+        app.rateLimit({
+          groupId: "leadradar:ai-setup-generate",
+          max: 10,
+          timeWindow: "1 minute",
+          keyGenerator: (request) => request.currentUser?.id ?? request.ip
+        })
+      ]
+    },
+    async (request) => {
+      if (!request.server.leadradar) {
+        throw new AppError(503, "LEADRADAR_NOT_AVAILABLE", "LeadRadar module is not available");
+      }
+
+      const body = parseWithSchema(aiSetupGenerateBodySchema, request.body);
+      return aiSetupService.generate({ description: body.description });
+    }
+  );
 
   app.post(
     "/api/leadradar/leads/:id/first-message/generate",

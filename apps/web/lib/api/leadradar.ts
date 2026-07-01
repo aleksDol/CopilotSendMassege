@@ -8,6 +8,7 @@ import type {
   LeadRadarListKeywordsResponse,
   LeadRadarListNegativeKeywordsResponse,
   LeadRadarListSourcesResponse,
+  LeadRadarAiSetupPreviewResponse,
   LeadRadarSettingsResponse,
   LeadRadarSourceItem
 } from "./types";
@@ -120,6 +121,20 @@ export const leadradarApi = {
   ) => apiClient.patch(`/leadradar/keywords/${id}`, patch, { token, query: { channelAccountId } }),
   removeKeyword: (token: string, id: string, channelAccountId?: string) =>
     apiClient.delete(`/leadradar/keywords/${id}`, { token, query: { channelAccountId } }),
+  bulkAddKeywords: (
+    token: string,
+    input: {
+      channelAccountId: string;
+      keywords: Array<{
+        keyword: string;
+        matchType: string;
+        target?: LeadRadarKeywordTarget;
+        category: string;
+        priority?: number;
+      }>;
+    }
+  ) =>
+    apiClient.post<{ createdCount: number; skippedCount: number }>("/leadradar/keywords/bulk", input, { token }),
 
   // ===== Negative keywords =====
   listNegativeKeywords: (token: string, channelAccountId?: string) =>
@@ -147,5 +162,8 @@ export const leadradarApi = {
       coldFirstTouchPlaybook: string | null;
     }>,
     channelAccountId?: string
-  ) => apiClient.patch<LeadRadarSettingsResponse>("/leadradar/settings", patch, { token, query: { channelAccountId } })
+  ) => apiClient.patch<LeadRadarSettingsResponse>("/leadradar/settings", patch, { token, query: { channelAccountId } }),
+
+  generateAiSetup: (token: string, input: { description: string }) =>
+    apiClient.post<LeadRadarAiSetupPreviewResponse>("/leadradar/ai-setup/generate", input, { token })
 };

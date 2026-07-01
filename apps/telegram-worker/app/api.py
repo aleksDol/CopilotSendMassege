@@ -11,6 +11,7 @@ from app.config import settings
 from app.crypto import SessionCrypto
 from app.schemas import (
     FetchUserProfileRequest,
+    JoinCatalogEntryRequest,
     LogoutRequest,
     ResolveChatByLinkRequest,
     PollLoginQrRequest,
@@ -41,6 +42,7 @@ from app.services.sync_service import (
     resolve_public_group_by_link,
 )
 from app.services.profile_service import fetch_user_profile
+from app.services.join_service import join_catalog_entry
 from app.services.live_listener import LiveListenerManager
 from app.services.safety import safety_service
 from app.telegram_client import log_telegram_proxy_on_startup
@@ -390,5 +392,36 @@ async def internal_fetch_user_profile(payload: FetchUserProfileRequest) -> dict:
             raise WorkerError(
                 "TELEGRAM_PROFILE_FETCH_FAILED",
                 str(exc) or "Failed to fetch Telegram user profile",
+                502,
+            ) from exc
+
+
+@app.post("/internal/telegram/join-catalog-entry", dependencies=[Depends(verify_internal_token)])
+async def internal_join_catalog_entry(payload: JoinCatalogEntryRequest) -> dict:
+    logger.info(
+        "join-catalog-entry requested telegramAccountId=%s entryId=%s runId=%s",
+        payload.telegram_account_id,
+        payload.entry_id,
+        payload.run_id,
+    )
+    async with concurrency_limiter:
+        try:
+            return await join_catalog_entry(
+                telegram_account_id=payload.telegram_account_id,
+                entry_id=payload.entry_id,
+                crypto=crypto,
+            )
+        except WorkerError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                "join-catalog-entry failed telegramAccountId=%s entryId=%s runId=%s",
+                payload.telegram_account_id,
+                payload.entry_id,
+                payload.run_id,
+            )
+            raise WorkerError(
+                "JOIN_CATALOG_ENTRY_FAILED",
+                str(exc) or "Failed to join catalog entry",
                 502,
             ) from exc

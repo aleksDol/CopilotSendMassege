@@ -1,6 +1,8 @@
 import type { LeadKeyword } from "../../domain/entities/lead-keyword.js";
 import type { LeadNegativeKeyword } from "../../domain/entities/lead-negative-keyword.js";
 import type {
+  BulkAddLeadKeywordsInput,
+  BulkAddLeadKeywordsResult,
   CreateLeadKeywordInput,
   CreateNegativeKeywordInput,
   ListAccountScopedInput,
@@ -11,6 +13,7 @@ import type {
 export interface LeadKeywordRepository {
   listKeywords(input: ListAccountScopedInput): Promise<LeadKeyword[]>;
   addKeyword(input: CreateLeadKeywordInput): Promise<LeadKeyword>;
+  bulkAddKeywords(input: BulkAddLeadKeywordsInput): Promise<BulkAddLeadKeywordsResult>;
   updateKeyword(input: UpdateLeadKeywordInput): Promise<LeadKeyword>;
   removeKeyword(input: { id: string; user_id: string; telegram_account_id: string }): Promise<void>;
 

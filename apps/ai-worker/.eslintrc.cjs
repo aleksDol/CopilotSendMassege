@@ -1,3 +1,3 @@
 module.exports = {
-  extends: ["@repo/config/eslint/node.cjs"]
+  extends: [require.resolve("@repo/config/eslint/node.cjs")]
 };

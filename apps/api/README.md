@@ -19,9 +19,10 @@ Fastify + TypeScript API skeleton for AI Sales Assistant.
 ## Routes
 - `GET /health`
 - `GET /health/ready`
-- `POST /auth/register`
-- `POST /auth/login`
-- `GET /auth/me` (protected)
+- `POST /auth/telegram/start`
+- `POST /auth/telegram/complete`
+- `POST /auth/telegram/register`
+- `GET /auth/telegram/me` (protected)
 - `GET /company/current` (protected)
 - `GET /users/me` (protected)
 - `PATCH /users/me` (protected)

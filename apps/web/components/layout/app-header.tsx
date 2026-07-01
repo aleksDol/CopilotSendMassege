@@ -32,10 +32,14 @@ export function AppHeader({
         >
           <PanelLeft className="h-5 w-5" />
         </Button>
-        <div className="text-sm text-muted-foreground">Workspace</div>
-        <div className="font-semibold">{company?.name ?? "-"}</div>
+        <div className="text-sm text-muted-foreground">Рабочее пространство</div>
+        <div className="font-semibold">{company?.name ?? "—"}</div>
         <Badge variant={loginStatus === "connected" ? "success" : "warning"}>
-          {loginStatus === "connected" ? "connected" : loginStatus === "login_required" ? "login required" : loginStatus}
+          {loginStatus === "connected"
+            ? "подключён"
+            : loginStatus === "login_required"
+              ? "нужно подключить"
+              : loginStatus}
         </Badge>
       </div>
 
@@ -48,11 +52,11 @@ export function AppHeader({
         </Link>
         <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm">
           <UserRound className="h-4 w-4 text-muted-foreground" />
-          <span>{user?.fullName ?? "User"}</span>
+          <span>{user?.fullName ?? "Пользователь"}</span>
         </div>
         <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={logout}>
           <LogOut className="h-4 w-4" />
-          Logout
+          Выйти
         </Button>
       </div>
     </header>

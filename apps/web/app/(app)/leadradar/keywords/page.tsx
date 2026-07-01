@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,18 @@ export default function LeadRadarKeywordsPage() {
         </p>
         <LeadRadarNav />
       </div>
+
+      <Card className="border-primary/20 bg-primary/5">
+        <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <p className="font-medium">Не знаете, какие фразы искать?</p>
+            <p className="text-sm text-muted-foreground">Настройте через ИИ — получите preview ключевых фраз и тематик чатов.</p>
+          </div>
+          <Link href="/leadradar/setup" className="shrink-0">
+            <Button variant="secondary">AI настройка</Button>
+          </Link>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

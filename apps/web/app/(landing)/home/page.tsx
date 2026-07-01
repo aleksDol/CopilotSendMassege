@@ -98,11 +98,8 @@ export default function HomeLandingPage() {
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <TrackingLink href="/register" className={defaultMd}>
-                  Зарегистрироваться
-                </TrackingLink>
                 <TrackingLink href="/login" className={outlineMd}>
-                  Войти
+                  Войти через Telegram
                 </TrackingLink>
               </div>
 
@@ -342,11 +339,8 @@ export default function HomeLandingPage() {
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center lg:justify-end">
-                <TrackingLink href="/register" className={defaultLg}>
-                  Начать trial
-                </TrackingLink>
                 <TrackingLink href="/login" className={outlineLg}>
-                  Войти
+                  Войти через Telegram
                 </TrackingLink>
               </div>
             </div>

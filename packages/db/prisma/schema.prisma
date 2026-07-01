@@ -312,8 +312,31 @@ model User {
   leadRadarLeads            LeadRadarLead[]
   leadRadarSettings         LeadRadarSettings[]
 
+  sourceMarketplaceSubscribeRuns SourceMarketplaceSubscribeRun[]
+
+  telegramIdentity TelegramIdentity?
+
   @@index([companyId])
   @@index([companyId, role])
+}
+
+/// SaaS login identity — separate from ChannelAccount / TelegramAccount (work accounts).
+model TelegramIdentity {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @unique @db.Uuid
+  telegramUserId String    @unique
+  username       String?
+  firstName      String?
+  lastName       String?
+  photoUrl       String?
+  linkedAt       DateTime  @default(now())
+  lastAuthAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([telegramUserId])
 }
 
 model EmailAuthCode {
@@ -446,6 +469,7 @@ model TelegramAccount {
   leadRadarLeads            LeadRadarLead[]
   leadRadarSettings         LeadRadarSettings[]
   leadRadarAuthorProfileCaches LeadRadarAuthorProfileCache[]
+  sourceMarketplaceSubscribeRuns SourceMarketplaceSubscribeRun[]
 
   @@index([telegramUserId])
   @@index([loginStatus])
@@ -976,4 +1000,101 @@ model LeadRadarSettings {
   @@unique([telegramAccountId], map: "lead_settings_telegram_account_id_key")
   @@index([userId], map: "lead_settings_user_id_idx")
   @@map("lead_settings")
+}
+
+/// =========================
+/// Source Marketplace (platform catalog)
+/// Independent from LeadRadar user sources (lead_sources).
+/// =========================
+enum SourceMarketplaceTopicStatus {
+  draft
+  active
+  hidden
+}
+
+enum SourceMarketplaceEntryStatus {
+  active
+  paused
+  blocked
+  review
+}
+
+model SourceMarketplaceTopic {
+  id          String                       @id @default(uuid()) @db.Uuid @map("id")
+  name        String                       @map("name")
+  slug        String                       @unique @map("slug")
+  description String?                      @map("description")
+  icon        String                       @default("") @map("icon")
+  color       String                       @default("#6366f1") @map("color")
+  status      SourceMarketplaceTopicStatus @default(draft) @map("status")
+  sortOrder   Int                          @default(0) @map("sort_order")
+  createdAt   DateTime                     @default(now()) @map("created_at")
+  updatedAt   DateTime                     @updatedAt @map("updated_at")
+
+  entries SourceMarketplaceTopicEntry[]
+
+  @@index([status, sortOrder], map: "source_marketplace_topics_status_sort_idx")
+  @@map("source_marketplace_topics")
+}
+
+model SourceMarketplaceEntry {
+  id               String                       @id @default(uuid()) @db.Uuid @map("id")
+  title            String                       @map("title")
+  telegramUsername String?                      @map("telegram_username")
+  telegramChatId   String?                      @map("telegram_chat_id")
+  chatType         String?                      @map("chat_type")
+  status           SourceMarketplaceEntryStatus @default(review) @map("status")
+  note             String?                      @map("note")
+  lastCheckedAt    DateTime?                    @map("last_checked_at")
+  createdAt        DateTime                     @default(now()) @map("created_at")
+  updatedAt        DateTime                     @updatedAt @map("updated_at")
+
+  topics SourceMarketplaceTopicEntry[]
+
+  @@index([status], map: "source_marketplace_entries_status_idx")
+  @@index([telegramUsername], map: "source_marketplace_entries_username_idx")
+  @@map("source_marketplace_entries")
+}
+
+model SourceMarketplaceTopicEntry {
+  topicId   String   @db.Uuid @map("topic_id")
+  entryId   String   @db.Uuid @map("entry_id")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  topic SourceMarketplaceTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  entry SourceMarketplaceEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@id([topicId, entryId])
+  @@index([entryId], map: "source_marketplace_topic_entries_entry_id_idx")
+  @@map("source_marketplace_topic_entries")
+}
+
+enum SourceMarketplaceSubscribeRunStatus {
+  pending
+  running
+  completed
+  failed
+}
+
+model SourceMarketplaceSubscribeRun {
+  id                String                            @id @default(uuid()) @db.Uuid @map("id")
+  userId            String                            @db.Uuid @map("user_id")
+  telegramAccountId String                            @db.Uuid @map("telegram_account_id")
+  topicIds          Json                              @map("topic_ids")
+  status            SourceMarketplaceSubscribeRunStatus @default(pending) @map("status")
+  totalCount        Int                               @default(0) @map("total_count")
+  joinedCount       Int                               @default(0) @map("joined_count")
+  skippedCount      Int                               @default(0) @map("skipped_count")
+  failedCount       Int                               @default(0) @map("failed_count")
+  lastError         String?                           @map("last_error")
+  createdAt         DateTime                          @default(now()) @map("created_at")
+  updatedAt         DateTime                          @updatedAt @map("updated_at")
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  telegramAccount TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt(sort: Desc)], map: "source_marketplace_subscribe_runs_user_created_idx")
+  @@index([telegramAccountId, status], map: "source_marketplace_subscribe_runs_tg_account_status_idx")
+  @@map("source_marketplace_subscribe_runs")
 }

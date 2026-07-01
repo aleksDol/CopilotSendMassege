@@ -648,6 +648,19 @@ export const useLeadRadarConfigActions = () => {
       mutationFn: (id: string) => leadradarApi.removeKeyword(token ?? "", id, selectedLeadRadarParsingChannelAccountId || undefined),
       onSuccess: () => invalidate("leadradar-keywords")
     }),
+    bulkAddKeywords: useMutation({
+      mutationFn: (input: {
+        channelAccountId: string;
+        keywords: Array<{
+          keyword: string;
+          matchType: string;
+          target?: import("@/lib/api/types").LeadRadarKeywordTarget;
+          category: string;
+          priority?: number;
+        }>;
+      }) => leadradarApi.bulkAddKeywords(token ?? "", input),
+      onSuccess: () => invalidate("leadradar-keywords")
+    }),
 
     addNegativeKeyword: useMutation({
       mutationFn: (input: { phrase: string }) => leadradarApi.addNegativeKeyword(token ?? "", input, selectedLeadRadarParsingChannelAccountId || undefined),
@@ -669,6 +682,13 @@ export const useLeadRadarConfigActions = () => {
       onSuccess: () => invalidate("leadradar-settings")
     })
   };
+};
+
+export const useLeadRadarAiSetupGenerate = () => {
+  const { token } = useAuth();
+  return useMutation({
+    mutationFn: (input: { description: string }) => leadradarApi.generateAiSetup(token ?? "", input)
+  });
 };
 
 export const useSendMessageMutation = (conversationId: string) => {

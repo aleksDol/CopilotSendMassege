@@ -2,13 +2,10 @@ import type { FastifyPluginAsync } from "fastify";
 import fp from "fastify-plugin";
 import leadradarController from "./api/leadradar.controller.js";
 import { PrismaLeadKeywordRepository, PrismaLeadRepository, PrismaLeadSettingsRepository, PrismaLeadSourceRepository } from "./infrastructure/repositories/prisma/index.js";
-import { LeadCRMService } from "./application/services/lead-crm-service.js";
 import { LeadDeduplicationService } from "./application/services/lead-deduplication-service.js";
-import { LeadKeywordService } from "./application/services/lead-keyword-service.js";
 import { LeadMatchService } from "./application/services/lead-match-service.js";
 import { LeadRadarIngestionService } from "./application/services/lead-radar-ingestion-service.js";
 import { LeadScoringService } from "./application/services/lead-scoring-service.js";
-import { LeadSourceService } from "./application/services/lead-source-service.js";
 
 const leadradarModuleImpl: FastifyPluginAsync = async (app) => {
   // Minimal DI container for LeadRadar (module-scoped).
@@ -37,10 +34,6 @@ const leadradarModuleImpl: FastifyPluginAsync = async (app) => {
     multiChatScoreBonus: app.config.env.LEADRADAR_MULTI_CHAT_SCORE_BONUS
   });
 
-  const sourcesService = new LeadSourceService({ sourceRepo });
-  const keywordsService = new LeadKeywordService({ keywordRepo });
-  const crmService = new LeadCRMService({ leadRepo });
-
   // Expose via Fastify decorate so the rest of the module can access it later.
   if (!app.leadradar) {
     app.decorate("leadradar", {
@@ -52,12 +45,9 @@ const leadradarModuleImpl: FastifyPluginAsync = async (app) => {
       },
       services: {
         ingestion: ingestionService,
-        sources: sourcesService,
-        keywords: keywordsService,
         match: matchService,
         scoring: scoringService,
-        dedupe: dedupeService,
-        crm: crmService
+        dedupe: dedupeService
       }
     });
   }
@@ -66,4 +56,3 @@ const leadradarModuleImpl: FastifyPluginAsync = async (app) => {
 };
 
 export default fp(leadradarModuleImpl, { name: "leadradar-module" });
-

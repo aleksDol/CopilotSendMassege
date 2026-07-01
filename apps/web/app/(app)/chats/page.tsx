@@ -410,24 +410,33 @@ export default function ChatsPage() {
     return (
       <EmptyState
         title="Telegram не подключён"
-        description="Подключите Telegram в настройках, чтобы увидеть чаты."
+        description="Подключите рабочий Telegram-аккаунт, чтобы видеть чаты и отвечать клиентам."
+        actionLabel="Подключить рабочий Telegram"
+        actionHref="/settings/telegram"
       />
     );
   }
 
   if (conversations.isLoading) {
-    return <LoadingState label="Loading conversations..." />;
+    return <LoadingState label="Загрузка чатов..." />;
   }
 
   if (!conversations.data || conversations.data.items.length === 0) {
-    return <EmptyState title="No conversations yet" description="Connect Telegram and run sync to populate inbox." />;
+    return (
+      <EmptyState
+        title="Пока нет чатов"
+        description="Подключите рабочий Telegram и выполните синхронизацию, чтобы увидеть диалоги."
+        actionLabel="Подключить рабочий Telegram"
+        actionHref="/settings/telegram"
+      />
+    );
   }
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[300px_minmax(0,1fr)_360px]">
       <aside className="flex min-h-0 w-full shrink-0 flex-col overflow-hidden border-r border-border bg-card/50">
         <div className="shrink-0 border-b border-border px-4 py-3">
-          <h2 className="font-semibold">Chats</h2>
+          <h2 className="font-semibold">Чаты</h2>
           {sendAccountOptions.length > 1 ? (
             <div className="pt-2">
               <div className="pb-1 text-xs text-muted-foreground">Аккаунт отправки</div>
@@ -456,7 +465,7 @@ export default function ChatsPage() {
         <header className="shrink-0 border-b border-border px-4 py-3">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="truncate text-sm font-semibold">{selectedConversation?.title ?? "Select a chat"}</div>
+              <div className="truncate text-sm font-semibold">{selectedConversation?.title ?? "Выберите чат"}</div>
               {activeChatSubtitle ? (
                 <div className="truncate pt-0.5 text-xs text-muted-foreground">{activeChatSubtitle}</div>
               ) : null}

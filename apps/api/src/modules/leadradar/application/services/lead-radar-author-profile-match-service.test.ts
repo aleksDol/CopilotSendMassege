@@ -28,6 +28,9 @@ const createService = (keywords: any[]) =>
       addKeyword: async () => {
         throw new Error("not used");
       },
+      bulkAddKeywords: async () => {
+        throw new Error("not used");
+      },
       updateKeyword: async () => {
         throw new Error("not used");
       },

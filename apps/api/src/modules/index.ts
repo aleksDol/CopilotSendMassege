@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import authRoutes from "./auth/routes.js";
+import telegramAuthRoutes from "./telegram-auth/routes.js";
 import aiRoutes from "./ai/routes.js";
 import companyRoutes from "./companies/routes.js";
 import conversationRoutes from "./conversations/routes.js";
@@ -19,13 +19,14 @@ import workspaceRoutes from "./workspace/routes.js";
 import settingsRoutes from "./settings/routes.js";
 import adminRoutes from "./admin/routes.js";
 import crmRoutes from "./crm/routes.js";
+import sourceMarketplaceRoutes from "./source-marketplace/routes.js";
 
 const apiModules: FastifyPluginAsync = async (app) => {
   await app.register(healthRoutes);
   await app.register(ingestionRoutes);
   await app.register(realtimeRoutes);
   await app.register(followUpRoutes);
-  await app.register(authRoutes);
+  await app.register(telegramAuthRoutes);
   await app.register(aiRoutes);
   await app.register(telegramRoutes);
   await app.register(conversationRoutes);
@@ -40,6 +41,7 @@ const apiModules: FastifyPluginAsync = async (app) => {
   await app.register(companyRoutes);
   await app.register(userRoutes);
   await app.register(adminRoutes);
+  await app.register(sourceMarketplaceRoutes);
   await app.register(crmRoutes);
 
   if (app.config.env.ENABLE_LEADRADAR) {

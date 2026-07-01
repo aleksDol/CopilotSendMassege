@@ -35,14 +35,14 @@ export function ConversationListItemRow({
         <div className="text-xs text-muted-foreground">{formatRelativeTime(item.lastMessageAt)}</div>
       </div>
       <p className={cn("mt-1 truncate text-sm", hasUnread && !selected ? "font-medium text-foreground" : "text-muted-foreground")}>
-        {preview ?? "No messages yet"}
+        {preview ?? "Сообщений пока нет"}
       </p>
       <div className="mt-2 flex flex-wrap gap-2">
         <Badge variant="outline">{item.leadStage}</Badge>
         <Badge variant="secondary">{item.leadTemperature}</Badge>
-        {item.isWaitingForReply ? <Badge variant="warning">waiting</Badge> : null}
+        {item.isWaitingForReply ? <Badge variant="warning">ждёт ответа</Badge> : null}
         {item.unansweredClientMessageCount > 0 ? (
-          <Badge variant="outline">{item.unansweredClientMessageCount} unanswered</Badge>
+          <Badge variant="outline">{item.unansweredClientMessageCount} без ответа</Badge>
         ) : null}
       </div>
     </button>

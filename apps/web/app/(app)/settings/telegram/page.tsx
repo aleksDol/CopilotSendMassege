@@ -20,7 +20,9 @@ export default function TelegramSettingsPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-semibold">Подключение Telegram</h1>
-        <p className="text-sm text-muted-foreground">Подключите и синхронизируйте личный или рабочий аккаунт Telegram.</p>
+        <p className="text-sm text-muted-foreground">
+          Рабочий аккаунт для чатов и поиска лидов. Вход в сервис через бота — отдельное подключение.
+        </p>
       </div>
 
       <TelegramConnectCard
@@ -63,34 +65,41 @@ export default function TelegramSettingsPage() {
             return (
               <div key={account.channelAccountId} className="rounded-lg border border-border p-3">
                 <div className="mb-3 text-sm font-medium">
-                  {account.displayName ?? "Telegram account"} {account.username ? `(@${account.username})` : ""}
+                  {account.displayName ?? "Telegram-аккаунт"} {account.username ? `(@${account.username})` : ""}
                 </div>
-                <div className="flex flex-wrap items-center gap-4">
-                  <label className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={sendingEnabled}
-                      disabled={actions.patchAccountFlags.isPending || disableSendingToggle}
-                      onCheckedChange={(checked) =>
-                        void actions.patchAccountFlags.mutateAsync({
-                          channelAccountId,
-                          sendingEnabled: Boolean(checked)
-                        })
-                      }
-                    />
-                    Письма
+                <div className="flex flex-wrap items-start gap-6">
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="flex items-center gap-2">
+                      <Checkbox
+                        checked={sendingEnabled}
+                        disabled={actions.patchAccountFlags.isPending || disableSendingToggle}
+                        onCheckedChange={(checked) =>
+                          void actions.patchAccountFlags.mutateAsync({
+                            channelAccountId,
+                            sendingEnabled: Boolean(checked)
+                          })
+                        }
+                      />
+                      Отправка сообщений
+                    </span>
                   </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={parsingEnabled}
-                      disabled={actions.patchAccountFlags.isPending || disableParsingToggle}
-                      onCheckedChange={(checked) =>
-                        void actions.patchAccountFlags.mutateAsync({
-                          channelAccountId,
-                          parsingEnabled: Boolean(checked)
-                        })
-                      }
-                    />
-                    Парсинг
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="flex items-center gap-2">
+                      <Checkbox
+                        checked={parsingEnabled}
+                        disabled={actions.patchAccountFlags.isPending || disableParsingToggle}
+                        onCheckedChange={(checked) =>
+                          void actions.patchAccountFlags.mutateAsync({
+                            channelAccountId,
+                            parsingEnabled: Boolean(checked)
+                          })
+                        }
+                      />
+                      Парсинг
+                    </span>
+                    <span className="pl-6 text-xs text-muted-foreground">
+                      Аккаунт будет читать выбранные источники и искать лидов.
+                    </span>
                   </label>
                   <Button
                     variant="ghost"

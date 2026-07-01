@@ -7,12 +7,9 @@ import type { LeadSourceRepository } from "../modules/leadradar/infrastructure/r
 import type { LeadKeywordRepository } from "../modules/leadradar/infrastructure/repositories/lead-keyword-repository.js";
 import type { LeadSettingsRepository } from "../modules/leadradar/infrastructure/repositories/lead-settings-repository.js";
 import type { LeadRadarIngestionService } from "../modules/leadradar/application/services/lead-radar-ingestion-service.js";
-import type { LeadSourceService } from "../modules/leadradar/application/services/lead-source-service.js";
-import type { LeadKeywordService } from "../modules/leadradar/application/services/lead-keyword-service.js";
 import type { LeadMatchService } from "../modules/leadradar/application/services/lead-match-service.js";
 import type { LeadScoringService } from "../modules/leadradar/application/services/lead-scoring-service.js";
 import type { LeadDeduplicationService } from "../modules/leadradar/application/services/lead-deduplication-service.js";
-import type { LeadCRMService } from "../modules/leadradar/application/services/lead-crm-service.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -31,12 +28,9 @@ declare module "fastify" {
       };
       services: {
         ingestion: LeadRadarIngestionService;
-        sources: LeadSourceService;
-        keywords: LeadKeywordService;
         match: LeadMatchService;
         scoring: LeadScoringService;
         dedupe: LeadDeduplicationService;
-        crm: LeadCRMService;
       };
     };
   }

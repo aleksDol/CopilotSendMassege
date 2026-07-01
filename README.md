@@ -111,11 +111,9 @@ pnpm --filter @repo/web build
 
 ## API (авторизация и рабочее пространство)
 В `apps/api`:
-- JWT: `/auth/register`, `/auth/login`, `/auth/me`
-- Основной 2-step auth flow:
-  - `POST /auth/login/request-code` -> `POST /auth/login/verify-code`
-  - `POST /auth/register/request-code` -> `POST /auth/register/verify-code`
-  - `POST /auth/login/resend-code`, `POST /auth/register/resend-code`
+- JWT: Telegram auth flow:
+  - `POST /auth/telegram/start` -> deep link -> `POST /auth/telegram/complete`
+  - `POST /auth/telegram/register` (создание workspace при первом входе)
 - Контекст по workspace: `request.currentUser.companyId`
 - Эндпоинты: `/company/current`, `/users/me`, Telegram (`/telegram/connect/*`, `/telegram/account`, `/telegram/sync`)
 - Health: `/health`, `/health/ready`

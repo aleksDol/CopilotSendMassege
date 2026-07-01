@@ -1,22 +1,39 @@
 import { apiClient } from "./client";
 import type { AccessState, AuthUser, Company } from "./types";
 
+export type TelegramAuthCompleteResponse =
+  | {
+      status: "authenticated";
+      user: AuthUser;
+      company: Company;
+      access: AccessState;
+      token: string;
+    }
+  | {
+      status: "registration_required";
+      loginToken: string;
+      fullName: string;
+    };
+
 export const authApi = {
-  login: (payload: { email: string; password: string }) =>
-    apiClient.post<{ user: AuthUser; company: Company; access: AccessState; token: string }>("/auth/login", payload),
-  loginRequestCode: (payload: { email: string; password: string }) =>
-    apiClient.post<{ requiresCode: true; challengeId: string }>("/auth/login/request-code", payload),
-  loginVerifyCode: (payload: { email: string; challengeId: string; code: string }) =>
-    apiClient.post<{ user: AuthUser; company: Company; access: AccessState; token: string }>("/auth/login/verify-code", payload),
-  resendLoginCode: (payload: { email: string; challengeId: string }) =>
-    apiClient.post<{ requiresCode: true; challengeId: string }>("/auth/login/resend-code", payload),
-  register: (payload: { fullName: string; email: string; password: string; companyName: string }) =>
-    apiClient.post<{ user: AuthUser; company: Company; access: AccessState; token: string }>("/auth/register", payload),
-  registerRequestCode: (payload: { fullName: string; email: string; password: string; companyName: string }) =>
-    apiClient.post<{ requiresCode: true; challengeId: string }>("/auth/register/request-code", payload),
-  registerVerifyCode: (payload: { email: string; challengeId: string; code: string }) =>
-    apiClient.post<{ user: AuthUser; company: Company; access: AccessState; token: string }>("/auth/register/verify-code", payload),
-  resendRegisterCode: (payload: { email: string; challengeId: string }) =>
-    apiClient.post<{ requiresCode: true; challengeId: string }>("/auth/register/resend-code", payload),
-  me: (token: string) => apiClient.get<{ user: AuthUser; company: Company; access: AccessState }>("/auth/me", { token })
+  telegramStart: () => apiClient.post<{ loginToken: string; botUsername: string }>("/auth/telegram/start"),
+  telegramComplete: (payload: { loginToken: string }) =>
+    apiClient.post<TelegramAuthCompleteResponse>("/auth/telegram/complete", payload),
+  telegramRegister: (payload: { loginToken: string; companyName: string }) =>
+    apiClient.post<{ status: "authenticated"; user: AuthUser; company: Company; access: AccessState; token: string }>(
+      "/auth/telegram/register",
+      payload
+    ),
+  telegramMe: (token: string) =>
+    apiClient.get<{
+      telegram: null | {
+        telegramUserId: string;
+        username: string | null;
+        firstName: string | null;
+        lastName: string | null;
+        photoUrl: string | null;
+        linkedAt: string;
+        lastAuthAt: string | null;
+      };
+    }>("/auth/telegram/me", { token })
 };

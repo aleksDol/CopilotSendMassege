@@ -40,6 +40,9 @@ test("message matcher ignores author_profile keywords and matches message keywor
       addKeyword: async () => {
         throw new Error("not used");
       },
+      bulkAddKeywords: async () => {
+        throw new Error("not used");
+      },
       updateKeyword: async () => {
         throw new Error("not used");
       },
@@ -112,6 +115,9 @@ test("contains matcher does not match inside longer words", async () => {
       ],
       listNegativeKeywords: async () => [],
       addKeyword: async () => {
+        throw new Error("not used");
+      },
+      bulkAddKeywords: async () => {
         throw new Error("not used");
       },
       updateKeyword: async () => {

@@ -166,6 +166,19 @@ export type CreateLeadKeywordInput = {
   is_active?: boolean;
 };
 
+export type BulkAddLeadKeywordItemInput = Omit<CreateLeadKeywordInput, "user_id" | "telegram_account_id">;
+
+export type BulkAddLeadKeywordsInput = {
+  user_id: string;
+  telegram_account_id: string;
+  keywords: BulkAddLeadKeywordItemInput[];
+};
+
+export type BulkAddLeadKeywordsResult = {
+  createdCount: number;
+  skippedCount: number;
+};
+
 export type UpdateLeadKeywordInput = {
   id: string;
   user_id: string;

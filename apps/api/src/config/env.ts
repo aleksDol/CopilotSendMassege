@@ -60,16 +60,6 @@ const envSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   STRIPE_PRICE_PRO: z.string().optional(),
   STRIPE_PRICE_TEAM: z.string().optional(),
-  EMAIL_FROM: z.string().email().optional(),
-  SMTP_HOST: z.string().optional(),
-  SMTP_PORT: z.coerce.number().int().positive().optional(),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASS: z.string().optional(),
-  SMTP_SECURE: booleanFromEnv.default(false),
-  EMAIL_CODE_SECRET: z.string().min(16).default("replace_me_email_code_secret"),
-  EMAIL_CODE_TTL_MINUTES: z.coerce.number().int().min(1).max(60).default(10),
-  EMAIL_CODE_RESEND_COOLDOWN_SECONDS: z.coerce.number().int().min(10).max(600).default(60),
-  EMAIL_CODE_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
   AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(12000),
   AI_MAX_CONTEXT_MESSAGES: z.coerce.number().int().min(1).max(100).default(20),
   REDIS_CACHE_TTL: z.coerce.number().int().min(5).max(600).default(45),
@@ -79,8 +69,16 @@ const envSchema = z.object({
   LEADRADAR_MULTI_CHAT_DEDUPE_WINDOW_HOURS: z.coerce.number().int().min(1).max(168).default(3),
   /** Score bonus when merging multi-chat activity into an existing lead. */
   LEADRADAR_MULTI_CHAT_SCORE_BONUS: z.coerce.number().int().min(0).max(500).default(35),
+  /** Delay between marketplace catalog join jobs (ms). */
+  SOURCE_MARKETPLACE_JOIN_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(45_000),
   /** Comma-separated emails allowed to use /admin API (empty = no platform admins). */
-  ADMIN_EMAILS: z.string().optional().default("")
+  ADMIN_EMAILS: z.string().optional().default(""),
+  /** @username of the dedicated SaaS auth bot (without @). */
+  TELEGRAM_AUTH_BOT_USERNAME: z.string().optional(),
+  /** Opt-in verbose LeadRadar trace logs. Off in production unless explicitly enabled. */
+  ENABLE_LEADRADAR_DEBUG: booleanFromEnv.default(false),
+  /** When set, LeadRadar traces only this Telegram message id (overrides global noise). */
+  LEADRADAR_DEBUG_MESSAGE_ID: z.string().optional().default("")
 });
 
 const parsedEnv = envSchema.safeParse({
@@ -114,16 +112,6 @@ const parsedEnv = envSchema.safeParse({
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
   STRIPE_PRICE_PRO: process.env.STRIPE_PRICE_PRO,
   STRIPE_PRICE_TEAM: process.env.STRIPE_PRICE_TEAM,
-  EMAIL_FROM: process.env.EMAIL_FROM,
-  SMTP_HOST: process.env.SMTP_HOST,
-  SMTP_PORT: process.env.SMTP_PORT,
-  SMTP_USER: process.env.SMTP_USER,
-  SMTP_PASS: process.env.SMTP_PASS,
-  SMTP_SECURE: process.env.SMTP_SECURE,
-  EMAIL_CODE_SECRET: process.env.EMAIL_CODE_SECRET,
-  EMAIL_CODE_TTL_MINUTES: process.env.EMAIL_CODE_TTL_MINUTES,
-  EMAIL_CODE_RESEND_COOLDOWN_SECONDS: process.env.EMAIL_CODE_RESEND_COOLDOWN_SECONDS,
-  EMAIL_CODE_MAX_ATTEMPTS: process.env.EMAIL_CODE_MAX_ATTEMPTS,
   AI_REQUEST_TIMEOUT_MS: process.env.AI_REQUEST_TIMEOUT_MS,
   AI_MAX_CONTEXT_MESSAGES: process.env.AI_MAX_CONTEXT_MESSAGES,
   REDIS_CACHE_TTL: process.env.REDIS_CACHE_TTL,
@@ -131,7 +119,11 @@ const parsedEnv = envSchema.safeParse({
   TELEGRAM_WORKER_CONCURRENCY: process.env.TELEGRAM_WORKER_CONCURRENCY,
   LEADRADAR_MULTI_CHAT_DEDUPE_WINDOW_HOURS: process.env.LEADRADAR_MULTI_CHAT_DEDUPE_WINDOW_HOURS,
   LEADRADAR_MULTI_CHAT_SCORE_BONUS: process.env.LEADRADAR_MULTI_CHAT_SCORE_BONUS,
-  ADMIN_EMAILS: process.env.ADMIN_EMAILS
+  SOURCE_MARKETPLACE_JOIN_INTERVAL_MS: process.env.SOURCE_MARKETPLACE_JOIN_INTERVAL_MS,
+  ADMIN_EMAILS: process.env.ADMIN_EMAILS,
+  TELEGRAM_AUTH_BOT_USERNAME: process.env.TELEGRAM_AUTH_BOT_USERNAME,
+  ENABLE_LEADRADAR_DEBUG: process.env.ENABLE_LEADRADAR_DEBUG,
+  LEADRADAR_DEBUG_MESSAGE_ID: process.env.LEADRADAR_DEBUG_MESSAGE_ID
 });
 
 if (!parsedEnv.success) {

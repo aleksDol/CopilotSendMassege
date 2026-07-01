@@ -65,6 +65,11 @@ export const createKeywordBodySchema = z.object({
   }
 });
 
+export const bulkKeywordsBodySchema = z.object({
+  channelAccountId: z.string().uuid(),
+  keywords: z.array(createKeywordBodySchema).min(1).max(50)
+});
+
 export const updateKeywordBodySchema = z
   .object({
     keyword: z.string().min(1).max(255).optional(),
@@ -148,6 +153,10 @@ export const updateLeadNotesBodySchema = z.object({
 export const sendLeadFirstMessageBodySchema = z.object({
   text: z.string().trim().min(1).max(4096),
   channelAccountId: z.string().uuid().optional()
+});
+
+export const aiSetupGenerateBodySchema = z.object({
+  description: z.string().trim().min(3, "description must be at least 3 characters").max(2000)
 });
 
 export const createManualLeadBodySchema = z

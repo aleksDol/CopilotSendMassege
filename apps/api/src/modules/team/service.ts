@@ -1,9 +1,8 @@
-import { randomBytes } from "node:crypto";
 import { UserRole } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { resolveCompanyPlan } from "../../lib/billing/subscriptions.js";
 import { AppError } from "../../lib/errors.js";
-import { hashPassword } from "../../lib/security.js";
+import { randomBytes } from "node:crypto";
 
 const toPublicMember = (user: { id: string; email: string; fullName: string; role: UserRole; isActive: boolean; createdAt: Date }) => ({
   id: user.id,
@@ -143,7 +142,8 @@ export class TeamService {
       throw new AppError(409, "EMAIL_IN_USE", "Email already exists");
     }
 
-    const passwordHash = await hashPassword(params.password);
+    // Email/password login is removed. Keep column compatibility by storing a random value.
+    const passwordHash = randomBytes(32).toString("hex");
 
     const user = await this.app.prisma.$transaction(async (tx) => {
       const created = await tx.user.create({

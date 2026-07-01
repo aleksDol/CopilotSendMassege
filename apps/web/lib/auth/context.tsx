@@ -63,7 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const me = await apiClient.get<{ user: AuthUser; company: AuthCompany; access: AccessState }>("/auth/me", { token: stored });
+      const me = await apiClient.get<{ user: AuthUser; company: AuthCompany; access: AccessState }>("/users/me", { token: stored });
       setToken(stored);
       setUser(me.user);
       setCompany(me.company);

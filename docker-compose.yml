@@ -65,6 +65,7 @@ services:
       DASHBOARD_ACTIVITY_WINDOW_DAYS: ${DASHBOARD_ACTIVITY_WINDOW_DAYS:-7}
       LEADRADAR_MULTI_CHAT_DEDUPE_WINDOW_HOURS: ${LEADRADAR_MULTI_CHAT_DEDUPE_WINDOW_HOURS:-3}
       LEADRADAR_MULTI_CHAT_SCORE_BONUS: ${LEADRADAR_MULTI_CHAT_SCORE_BONUS:-35}
+      TELEGRAM_AUTH_BOT_USERNAME: ${TELEGRAM_AUTH_BOT_USERNAME:-}
     ports:
       - "${API_PORT:-4000}:${API_PORT:-4000}"
     depends_on:
@@ -114,6 +115,9 @@ services:
       AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS:-12000}
       AI_WORKER_CONCURRENCY: ${AI_WORKER_CONCURRENCY:-2}
       TELEGRAM_WORKER_CONCURRENCY: ${TELEGRAM_WORKER_CONCURRENCY:-2}
+      TELEGRAM_WORKER_URL: http://telegram-worker:8080
+      TELEGRAM_WORKER_TIMEOUT_MS: ${TELEGRAM_WORKER_TIMEOUT_MS:-60000}
+      SOURCE_MARKETPLACE_SUBSCRIBE_CONCURRENCY: ${SOURCE_MARKETPLACE_SUBSCRIBE_CONCURRENCY:-1}
     depends_on:
       postgres:
         condition: service_healthy
@@ -144,6 +148,21 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  telegram-auth-bot:
+    build:
+      context: .
+      dockerfile: apps/telegram-auth-bot/Dockerfile
+    container_name: ai-sales-telegram-auth-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: ${REDIS_URL}
+      TELEGRAM_AUTH_BOT_TOKEN: ${TELEGRAM_AUTH_BOT_TOKEN}
+    depends_on:
       redis:
         condition: service_healthy
 

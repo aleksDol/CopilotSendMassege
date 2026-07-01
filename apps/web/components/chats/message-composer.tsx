@@ -31,7 +31,7 @@ export function MessageComposer({
     setLocalError(null);
     if (submittingRef.current || isSending || sendDisabled) return;
     if (!value.trim()) {
-      setLocalError("Message cannot be empty");
+      setLocalError("Сообщение не может быть пустым");
       return;
     }
     submittingRef.current = true;
@@ -48,12 +48,12 @@ export function MessageComposer({
         <Textarea
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          placeholder="Type your reply..."
+          placeholder="Введите ответ..."
           rows={2}
           className="min-h-[44px] resize-none"
         />
         <Button type="submit" disabled={isSending || sendDisabled} className="h-10 shrink-0 px-4">
-          {isSending ? "Sending..." : "Send"}
+          {isSending ? "Отправка..." : "Отправить"}
         </Button>
       </div>
       {sendInfo ? <p className="text-xs text-muted-foreground">{sendInfo}</p> : null}

@@ -8,6 +8,7 @@ import { LeadStatus } from "../../domain/enums/lead-status.js";
 import type { LeadRadarMessageInput } from "../../types/ingestion.js";
 import type { LeadSource } from "../../domain/entities/lead-source.js";
 import type { PrismaClient } from "@prisma/client";
+import { shouldTraceLeadRadarMessage } from "../../../../lib/leadradar-debug.js";
 import { normalizeLeadRadarText } from "../../lib/text-normalization.js";
 
 type LeadRadarFinalAction = "created" | "merged" | "skipped";
@@ -24,17 +25,6 @@ type LeadRadarSkipReason =
   | "duplicate_soft"
   | "already_in_crm"
   | "merged_existing_lead";
-
-const isLeadRadarDebugEnabled = (): boolean => {
-  const v = String(process.env.ENABLE_LEADRADAR_DEBUG ?? "").trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes" || v === "on";
-};
-
-const shouldTraceMessage = (messageId: string): boolean => {
-  const exact = String(process.env.LEADRADAR_DEBUG_MESSAGE_ID ?? "").trim();
-  if (exact && messageId && exact === messageId) return true;
-  return isLeadRadarDebugEnabled();
-};
 
 const PROMOTIONAL_PATTERNS = [
   "приглашаю вас",
@@ -146,7 +136,7 @@ export class LeadRadarIngestionService {
       }
     };
 
-    const traceEnabled = shouldTraceMessage(input.messageId);
+    const traceEnabled = shouldTraceLeadRadarMessage(input.messageId);
     const { raw_text, normalized_text } = normalizeLeadRadarText(input.text ?? "");
 
     let final_action: LeadRadarFinalAction = "skipped";

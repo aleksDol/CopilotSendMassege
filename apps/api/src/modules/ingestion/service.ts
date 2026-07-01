@@ -2,6 +2,7 @@ import { ChannelType, MessageDirection, MessageType, Prisma } from "@prisma/clie
 import type { FastifyInstance } from "fastify";
 import { invalidateCacheByPrefix } from "../../lib/cache.js";
 import { AppError } from "../../lib/errors.js";
+import { isLeadRadarDebugEnabled } from "../../lib/leadradar-debug.js";
 import { realtimeHub } from "../../lib/realtime.js";
 import { invalidateConversationCaches } from "../conversations/service.js";
 import { isSupportedTelegramMessagePayload } from "../conversations/support.js";
@@ -352,15 +353,17 @@ export const ingestMessageEvent = async (app: FastifyInstance, payload: MessageE
   });
 
   if (!isSupported) {
-    console.log(
-      "[LeadRadar-DEBUG] isSupportedTelegramMessagePayload=false → IGNORED chatId=%s dialogType=%s senderType=%s isOutgoing=%s allowGroup=%s senderUsername=%s",
-      payload.externalConversationId,
-      payload.rawPayload?.dialogType,
-      payload.senderType,
-      payload.isOutgoing,
-      app.config.env.ENABLE_TG_GROUP_INGESTION,
-      payload.senderUsername
-    );
+    if (isLeadRadarDebugEnabled()) {
+      console.log(
+        "[LeadRadar-DEBUG] isSupportedTelegramMessagePayload=false → IGNORED chatId=%s dialogType=%s senderType=%s isOutgoing=%s allowGroup=%s senderUsername=%s",
+        payload.externalConversationId,
+        payload.rawPayload?.dialogType,
+        payload.senderType,
+        payload.isOutgoing,
+        app.config.env.ENABLE_TG_GROUP_INGESTION,
+        payload.senderUsername
+      );
+    }
     await app.prisma.telegramAccount.update({
       where: { id: telegramAccount.id },
       data: {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createKeywordBodySchema, updateKeywordBodySchema, updateSettingsBodySchema } from "./schemas.js";
+import { createKeywordBodySchema, bulkKeywordsBodySchema, updateKeywordBodySchema, updateSettingsBodySchema } from "./schemas.js";
 
 test("createKeywordBodySchema defaults target to message", () => {
   const out = createKeywordBodySchema.parse({
@@ -51,4 +51,22 @@ test("keyword target validation rejects invalid values", () => {
 test("updateSettingsBodySchema accepts authorProfileMatchingEnabled boolean", () => {
   const out = updateSettingsBodySchema.parse({ authorProfileMatchingEnabled: true });
   assert.equal(out.authorProfileMatchingEnabled, true);
+});
+
+test("bulkKeywordsBodySchema requires channelAccountId and keywords array", () => {
+  const out = bulkKeywordsBodySchema.parse({
+    channelAccountId: "550e8400-e29b-41d4-a716-446655440000",
+    keywords: [
+      {
+        keyword: "посоветуйте разработчика",
+        matchType: "contains",
+        target: "message",
+        category: "website",
+        priority: 1
+      }
+    ]
+  });
+  assert.equal(out.keywords.length, 1);
+  assert.equal(out.keywords[0]?.matchType, "contains");
+  assert.equal(out.keywords[0]?.target, "message");
 });

@@ -39,28 +39,28 @@ export function ConversationList({
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
       <Input
-        placeholder="Search chats"
+        placeholder="Поиск чатов"
         value={filters.search}
         onChange={(event) => onFiltersChange({ ...filters, search: event.target.value })}
       />
       <div className="grid grid-cols-2 gap-2">
         <Select
           options={[
-            { label: "All", value: "all" },
-            { label: "Waiting", value: "true" },
-            { label: "Not waiting", value: "false" }
+            { label: "Все", value: "all" },
+            { label: "Ждут ответа", value: "true" },
+            { label: "Без ожидания", value: "false" }
           ]}
           value={filters.waitingForReply}
           onChange={(event) => onFiltersChange({ ...filters, waitingForReply: event.target.value })}
         />
         <Select
           options={[
-            { label: "Any stage", value: "all" },
-            { label: "New", value: "new" },
-            { label: "Contacted", value: "contacted" },
-            { label: "Qualified", value: "qualified" },
-            { label: "Proposal", value: "proposal" },
-            { label: "Negotiation", value: "negotiation" }
+            { label: "Любой этап", value: "all" },
+            { label: "Новый", value: "new" },
+            { label: "Связались", value: "contacted" },
+            { label: "Квалифицирован", value: "qualified" },
+            { label: "Предложение", value: "proposal" },
+            { label: "Переговоры", value: "negotiation" }
           ]}
           value={filters.leadStage}
           onChange={(event) => onFiltersChange({ ...filters, leadStage: event.target.value })}
@@ -87,7 +87,7 @@ export function ConversationList({
             />
           );
         })}
-        {filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No chats found</p> : null}
+        {filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">Чаты не найдены</p> : null}
       </div>
     </div>
   );

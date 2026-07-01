@@ -9,13 +9,70 @@ import { MetricCard } from "@/components/dashboard/metric-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/lib/auth/context";
-import { useDashboardSales } from "@/lib/hooks/use-app-data";
+import {
+  useDashboardSales,
+  useLeadRadarKeywords,
+  useLeadRadarLeads,
+  useLeadRadarSources,
+  useTelegramAccount,
+  useTelegramAccounts
+} from "@/lib/hooks/use-app-data";
 import type { SalesDashboardPeriod } from "@/lib/api/types";
+
+function DashboardSetupGuide({
+  workTelegramConnected,
+  leadRadarConfigured,
+  waitingForLeads
+}: {
+  workTelegramConnected: boolean;
+  leadRadarConfigured: boolean;
+  waitingForLeads: boolean;
+}) {
+  if (!workTelegramConnected) {
+    return (
+      <EmptyState
+        title="Подключите рабочий Telegram"
+        description="Вход через бота — только для доступа к сервису. Для поиска клиентов подключите рабочий аккаунт по QR-коду и включите парсинг."
+        actionLabel="Подключить рабочий Telegram"
+        actionHref="/settings/telegram"
+      />
+    );
+  }
+
+  if (!leadRadarConfigured) {
+    return (
+      <EmptyState
+        title="Настройте поиск клиентов"
+        description="Опишите бизнес, выберите поисковые фразы и подключите источники — LeadRadar начнёт искать потенциальных клиентов."
+        actionLabel="Настроить поиск клиентов"
+        actionHref="/leadradar/setup"
+      />
+    );
+  }
+
+  if (waitingForLeads) {
+    return (
+      <EmptyState
+        title="LeadRadar уже ищет клиентов"
+        description="Первые лиды появятся после мониторинга источников. Пока можно проверить подключённые чаты и ключевые слова."
+        actionLabel="Открыть лиды"
+        actionHref="/leadradar"
+      />
+    );
+  }
+
+  return null;
+}
 
 export default function DashboardPage() {
   const { access } = useAuth();
   const [period, setPeriod] = useState<SalesDashboardPeriod>("week");
   const sales = useDashboardSales(period);
+  const telegram = useTelegramAccount();
+  const telegramAccounts = useTelegramAccounts();
+  const keywords = useLeadRadarKeywords();
+  const sources = useLeadRadarSources();
+  const leads = useLeadRadarLeads({ page: 1, limit: 1 });
 
   const periodLabel = useMemo(() => {
     if (period === "day") return "День";
@@ -23,12 +80,45 @@ export default function DashboardPage() {
     return "Месяц";
   }, [period]);
 
-  if (sales.isLoading) {
-    return <LoadingState label="Загрузка метрик дашборда..." />;
+  const workTelegramConnected =
+    (telegram.data?.loginStatus ?? telegram.data?.status) === "connected" &&
+    Boolean(telegramAccounts.data?.items?.length);
+  const hasParsingAccount = Boolean(
+    telegramAccounts.data?.items?.some((account) => account.channelAccountId && account.parsingEnabled !== false)
+  );
+  const leadRadarConfigured =
+    hasParsingAccount &&
+    (Boolean(keywords.data?.items?.length) || Boolean(sources.data?.items?.length));
+  const waitingForLeads = leadRadarConfigured && !leads.isLoading && (leads.data?.items?.length ?? 0) === 0;
+  const showSetupGuide =
+    !workTelegramConnected || !leadRadarConfigured || waitingForLeads;
+
+  const setupLoading =
+    telegram.isLoading ||
+    telegramAccounts.isLoading ||
+    keywords.isLoading ||
+    sources.isLoading ||
+    leads.isLoading;
+
+  if (sales.isLoading || setupLoading) {
+    return <LoadingState label="Загрузка обзора..." />;
   }
 
   if (!sales.data) {
-    return <EmptyState title="Пока нет данных" description="Подключите Telegram и синхронизируйте чаты, чтобы заполнить дашборд." />;
+    return (
+      <div className="space-y-6">
+        {access?.subscriptionStatus === "expired" ? <TrialPaywallCard /> : null}
+        <div>
+          <h1 className="text-2xl font-semibold">Обзор</h1>
+          <p className="text-sm text-muted-foreground">Обзор по вашему рабочему пространству продаж.</p>
+        </div>
+        <DashboardSetupGuide
+          workTelegramConnected={workTelegramConnected}
+          leadRadarConfigured={leadRadarConfigured}
+          waitingForLeads={waitingForLeads}
+        />
+      </div>
+    );
   }
 
   const m = sales.data.metrics;
@@ -38,9 +128,17 @@ export default function DashboardPage() {
     <div className="space-y-6">
       {access?.subscriptionStatus === "expired" ? <TrialPaywallCard /> : null}
       <div>
-        <h1 className="text-2xl font-semibold">Дашборд</h1>
+        <h1 className="text-2xl font-semibold">Обзор</h1>
         <p className="text-sm text-muted-foreground">Обзор по вашему рабочему пространству продаж.</p>
       </div>
+
+      {showSetupGuide ? (
+        <DashboardSetupGuide
+          workTelegramConnected={workTelegramConnected}
+          leadRadarConfigured={leadRadarConfigured}
+          waitingForLeads={waitingForLeads}
+        />
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="w-44">
@@ -132,6 +230,9 @@ export default function DashboardPage() {
           </Link>
           <Link href="/settings/telegram" className="rounded-md bg-secondary px-3 py-2 text-sm">
             Подключение Telegram
+          </Link>
+          <Link href="/leadradar/setup" className="rounded-md bg-secondary px-3 py-2 text-sm">
+            Настроить поиск клиентов
           </Link>
         </CardContent>
       </Card>

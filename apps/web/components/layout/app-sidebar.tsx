@@ -14,6 +14,7 @@ import {
   Smartphone,
   CreditCard,
   Users,
+  User,
   PanelLeftClose,
   PanelLeftOpen
 } from "lucide-react";
@@ -24,18 +25,19 @@ const SIDEBAR_STORAGE_KEY = "app-sidebar-collapsed";
 
 const navItems = [
   { href: "/getting-started", label: "Начало работы", icon: CircleHelp },
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/chats", label: "Chats", icon: MessageCircle },
-  { href: "/tasks", label: "Tasks", icon: CheckSquare },
+  { href: "/dashboard", label: "Обзор", icon: LayoutDashboard },
+  { href: "/chats", label: "Чаты", icon: MessageCircle },
+  { href: "/tasks", label: "Задачи", icon: CheckSquare },
   { href: "/base", label: "База", icon: Database },
   { href: "/leadradar", label: "LeadRadar", icon: Radar }
 ];
 
 const settingsItems = [
-  { href: "/settings/ai-brain", label: "AI Brain", icon: Bot },
-  { href: "/settings/telegram", label: "Telegram Connection", icon: Smartphone },
-  { href: "/settings/billing", label: "Billing", icon: CreditCard },
-  { href: "/settings/team", label: "Team", icon: Users }
+  { href: "/settings/ai-brain", label: "База знаний ИИ", icon: Bot },
+  { href: "/settings/telegram", label: "Подключение Telegram", icon: Smartphone },
+  { href: "/settings/billing", label: "Оплата", icon: CreditCard },
+  { href: "/settings/account", label: "Аккаунт", icon: User },
+  { href: "/settings/team", label: "Команда", icon: Users }
 ];
 
 function getStoredCollapsed(): boolean {
@@ -103,7 +105,7 @@ export function AppSidebar({
         {!effectiveCollapsed && (
           <div className="min-w-0 px-2">
             <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">AI Sales Assistant</div>
-            <div className="truncate text-lg font-semibold">Control panel</div>
+            <div className="truncate text-lg font-semibold">Управление</div>
           </div>
         )}
         <button
@@ -143,7 +145,7 @@ export function AppSidebar({
         })}
       </nav>
 
-      {!effectiveCollapsed && <div className="px-4 pt-4 text-xs uppercase tracking-[0.2em] text-muted-foreground">Settings</div>}
+      {!effectiveCollapsed && <div className="px-4 pt-4 text-xs uppercase tracking-[0.2em] text-muted-foreground">Настройки</div>}
       <nav className="space-y-1 px-2 pt-2">
         {settingsItems.map((item) => {
           const Icon = item.icon;

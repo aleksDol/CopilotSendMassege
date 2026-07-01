@@ -25,9 +25,6 @@ export function MarketingTopNav() {
           <TrackingLink href="/login" className={outlineSm}>
             Войти
           </TrackingLink>
-          <TrackingLink href="/register" className={defaultSm}>
-            Зарегистрироваться
-          </TrackingLink>
         </nav>
       </div>
     </header>

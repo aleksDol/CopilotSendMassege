@@ -631,9 +631,13 @@ export default function LeadRadarInboxPage() {
 
       <EmptyState
 
-        title="LeadRadar"
+        title="Подключите рабочий Telegram"
 
-        description="Нет Telegram-аккаунта с включенным парсингом. Включите его в настройках Telegram."
+        description="Подключите рабочий Telegram и включите поиск лидов."
+
+        actionLabel="Перейти к Telegram"
+
+        actionHref="/settings/telegram"
 
       />
 

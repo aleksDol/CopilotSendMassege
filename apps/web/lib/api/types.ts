@@ -485,3 +485,17 @@ export type LeadRadarSettingsResponse = {
   dedupeWindowHours: number;
   coldFirstTouchPlaybook: string | null;
 };
+
+export type LeadRadarAiSetupKeywordGroup = {
+  title: string;
+  description: string;
+  keywords: string[];
+};
+
+export type LeadRadarAiSetupPreviewResponse = {
+  niche: string;
+  summary: string;
+  keywordGroups: LeadRadarAiSetupKeywordGroup[];
+  negativeKeywords: string[];
+  chatTopics: string[];
+};

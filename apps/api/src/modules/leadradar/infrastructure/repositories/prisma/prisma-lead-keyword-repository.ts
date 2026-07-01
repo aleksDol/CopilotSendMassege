@@ -3,6 +3,8 @@ import { Prisma } from "@prisma/client";
 import { AppError } from "../../../../../lib/errors.js";
 import type { LeadKeywordRepository } from "../lead-keyword-repository.js";
 import type {
+  BulkAddLeadKeywordsInput,
+  BulkAddLeadKeywordsResult,
   CreateLeadKeywordInput,
   CreateNegativeKeywordInput,
   ListAccountScopedInput,
@@ -40,6 +42,60 @@ export class PrismaLeadKeywordRepository implements LeadKeywordRepository {
       }
     });
     return leadRadarMappers.keyword(row);
+  }
+
+  async bulkAddKeywords(input: BulkAddLeadKeywordsInput): Promise<BulkAddLeadKeywordsResult> {
+    const existingRows = await this.prisma.leadRadarKeyword.findMany({
+      where: {
+        userId: input.user_id,
+        telegramAccountId: input.telegram_account_id
+      },
+      select: { keyword: true }
+    });
+
+    const existingNormalized = new Set(existingRows.map((row) => row.keyword.trim().toLowerCase()));
+    const requestSeen = new Set<string>();
+    let createdCount = 0;
+    let skippedCount = 0;
+
+    for (const item of input.keywords) {
+      const keyword = item.keyword.trim();
+      const normalized = keyword.toLowerCase();
+
+      if (!keyword) {
+        skippedCount += 1;
+        continue;
+      }
+
+      if (requestSeen.has(normalized)) {
+        skippedCount += 1;
+        continue;
+      }
+      requestSeen.add(normalized);
+
+      if (existingNormalized.has(normalized)) {
+        skippedCount += 1;
+        continue;
+      }
+
+      await this.prisma.leadRadarKeyword.create({
+        data: {
+          userId: input.user_id,
+          telegramAccountId: input.telegram_account_id,
+          keyword,
+          target: item.target ?? LeadKeywordTarget.MESSAGE,
+          matchType: item.match_type as unknown as never,
+          category: item.category as unknown as never,
+          priority: item.priority ?? 0,
+          isActive: item.is_active ?? true
+        }
+      });
+
+      existingNormalized.add(normalized);
+      createdCount += 1;
+    }
+
+    return { createdCount, skippedCount };
   }
 
   async updateKeyword(input: UpdateLeadKeywordInput) {
