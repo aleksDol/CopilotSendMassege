@@ -5,7 +5,6 @@ import { ApiError } from "@/lib/api/errors";
 import {
   sourceMarketplaceApi,
   type SourceMarketplaceEntryItem,
-  type SourceMarketplaceEntryStatus,
   type SourceMarketplaceTopicItem,
   type SourceMarketplaceTopicStatus
 } from "@/lib/api/source-marketplace";
@@ -30,13 +29,6 @@ const TOPIC_STATUS_LABELS: Record<SourceMarketplaceTopicStatus, string> = {
   hidden: "Скрыта"
 };
 
-const ENTRY_STATUS_LABELS: Record<SourceMarketplaceEntryStatus, string> = {
-  active: "Активен",
-  paused: "На паузе",
-  blocked: "Заблокирован",
-  review: "На проверке"
-};
-
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
   try {
@@ -48,11 +40,6 @@ function formatDate(iso: string | null): string {
 
 const topicStatusOptions = (Object.keys(TOPIC_STATUS_LABELS) as SourceMarketplaceTopicStatus[]).map((s) => ({
   label: TOPIC_STATUS_LABELS[s],
-  value: s
-}));
-
-const entryStatusOptions = (Object.keys(ENTRY_STATUS_LABELS) as SourceMarketplaceEntryStatus[]).map((s) => ({
-  label: ENTRY_STATUS_LABELS[s],
   value: s
 }));
 
@@ -89,7 +76,6 @@ export default function LeadRadarCatalogPage() {
   const [topicSearch, setTopicSearch] = useState("");
   const [topicStatusFilter, setTopicStatusFilter] = useState<"" | SourceMarketplaceTopicStatus>("");
   const [entrySearch, setEntrySearch] = useState("");
-  const [entryStatusFilter, setEntryStatusFilter] = useState<"" | SourceMarketplaceEntryStatus>("");
   const [entryTopicFilter, setEntryTopicFilter] = useState("");
 
   const [topicForm, setTopicForm] = useState(emptyTopicForm);
@@ -266,7 +252,6 @@ export default function LeadRadarCatalogPage() {
   const filteredEntries = useMemo(() => {
     const s = entrySearch.trim().toLowerCase();
     return entries.filter((row) => {
-      if (entryStatusFilter && row.status !== entryStatusFilter) return false;
       if (entryTopicFilter && !row.topic_ids.includes(entryTopicFilter)) return false;
       if (!s) return true;
       return (
@@ -276,7 +261,7 @@ export default function LeadRadarCatalogPage() {
         (row.note ?? "").toLowerCase().includes(s)
       );
     });
-  }, [entries, entrySearch, entryStatusFilter, entryTopicFilter]);
+  }, [entries, entrySearch, entryTopicFilter]);
 
   const editingEntry = useMemo(
     () => (editingEntryId ? entries.find((row) => row.id === editingEntryId) ?? null : null),
@@ -559,17 +544,12 @@ export default function LeadRadarCatalogPage() {
               <CardTitle>Источники каталога</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="grid gap-2 md:grid-cols-4">
+              <div className="grid gap-2 md:grid-cols-3">
                 <input
                   value={entrySearch}
                   onChange={(e) => setEntrySearch(e.target.value)}
                   placeholder="Поиск"
                   className="h-10 rounded-md border border-border bg-background px-3 md:col-span-2"
-                />
-                <Select
-                  value={entryStatusFilter}
-                  onChange={(e) => setEntryStatusFilter(e.target.value as "" | SourceMarketplaceEntryStatus)}
-                  options={[{ label: "Все статусы", value: "" }, ...entryStatusOptions]}
                 />
                 <Select
                   value={entryTopicFilter}
@@ -591,7 +571,6 @@ export default function LeadRadarCatalogPage() {
                         <th className="py-2 pr-3">Название</th>
                         <th className="py-2 pr-3">Username</th>
                         <th className="py-2 pr-3">Тип</th>
-                        <th className="py-2 pr-3">Статус</th>
                         <th className="py-2 pr-3">Тематики</th>
                         <th className="py-2 pr-3">Проверен</th>
                         <th className="py-2">Действия</th>
@@ -605,9 +584,6 @@ export default function LeadRadarCatalogPage() {
                             {row.telegram_username ? `@${row.telegram_username}` : "—"}
                           </td>
                           <td className="py-2 pr-3">{formatChatTypeLabel(row.chat_type)}</td>
-                          <td className="py-2 pr-3">
-                            <Badge variant="secondary">{ENTRY_STATUS_LABELS[row.status]}</Badge>
-                          </td>
                           <td className="py-2 pr-3">
                             <div className="flex flex-wrap gap-1">
                               {row.topics.length ? (

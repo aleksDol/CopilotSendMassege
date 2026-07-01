@@ -80,7 +80,7 @@ test("createEntry links topics through nested createMany on entry create", async
           telegramUsername: data.telegramUsername ?? null,
           telegramChatId: data.telegramChatId ?? null,
           chatType: data.chatType ?? null,
-          status: data.status ?? "review",
+          status: data.status ?? "active",
           note: data.note ?? null,
           lastCheckedAt: data.lastCheckedAt ?? null,
           createdAt: new Date("2026-07-01T00:00:00.000Z"),
@@ -115,7 +115,7 @@ test("createEntry links topics through nested createMany on entry create", async
 
 test("createEntry skips topic lookup and nested create when topicIds omitted", async () => {
   let topicFindManyCalls = 0;
-  let createData = null as CapturedEntryCreateData | null;
+  let createData: { topics?: unknown; status?: string } | null = null;
 
   const prisma = {
     sourceMarketplaceTopic: {
@@ -130,6 +130,7 @@ test("createEntry skips topic lookup and nested create when topicIds omitted", a
       }: {
         data: {
           title: string;
+          status?: string;
           topics?: { createMany: { data: Array<{ topicId: string; sortOrder: number }> } };
         };
       }) => {
@@ -140,7 +141,7 @@ test("createEntry skips topic lookup and nested create when topicIds omitted", a
           telegramUsername: null,
           telegramChatId: null,
           chatType: null,
-          status: "review",
+          status: data.status ?? "active",
           note: null,
           lastCheckedAt: null,
           createdAt: new Date("2026-07-01T00:00:00.000Z"),
@@ -157,5 +158,6 @@ test("createEntry skips topic lookup and nested create when topicIds omitted", a
 
   assert.equal(topicFindManyCalls, 0);
   assert.equal(createData?.topics, undefined);
+  assert.equal(createData?.status, "active");
   assert.deepEqual(result.topic_ids, []);
 });

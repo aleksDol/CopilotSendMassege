@@ -213,7 +213,7 @@ export async function createEntry(
       telegramUsername: normalizeTelegramUsername(input.telegramUsername),
       telegramChatId: input.telegramChatId?.trim() || null,
       chatType: input.chatType?.trim() || null,
-      status: input.status ?? "review",
+      status: input.status ?? "active",
       note: input.note?.trim() || null,
       lastCheckedAt: input.lastCheckedAt ? new Date(input.lastCheckedAt) : null,
       ...(uniqueTopicIds.length

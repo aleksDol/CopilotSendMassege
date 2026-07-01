@@ -143,7 +143,6 @@ export function CatalogEntryQuickForm({ token, topics, entries, onCreated }: Cat
         telegramUsername: resolved.username,
         telegramChatId: resolved.telegramChatId,
         chatType: resolved.chatType,
-        status: "review",
         lastCheckedAt: new Date().toISOString(),
         topicIds
       });
