@@ -231,6 +231,27 @@ services:
     networks:
       - app_internal
 
+  telegram-auth-bot:
+    build:
+      context: .
+      dockerfile: apps/telegram-auth-bot/Dockerfile
+    container_name: ai-sales-telegram-auth-bot
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+    depends_on:
+      redis:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - app_internal
+
   postgres:
     image: postgres:16-alpine
     container_name: ai-sales-postgres
