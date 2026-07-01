@@ -9,16 +9,15 @@ from telethon.errors import (
     RPCError,
     ServerError,
     TimedOutError,
-    UserAlreadyParticipantError,
     UsernameInvalidError,
     UsernameNotOccupiedError,
 )
-from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.utils import get_peer_id
 
 from app.crypto import SessionCrypto
 from app.db import get_connection
 from app.services.auth_flow import WorkerError, mark_error_by_channel
+from app.services.discussion_join import join_entity_and_linked_discussion
 from app.services.profile_service import _load_connected_account_by_telegram_account_id
 from app.services.sync_service import _resolve_conversation_type
 from app.telegram_client import create_client
@@ -77,6 +76,8 @@ def _joined_response(
     normalized_username: str,
     entry_key: str,
     already_joined: bool = False,
+    discussion_join_status: str | None = None,
+    discussion_group_chat_id: str | None = None,
 ) -> dict[str, Any]:
     metadata = _chat_metadata_from_entity(entity)
     logger.info("Joined: @%s%s", normalized_username, " (already joined)" if already_joined else "")
@@ -85,6 +86,8 @@ def _joined_response(
         "username": normalized_username,
         "entryId": entry_key,
         "alreadyJoined": already_joined,
+        "discussionJoinStatus": discussion_join_status,
+        "discussionGroupChatId": discussion_group_chat_id,
         **metadata,
     }
 
@@ -122,6 +125,7 @@ async def join_catalog_entry(
     account = await _load_connected_account_by_telegram_account_id(account_id)
     session = crypto.decrypt(account["sessionDataEncrypted"])
     client = create_client(session)
+    join_context = f"join-catalog-entry @{normalized_username} entry={entry_key}"
 
     try:
         await client.connect()
@@ -172,14 +176,7 @@ async def join_catalog_entry(
             return {"status": "invalid", "username": normalized_username, "entryId": entry_key}
 
         try:
-            await client(JoinChannelRequest(entity))
-        except UserAlreadyParticipantError:
-            return _joined_response(
-                entity=entity,
-                normalized_username=normalized_username,
-                entry_key=entry_key,
-                already_joined=True,
-            )
+            join_result = await join_entity_and_linked_discussion(client, entity, context=join_context)
         except FloodWaitError as exc:
             logger.warning(
                 "join-catalog-entry flood-wait: @%s entry=%s seconds=%s",
@@ -193,30 +190,32 @@ async def join_catalog_entry(
                 429,
                 details={"seconds": int(exc.seconds)},
             ) from exc
-        except ChannelPrivateError:
+
+        primary_status = join_result["primaryJoinStatus"]
+        if primary_status == "private":
             logger.warning("join-catalog-entry private: @%s entry=%s", normalized_username, entry_key)
             return {"status": "private", "username": normalized_username, "entryId": entry_key}
-        except RPCError as exc:
-            message = str(exc).lower()
-            if "already" in message and "participant" in message:
-                return _joined_response(
-                    entity=entity,
-                    normalized_username=normalized_username,
-                    entry_key=entry_key,
-                    already_joined=True,
-                )
+        if primary_status == "failed":
+            logger.warning("join-catalog-entry invalid: @%s entry=%s join_failed", normalized_username, entry_key)
+            return {"status": "invalid", "username": normalized_username, "entryId": entry_key}
+
+        discussion_status = join_result.get("discussionJoinStatus")
+        if discussion_status in ("failed", "private"):
             logger.warning(
-                "join-catalog-entry invalid: @%s entry=%s rpc_error=%s",
+                "join-catalog-entry channel ok but discussion join %s: @%s entry=%s discussion=%s",
+                discussion_status,
                 normalized_username,
                 entry_key,
-                exc,
+                join_result.get("discussionGroupChatId"),
             )
-            return {"status": "invalid", "username": normalized_username, "entryId": entry_key}
 
         return _joined_response(
             entity=entity,
             normalized_username=normalized_username,
             entry_key=entry_key,
+            already_joined=primary_status == "already_joined",
+            discussion_join_status=discussion_status if isinstance(discussion_status, str) else None,
+            discussion_group_chat_id=join_result.get("discussionGroupChatId"),
         )
     finally:
         await client.disconnect()

@@ -1073,6 +1073,33 @@ async def resolve_public_group_by_link(
             # Must match live_listener (event.chat_id) and dialog sync (dialog.id): full peer id, not raw entity.id.
             peer_id = str(get_peer_id(entity))
 
+            join_context = f"resolve-chat @{username}"
+            from app.services.discussion_join import join_entity_and_linked_discussion
+
+            try:
+                join_result = await join_entity_and_linked_discussion(client, entity, context=join_context)
+            except FloodWaitError as exc:
+                raise WorkerError(
+                    "TELEGRAM_RATE_LIMITED",
+                    f"Telegram rate limited. Retry in {exc.seconds}s",
+                    429,
+                ) from exc
+
+            primary_status = join_result.get("primaryJoinStatus")
+            if primary_status == "private":
+                raise WorkerError("CHAT_NOT_FOUND", "Chat not found or not accessible", 404)
+            if primary_status == "failed":
+                raise WorkerError("CHAT_JOIN_FAILED", "Could not join chat", 502)
+
+            discussion_status = join_result.get("discussionJoinStatus")
+            if discussion_status in ("failed", "private"):
+                logger.warning(
+                    "resolve-chat channel joined but discussion join %s: @%s discussion=%s",
+                    discussion_status,
+                    username,
+                    join_result.get("discussionGroupChatId"),
+                )
+
             return {
                 "status": "resolved",
                 "telegramChatId": peer_id,
@@ -1080,6 +1107,8 @@ async def resolve_public_group_by_link(
                 # For channels we configure sources as "channel_comments" to ingest discussion comments.
                 "chatType": "channel_comments" if chat_type == "channel" else "group",
                 "username": resolved_username,
+                "discussionJoinStatus": discussion_status,
+                "discussionGroupChatId": join_result.get("discussionGroupChatId"),
             }
         finally:
             await client.disconnect()
