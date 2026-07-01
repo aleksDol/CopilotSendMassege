@@ -4,6 +4,7 @@ import { createEntryBodySchema, createTopicBodySchema } from "./schemas.js";
 import { createEntry } from "./service.js";
 
 type CapturedEntryCreateData = {
+  status?: string;
   topics?: { createMany: { data: Array<{ topicId: string; sortOrder: number }> } };
 };
 
@@ -115,7 +116,7 @@ test("createEntry links topics through nested createMany on entry create", async
 
 test("createEntry skips topic lookup and nested create when topicIds omitted", async () => {
   let topicFindManyCalls = 0;
-  let createData: { topics?: unknown; status?: string } | null = null;
+  let createData = null as CapturedEntryCreateData | null;
 
   const prisma = {
     sourceMarketplaceTopic: {
@@ -134,7 +135,7 @@ test("createEntry skips topic lookup and nested create when topicIds omitted", a
           topics?: { createMany: { data: Array<{ topicId: string; sortOrder: number }> } };
         };
       }) => {
-        createData = data;
+        createData = data as CapturedEntryCreateData;
         return {
           id: "550e8400-e29b-41d4-a716-446655440003",
           title: data.title,
