@@ -114,6 +114,11 @@ export const subscribeRunIdParamsSchema = z.object({
   id: z.string().uuid()
 });
 
+export const resolveCatalogLinkBodySchema = z.object({
+  link: z.string().min(1).max(500),
+  channelAccountId: z.string().uuid()
+});
+
 export const subscribeJoinOutcomeBodySchema = z
   .object({
     runId: z.string().uuid(),

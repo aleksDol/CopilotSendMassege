@@ -36,6 +36,7 @@ from app.services.auth_flow import (
     verify_password_qr,
 )
 from app.services.sync_service import (
+    join_public_group_by_link,
     list_connected_accounts,
     run_initial_sync,
     send_message,
@@ -360,6 +361,32 @@ async def internal_resolve_chat(payload: ResolveChatByLinkRequest) -> dict:
             raise WorkerError(
                 "RESOLVE_CHAT_FAILED",
                 str(exc) or "Failed to resolve chat",
+                502,
+            ) from exc
+
+
+@app.post("/internal/telegram/join-chat-by-link", dependencies=[Depends(verify_internal_token)])
+async def internal_join_chat_by_link(payload: ResolveChatByLinkRequest) -> dict:
+    logger.info("join-chat-by-link requested for company=%s channelAccount=%s", payload.company_id, payload.channel_account_id)
+    async with concurrency_limiter:
+        try:
+            return await join_public_group_by_link(
+                company_id=payload.company_id,
+                channel_account_id=payload.channel_account_id,
+                link=payload.link,
+                crypto=crypto,
+            )
+        except WorkerError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                "join-chat-by-link failed company=%s channelAccount=%s",
+                payload.company_id,
+                payload.channel_account_id,
+            )
+            raise WorkerError(
+                "JOIN_CHAT_FAILED",
+                str(exc) or "Failed to join chat",
                 502,
             ) from exc
 

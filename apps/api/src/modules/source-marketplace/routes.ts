@@ -5,6 +5,7 @@ import { requireTrialOrActive } from "../../lib/access.js";
 import { isPlatformAdmin } from "../../lib/admin-access.js";
 import { getCompanyScope, getCurrentUserOrThrow } from "../../lib/request-context.js";
 import { parseWithSchema } from "../../lib/validation.js";
+import { TelegramWorkerClient } from "../../lib/telegram-worker-client.js";
 import {
   createEntryBodySchema,
   createTopicBodySchema,
@@ -12,6 +13,7 @@ import {
   listEntriesQuerySchema,
   listTopicsQuerySchema,
   marketplaceRecommendationsQuerySchema,
+  resolveCatalogLinkBodySchema,
   startSubscribeBodySchema,
   subscribeJoinOutcomeBodySchema,
   subscribeRunIdParamsSchema,
@@ -124,6 +126,50 @@ const sourceMarketplaceRoutes: FastifyPluginAsync = async (app) => {
   app.post("/admin/source-marketplace/entries", { preHandler: adminPreHandler }, async (request) => {
     const body = parseWithSchema(createEntryBodySchema, request.body);
     return createEntry(app.prisma, body);
+  });
+
+  app.post("/admin/source-marketplace/resolve-link", { preHandler: adminPreHandler }, async (request) => {
+    const scope = getCompanyScope(request);
+    const body = parseWithSchema(resolveCatalogLinkBodySchema, request.body);
+
+    const active = await resolveActiveLeadRadarTelegramAccount(app.prisma, {
+      companyId: scope.companyId,
+      userId: scope.userId,
+      channelAccountId: body.channelAccountId
+    });
+
+    if (!active) {
+      throw new AppError(400, "TELEGRAM_PARSING_DISABLED", "Parsing is disabled for this Telegram account");
+    }
+
+    const telegram = await app.prisma.telegramAccount.findUnique({
+      where: { id: active.id },
+      select: { channelAccountId: true }
+    });
+
+    if (!telegram) {
+      throw new AppError(400, "TELEGRAM_NOT_CONNECTED", "Telegram account not connected");
+    }
+
+    const worker = new TelegramWorkerClient(
+      app.config.env.TELEGRAM_WORKER_URL,
+      app.config.env.INTERNAL_API_TOKEN,
+      app.config.env.TELEGRAM_WORKER_TIMEOUT_MS,
+      app.config.env.TELEGRAM_WORKER_RESOLVE_CHAT_TIMEOUT_MS
+    );
+
+    const resolved = await worker.resolveChat({
+      companyId: scope.companyId,
+      channelAccountId: telegram.channelAccountId,
+      link: body.link
+    });
+
+    return {
+      telegramChatId: resolved.telegramChatId,
+      chatTitle: resolved.chatTitle,
+      chatType: resolved.chatType,
+      username: resolved.username ?? null
+    };
   });
 
   app.patch("/admin/source-marketplace/entries/:id", { preHandler: adminPreHandler }, async (request) => {

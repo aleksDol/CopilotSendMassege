@@ -1073,7 +1073,76 @@ async def resolve_public_group_by_link(
             # Must match live_listener (event.chat_id) and dialog sync (dialog.id): full peer id, not raw entity.id.
             peer_id = str(get_peer_id(entity))
 
-            join_context = f"resolve-chat @{username}"
+            return {
+                "status": "resolved",
+                "telegramChatId": peer_id,
+                "chatTitle": title,
+                # For channels we configure sources as "channel_comments" to ingest discussion comments.
+                "chatType": "channel_comments" if chat_type == "channel" else "group",
+                "username": resolved_username,
+            }
+        finally:
+            await client.disconnect()
+
+
+async def join_public_group_by_link(
+    *,
+    company_id: str,
+    channel_account_id: str,
+    link: str,
+    crypto: SessionCrypto,
+) -> dict[str, Any]:
+    username = _normalize_public_chat_link(link)
+
+    async with get_connection() as conn:
+        account = await _load_connected_account(conn, company_id, channel_account_id)
+        session = crypto.decrypt(account["sessionDataEncrypted"])
+
+        client = create_client(session)
+        try:
+            await client.connect()
+
+            if not await client.is_user_authorized():
+                await mark_error_by_channel(
+                    company_id,
+                    channel_account_id,
+                    "Telegram session expired, reconnect required",
+                    "RECONNECT_REQUIRED",
+                )
+                raise WorkerError("RECONNECT_REQUIRED", "Telegram session expired, reconnect required", 400)
+
+            try:
+                entity = await client.get_entity(username)
+            except (ValueError, TypeError) as exc:
+                raise WorkerError("CHAT_NOT_FOUND", "Chat not found or not accessible", 404) from exc
+            except FloodWaitError as exc:
+                raise WorkerError(
+                    "TELEGRAM_RATE_LIMITED",
+                    f"Telegram rate limited. Retry in {exc.seconds}s",
+                    429,
+                ) from exc
+            except (ServerError, TimedOutError) as exc:
+                raise WorkerError(
+                    "TELEGRAM_TRANSIENT_ERROR",
+                    "Temporary Telegram error. Retry shortly.",
+                    503,
+                ) from exc
+            except RPCError as exc:
+                logger.warning("join get_entity RPCError: %s", exc)
+                raise WorkerError(
+                    "CHAT_NOT_FOUND",
+                    f"Chat not found or not accessible: {exc!s}",
+                    404,
+                ) from exc
+            except Exception as exc:
+                logger.exception("join get_entity failed username=%s", username)
+                raise WorkerError(
+                    "CHAT_JOIN_FAILED",
+                    f"Could not join chat: {exc!s}",
+                    502,
+                ) from exc
+
+            join_context = f"join-chat @{username}"
             from app.services.discussion_join import join_entity_and_linked_discussion
 
             try:
@@ -1094,19 +1163,21 @@ async def resolve_public_group_by_link(
             discussion_status = join_result.get("discussionJoinStatus")
             if discussion_status in ("failed", "private"):
                 logger.warning(
-                    "resolve-chat channel joined but discussion join %s: @%s discussion=%s",
+                    "join-chat channel joined but discussion join %s: @%s discussion=%s",
                     discussion_status,
                     username,
                     join_result.get("discussionGroupChatId"),
                 )
 
+            chat_type = _resolve_conversation_type(entity)
+            peer_id = str(get_peer_id(entity))
+
             return {
-                "status": "resolved",
+                "status": "joined",
                 "telegramChatId": peer_id,
-                "chatTitle": title,
-                # For channels we configure sources as "channel_comments" to ingest discussion comments.
+                "chatTitle": getattr(entity, "title", None),
                 "chatType": "channel_comments" if chat_type == "channel" else "group",
-                "username": resolved_username,
+                "username": getattr(entity, "username", None),
                 "discussionJoinStatus": discussion_status,
                 "discussionGroupChatId": join_result.get("discussionGroupChatId"),
             }

@@ -210,6 +210,12 @@ const leadradarController: FastifyPluginAsync = async (app) => {
       link: body.link
     });
 
+    await worker.joinChatByLink({
+      companyId: scope.companyId,
+      channelAccountId: telegram.channelAccountId,
+      link: body.link
+    });
+
     const repo = request.server.leadradar.repositories.source;
     const createdOrExisting = await repo.addSource({
       user_id: scope.userId,

@@ -150,5 +150,16 @@ export const sourceMarketplaceApi = {
   ) => apiClient.patch<SourceMarketplaceEntryItem>(`/admin/source-marketplace/entries/${id}`, body, { token }),
 
   deleteEntry: (token: string, id: string) =>
-    apiClient.delete<{ ok: true }>(`/admin/source-marketplace/entries/${id}`, { token })
+    apiClient.delete<{ ok: true }>(`/admin/source-marketplace/entries/${id}`, { token }),
+
+  resolveLink: (
+    token: string,
+    body: { link: string; channelAccountId: string }
+  ) =>
+    apiClient.post<{
+      telegramChatId: string;
+      chatTitle: string | null;
+      chatType: string;
+      username: string | null;
+    }>("/admin/source-marketplace/resolve-link", body, { token })
 };

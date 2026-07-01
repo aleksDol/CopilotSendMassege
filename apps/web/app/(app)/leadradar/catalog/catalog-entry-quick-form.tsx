@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/api/errors";
-import { leadradarApi } from "@/lib/api/leadradar";
 import {
   sourceMarketplaceApi,
   type SourceMarketplaceEntryItem,
@@ -83,19 +82,18 @@ export function CatalogEntryQuickForm({ token, topics, entries, onCreated }: Cat
       setResolved(null);
 
       try {
-        const result = await leadradarApi.addSourceByLink(
-          token,
-          { link: trimmed },
-          parsingChannelAccountId || undefined
-        );
+        const result = await sourceMarketplaceApi.resolveLink(token, {
+          link: trimmed,
+          channelAccountId: parsingChannelAccountId
+        });
 
         if (requestId !== resolveRequestId.current) return;
 
         setResolved({
-          telegramChatId: result.telegram_chat_id,
-          title: result.chat_title?.trim() || usernameFromLink || result.telegram_chat_id,
-          chatType: result.chat_type ?? "group",
-          username: usernameFromLink
+          telegramChatId: result.telegramChatId,
+          title: result.chatTitle?.trim() || usernameFromLink || result.telegramChatId,
+          chatType: result.chatType ?? "group",
+          username: result.username ?? usernameFromLink
         });
       } catch (error) {
         if (requestId !== resolveRequestId.current) return;

@@ -12,7 +12,7 @@ type ResolveChatSuccess = {
   status: string;
   telegramChatId: string;
   chatTitle: string | null;
-  chatType: "group" | "channel";
+  chatType: "group" | "channel" | "channel_comments";
   username?: string | null;
 };
 
@@ -128,5 +128,10 @@ export class TelegramWorkerClient {
   resolveChat(payload: WorkerPayload) {
     const ms = this.resolveChatTimeoutMs ?? this.timeoutMs;
     return this.post("/internal/telegram/resolve-chat", payload, ms) as unknown as Promise<ResolveChatSuccess>;
+  }
+
+  joinChatByLink(payload: WorkerPayload) {
+    const ms = this.resolveChatTimeoutMs ?? this.timeoutMs;
+    return this.post("/internal/telegram/join-chat-by-link", payload, ms) as unknown as Promise<ResolveChatSuccess>;
   }
 }
