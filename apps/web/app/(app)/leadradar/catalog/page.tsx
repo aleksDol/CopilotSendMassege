@@ -19,6 +19,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils/cn";
+import { CatalogEntryQuickForm } from "./catalog-entry-quick-form";
+import { formatChatTypeLabel } from "./catalog-entry-helpers";
 
 type TabId = "topics" | "entries";
 
@@ -43,11 +45,6 @@ function formatDate(iso: string | null): string {
     return iso;
   }
 }
-
-const CHAT_TYPE_OPTIONS = [
-  { label: "group", value: "group" },
-  { label: "channel_comments", value: "channel_comments" }
-];
 
 const topicStatusOptions = (Object.keys(TOPIC_STATUS_LABELS) as SourceMarketplaceTopicStatus[]).map((s) => ({
   label: TOPIC_STATUS_LABELS[s],
@@ -79,17 +76,6 @@ const emptyTopicForm = () => ({
   sortOrder: "0"
 });
 
-const emptyEntryForm = () => ({
-  title: "",
-  telegramUsername: "",
-  telegramChatId: "",
-  chatType: "group",
-  status: "review" as SourceMarketplaceEntryStatus,
-  note: "",
-  lastCheckedAt: "",
-  topicIds: [] as string[]
-});
-
 export default function LeadRadarCatalogPage() {
   const { token } = useAuth();
   const [tab, setTab] = useState<TabId>("topics");
@@ -110,9 +96,9 @@ export default function LeadRadarCatalogPage() {
   const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
   const [topicSaving, setTopicSaving] = useState(false);
 
-  const [entryForm, setEntryForm] = useState(emptyEntryForm);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
-  const [entrySaving, setEntrySaving] = useState(false);
+  const [editingEntryTopicIds, setEditingEntryTopicIds] = useState<string[]>([]);
+  const [entryTopicSaving, setEntryTopicSaving] = useState(false);
 
   const [actingId, setActingId] = useState<string | null>(null);
 
@@ -159,9 +145,9 @@ export default function LeadRadarCatalogPage() {
     setEditingTopicId(null);
   };
 
-  const resetEntryForm = () => {
-    setEntryForm(emptyEntryForm());
+  const resetEntryTopicEdit = () => {
     setEditingEntryId(null);
+    setEditingEntryTopicIds([]);
   };
 
   const startEditTopic = (row: SourceMarketplaceTopicItem) => {
@@ -178,18 +164,9 @@ export default function LeadRadarCatalogPage() {
     setTab("topics");
   };
 
-  const startEditEntry = (row: SourceMarketplaceEntryItem) => {
+  const startEditEntryTopics = (row: SourceMarketplaceEntryItem) => {
     setEditingEntryId(row.id);
-    setEntryForm({
-      title: row.title,
-      telegramUsername: row.telegram_username ?? "",
-      telegramChatId: row.telegram_chat_id ?? "",
-      chatType: row.chat_type ?? "group",
-      status: row.status,
-      note: row.note ?? "",
-      lastCheckedAt: row.last_checked_at ? row.last_checked_at.slice(0, 16) : "",
-      topicIds: [...row.topic_ids]
-    });
+    setEditingEntryTopicIds([...row.topic_ids]);
     setTab("entries");
   };
 
@@ -221,32 +198,18 @@ export default function LeadRadarCatalogPage() {
     }
   };
 
-  const saveEntry = async () => {
-    if (!token || !entryForm.title.trim()) return;
-    setEntrySaving(true);
+  const saveEntryTopics = async () => {
+    if (!token || !editingEntryId) return;
+    setEntryTopicSaving(true);
     setError(null);
     try {
-      const payload = {
-        title: entryForm.title.trim(),
-        telegramUsername: entryForm.telegramUsername.trim() || null,
-        telegramChatId: entryForm.telegramChatId.trim() || null,
-        chatType: entryForm.chatType.trim() || null,
-        status: entryForm.status,
-        note: entryForm.note.trim() || null,
-        lastCheckedAt: entryForm.lastCheckedAt ? new Date(entryForm.lastCheckedAt).toISOString() : null,
-        topicIds: entryForm.topicIds
-      };
-      if (editingEntryId) {
-        await sourceMarketplaceApi.updateEntry(token, editingEntryId, payload);
-      } else {
-        await sourceMarketplaceApi.createEntry(token, payload);
-      }
-      resetEntryForm();
+      await sourceMarketplaceApi.updateEntry(token, editingEntryId, { topicIds: editingEntryTopicIds });
+      resetEntryTopicEdit();
       await loadAll();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Не удалось сохранить источник");
+      setError(e instanceof ApiError ? e.message : "Не удалось обновить тематики источника");
     } finally {
-      setEntrySaving(false);
+      setEntryTopicSaving(false);
     }
   };
 
@@ -271,7 +234,7 @@ export default function LeadRadarCatalogPage() {
     setError(null);
     try {
       await sourceMarketplaceApi.deleteEntry(token, id);
-      if (editingEntryId === id) resetEntryForm();
+      if (editingEntryId === id) resetEntryTopicEdit();
       await loadAll();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Не удалось удалить источник");
@@ -315,6 +278,11 @@ export default function LeadRadarCatalogPage() {
     });
   }, [entries, entrySearch, entryStatusFilter, entryTopicFilter]);
 
+  const editingEntry = useMemo(
+    () => (editingEntryId ? entries.find((row) => row.id === editingEntryId) ?? null : null),
+    [editingEntryId, entries]
+  );
+
   if (forbidden) {
     return (
       <div className="space-y-4">
@@ -339,7 +307,7 @@ export default function LeadRadarCatalogPage() {
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold">LeadRadar</h1>
         <p className="text-sm text-muted-foreground">
-          Каталог источников — тематики и Telegram-чаты для будущего Marketplace (без автоподписки).
+          Каталог источников — тематики и Telegram-чаты для Marketplace.
         </p>
         <LeadRadarNav />
       </div>
@@ -539,113 +507,52 @@ export default function LeadRadarCatalogPage() {
         </>
       ) : null}
 
-      {!loading && tab === "entries" ? (
+      {!loading && tab === "entries" && token ? (
         <>
-          <Card>
-            <CardHeader>
-              <CardTitle>{editingEntryId ? "Редактировать источник" : "Добавить источник"}</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-2">
-              <label className="grid gap-1 text-sm md:col-span-2">
-                <span className="text-muted-foreground">Title</span>
-                <input
-                  value={entryForm.title}
-                  onChange={(e) => setEntryForm((prev) => ({ ...prev, title: e.target.value }))}
-                  className="h-10 rounded-md border border-border bg-background px-3"
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                <span className="text-muted-foreground">Telegram username</span>
-                <input
-                  value={entryForm.telegramUsername}
-                  onChange={(e) => setEntryForm((prev) => ({ ...prev, telegramUsername: e.target.value }))}
-                  placeholder="chatname"
-                  className="h-10 rounded-md border border-border bg-background px-3"
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                <span className="text-muted-foreground">Telegram chat id</span>
-                <input
-                  value={entryForm.telegramChatId}
-                  onChange={(e) => setEntryForm((prev) => ({ ...prev, telegramChatId: e.target.value }))}
-                  placeholder="-100…"
-                  className="h-10 rounded-md border border-border bg-background px-3"
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                <span className="text-muted-foreground">Chat type</span>
-                <Select
-                  value={entryForm.chatType}
-                  onChange={(e) => setEntryForm((prev) => ({ ...prev, chatType: e.target.value }))}
-                  options={CHAT_TYPE_OPTIONS}
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                <span className="text-muted-foreground">Статус</span>
-                <Select
-                  value={entryForm.status}
-                  onChange={(e) => setEntryForm((prev) => ({ ...prev, status: e.target.value as SourceMarketplaceEntryStatus }))}
-                  options={entryStatusOptions}
-                />
-              </label>
-              <label className="grid gap-1 text-sm md:col-span-2">
-                <span className="text-muted-foreground">Заметка</span>
-                <textarea
-                  value={entryForm.note}
-                  onChange={(e) => setEntryForm((prev) => ({ ...prev, note: e.target.value }))}
-                  rows={2}
-                  className="rounded-md border border-border bg-background px-3 py-2"
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                <span className="text-muted-foreground">Last checked at</span>
-                <input
-                  type="datetime-local"
-                  value={entryForm.lastCheckedAt}
-                  onChange={(e) => setEntryForm((prev) => ({ ...prev, lastCheckedAt: e.target.value }))}
-                  className="h-10 rounded-md border border-border bg-background px-3"
-                />
-              </label>
-              <fieldset className="grid gap-2 md:col-span-2">
-                <legend className="text-sm text-muted-foreground">Тематики</legend>
-                {allTopicsSorted.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Сначала создайте тематики.</p>
-                ) : (
-                  <div className="flex flex-wrap gap-3">
-                    {allTopicsSorted.map((topic) => {
-                      const checked = entryForm.topicIds.includes(topic.id);
-                      return (
-                        <label key={topic.id} className="inline-flex items-center gap-2 text-sm">
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={(value) => {
-                              setEntryForm((prev) => ({
-                                ...prev,
-                                topicIds: value
-                                  ? [...prev.topicIds, topic.id]
-                                  : prev.topicIds.filter((id) => id !== topic.id)
-                              }));
-                            }}
-                          />
-                          {topic.name}
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
-              </fieldset>
-              <div className="flex flex-wrap gap-2 md:col-span-2">
-                <Button disabled={entrySaving || !entryForm.title.trim()} onClick={() => void saveEntry()}>
-                  {entrySaving ? "Сохранение…" : editingEntryId ? "Сохранить" : "Добавить"}
-                </Button>
-                {editingEntryId ? (
-                  <Button variant="outline" onClick={resetEntryForm}>
+          <CatalogEntryQuickForm token={token} topics={allTopicsSorted} entries={entries} onCreated={loadAll} />
+
+          {editingEntry ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Тематики источника</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="rounded-md border border-border bg-muted/30 p-3 text-sm">
+                  <p className="font-medium">{editingEntry.title}</p>
+                  <p className="text-muted-foreground">Тип: {formatChatTypeLabel(editingEntry.chat_type)}</p>
+                  <p className="text-muted-foreground">
+                    Username: {editingEntry.telegram_username ? `@${editingEntry.telegram_username}` : "—"}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  {allTopicsSorted.map((topic) => {
+                    const checked = editingEntryTopicIds.includes(topic.id);
+                    return (
+                      <label key={topic.id} className="inline-flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(value) => {
+                            setEditingEntryTopicIds((prev) =>
+                              value ? [...prev, topic.id] : prev.filter((id) => id !== topic.id)
+                            );
+                          }}
+                        />
+                        {topic.name}
+                      </label>
+                    );
+                  })}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button disabled={entryTopicSaving} onClick={() => void saveEntryTopics()}>
+                    {entryTopicSaving ? "Сохранение…" : "Сохранить тематики"}
+                  </Button>
+                  <Button variant="outline" onClick={resetEntryTopicEdit}>
                     Отмена
                   </Button>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card>
             <CardHeader>
@@ -678,13 +585,12 @@ export default function LeadRadarCatalogPage() {
                 <EmptyState title="Источники не найдены" description="Добавьте первый источник в каталог." />
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[1100px] text-sm">
+                  <table className="w-full min-w-[900px] text-sm">
                     <thead>
                       <tr className="border-b border-border text-left text-muted-foreground">
-                        <th className="py-2 pr-3">Title</th>
+                        <th className="py-2 pr-3">Название</th>
                         <th className="py-2 pr-3">Username</th>
-                        <th className="py-2 pr-3">Chat id</th>
-                        <th className="py-2 pr-3">Type</th>
+                        <th className="py-2 pr-3">Тип</th>
                         <th className="py-2 pr-3">Статус</th>
                         <th className="py-2 pr-3">Тематики</th>
                         <th className="py-2 pr-3">Проверен</th>
@@ -695,9 +601,10 @@ export default function LeadRadarCatalogPage() {
                       {filteredEntries.map((row) => (
                         <tr key={row.id} className="border-b border-border/60">
                           <td className="py-2 pr-3">{row.title}</td>
-                          <td className="py-2 pr-3 font-mono text-xs">{row.telegram_username ? `@${row.telegram_username}` : "—"}</td>
-                          <td className="py-2 pr-3 font-mono text-xs">{row.telegram_chat_id ?? "—"}</td>
-                          <td className="py-2 pr-3">{row.chat_type ?? "—"}</td>
+                          <td className="py-2 pr-3 font-mono text-xs">
+                            {row.telegram_username ? `@${row.telegram_username}` : "—"}
+                          </td>
+                          <td className="py-2 pr-3">{formatChatTypeLabel(row.chat_type)}</td>
                           <td className="py-2 pr-3">
                             <Badge variant="secondary">{ENTRY_STATUS_LABELS[row.status]}</Badge>
                           </td>
@@ -717,8 +624,8 @@ export default function LeadRadarCatalogPage() {
                           <td className="py-2 pr-3">{formatDate(row.last_checked_at)}</td>
                           <td className="py-2">
                             <div className="flex flex-wrap gap-2">
-                              <Button size="sm" variant="outline" onClick={() => startEditEntry(row)}>
-                                Изменить
+                              <Button size="sm" variant="outline" onClick={() => startEditEntryTopics(row)}>
+                                Тематики
                               </Button>
                               <Button
                                 size="sm"

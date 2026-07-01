@@ -42,7 +42,7 @@ export const entryIdParamsSchema = z.object({
   id: z.string().uuid()
 });
 
-export const createEntryBodySchema = z.object({
+const entryBodyFieldsSchema = z.object({
   title: z.string().min(1).max(255),
   telegramUsername: z.string().max(128).optional().nullable(),
   telegramChatId: z.string().max(128).optional().nullable(),
@@ -50,12 +50,26 @@ export const createEntryBodySchema = z.object({
   status: entryStatusSchema.optional(),
   note: z.string().max(10_000).optional().nullable(),
   lastCheckedAt: z.string().datetime().optional().nullable(),
-  topicIds: z.array(z.string().uuid()).optional()
+  topicIds: z.array(z.string().uuid()).optional(),
+  topic_ids: z.array(z.string().uuid()).optional()
 });
 
-export const updateEntryBodySchema = createEntryBodySchema.partial().refine((obj) => Object.keys(obj).length > 0, {
-  message: "At least one field is required"
-});
+const normalizeEntryTopicIds = <T extends { topicIds?: string[]; topic_ids?: string[] }>(body: T) => {
+  const { topic_ids, topicIds, ...rest } = body;
+  return {
+    ...rest,
+    topicIds: topicIds ?? topic_ids
+  };
+};
+
+export const createEntryBodySchema = entryBodyFieldsSchema.transform(normalizeEntryTopicIds);
+
+export const updateEntryBodySchema = entryBodyFieldsSchema
+  .partial()
+  .transform(normalizeEntryTopicIds)
+  .refine((obj) => Object.keys(obj).length > 0, {
+    message: "At least one field is required"
+  });
 
 const chatTopicsQueryPreprocessor = z.preprocess((value) => {
   if (value === undefined || value === null || value === "") {

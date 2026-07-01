@@ -195,43 +195,41 @@ export async function createEntry(
     topicIds?: string[];
   }
 ) {
-  const topicIds = input.topicIds ?? [];
+  const uniqueTopicIds = [...new Set(input.topicIds ?? [])];
 
-  const row = await prisma.$transaction(async (tx) => {
-    const created = await tx.sourceMarketplaceEntry.create({
-      data: {
-        title: input.title.trim(),
-        telegramUsername: normalizeTelegramUsername(input.telegramUsername),
-        telegramChatId: input.telegramChatId?.trim() || null,
-        chatType: input.chatType?.trim() || null,
-        status: input.status ?? "review",
-        note: input.note?.trim() || null,
-        lastCheckedAt: input.lastCheckedAt ? new Date(input.lastCheckedAt) : null
-      }
+  if (uniqueTopicIds.length) {
+    const found = await prisma.sourceMarketplaceTopic.findMany({
+      where: { id: { in: uniqueTopicIds } },
+      select: { id: true }
     });
-
-    if (topicIds.length) {
-      const uniqueTopicIds = [...new Set(topicIds)];
-      const found = await tx.sourceMarketplaceTopic.findMany({
-        where: { id: { in: uniqueTopicIds } },
-        select: { id: true }
-      });
-      if (found.length !== uniqueTopicIds.length) {
-        throw new AppError(400, "TOPIC_NOT_FOUND", "One or more topics were not found");
-      }
-      await tx.sourceMarketplaceTopicEntry.createMany({
-        data: uniqueTopicIds.map((topicId, index) => ({
-          topicId,
-          entryId: created.id,
-          sortOrder: index
-        }))
-      });
+    if (found.length !== uniqueTopicIds.length) {
+      throw new AppError(400, "TOPIC_NOT_FOUND", "One or more topics were not found");
     }
+  }
 
-    return tx.sourceMarketplaceEntry.findUniqueOrThrow({
-      where: { id: created.id },
-      include: entryInclude
-    });
+  const row = await prisma.sourceMarketplaceEntry.create({
+    data: {
+      title: input.title.trim(),
+      telegramUsername: normalizeTelegramUsername(input.telegramUsername),
+      telegramChatId: input.telegramChatId?.trim() || null,
+      chatType: input.chatType?.trim() || null,
+      status: input.status ?? "review",
+      note: input.note?.trim() || null,
+      lastCheckedAt: input.lastCheckedAt ? new Date(input.lastCheckedAt) : null,
+      ...(uniqueTopicIds.length
+        ? {
+            topics: {
+              createMany: {
+                data: uniqueTopicIds.map((topicId, index) => ({
+                  topicId,
+                  sortOrder: index
+                }))
+              }
+            }
+          }
+        : {})
+    },
+    include: entryInclude
   });
 
   return mapEntry(row);

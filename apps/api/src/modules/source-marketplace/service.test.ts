@@ -1,0 +1,143 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { createEntryBodySchema } from "./schemas.js";
+import { createEntry } from "./service.js";
+
+type CapturedEntryCreateData = {
+  topics?: { createMany: { data: Array<{ topicId: string; sortOrder: number }> } };
+};
+
+test("createEntryBodySchema keeps topicIds in parsed create payload", () => {
+  const topicId = "550e8400-e29b-41d4-a716-446655440000";
+  const parsed = createEntryBodySchema.parse({
+    title: "Test channel",
+    topicIds: [topicId],
+    lastCheckedAt: new Date().toISOString()
+  });
+
+  assert.deepEqual(parsed.topicIds, [topicId]);
+});
+
+test("createEntryBodySchema accepts snake_case topic_ids alias used in API responses", () => {
+  const topicId = "550e8400-e29b-41d4-a716-446655440000";
+  const parsed = createEntryBodySchema.parse({
+    title: "Test channel",
+    topic_ids: [topicId]
+  });
+
+  assert.deepEqual(parsed.topicIds, [topicId]);
+});
+
+test("createEntry links topics through nested createMany on entry create", async () => {
+  const topicId = "550e8400-e29b-41d4-a716-446655440001";
+  const entryId = "550e8400-e29b-41d4-a716-446655440002";
+
+  let createData = null as CapturedEntryCreateData | null;
+
+  const prisma = {
+    sourceMarketplaceTopic: {
+      findMany: async () => [{ id: topicId }]
+    },
+    sourceMarketplaceEntry: {
+      create: async ({
+        data,
+        include
+      }: {
+        data: {
+          title: string;
+          telegramUsername?: string | null;
+          telegramChatId?: string | null;
+          chatType?: string | null;
+          status?: string;
+          note?: string | null;
+          lastCheckedAt?: Date | null;
+          topics?: { createMany: { data: Array<{ topicId: string; sortOrder: number }> } };
+        };
+        include: unknown;
+      }) => {
+        createData = data;
+        return {
+          id: entryId,
+          title: data.title,
+          telegramUsername: data.telegramUsername ?? null,
+          telegramChatId: data.telegramChatId ?? null,
+          chatType: data.chatType ?? null,
+          status: data.status ?? "review",
+          note: data.note ?? null,
+          lastCheckedAt: data.lastCheckedAt ?? null,
+          createdAt: new Date("2026-07-01T00:00:00.000Z"),
+          updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+          topics: [
+            {
+              topicId,
+              entryId,
+              sortOrder: 0,
+              topic: { id: topicId, name: "Marketing", slug: "marketing" }
+            }
+          ],
+          include
+        };
+      }
+    }
+  };
+
+  const result = await createEntry(prisma as never, {
+    title: "  Test channel  ",
+    telegramUsername: "@Example",
+    telegramChatId: "-1001",
+    chatType: "group",
+    topicIds: [topicId]
+  });
+
+  assert.ok(createData);
+  assert.deepEqual(createData.topics?.createMany.data, [{ topicId, sortOrder: 0 }]);
+  assert.deepEqual(result.topic_ids, [topicId]);
+  assert.equal(result.topics[0]?.name, "Marketing");
+});
+
+test("createEntry skips topic lookup and nested create when topicIds omitted", async () => {
+  let topicFindManyCalls = 0;
+  let createData = null as CapturedEntryCreateData | null;
+
+  const prisma = {
+    sourceMarketplaceTopic: {
+      findMany: async () => {
+        topicFindManyCalls += 1;
+        return [];
+      }
+    },
+    sourceMarketplaceEntry: {
+      create: async ({
+        data
+      }: {
+        data: {
+          title: string;
+          topics?: { createMany: { data: Array<{ topicId: string; sortOrder: number }> } };
+        };
+      }) => {
+        createData = data;
+        return {
+          id: "550e8400-e29b-41d4-a716-446655440003",
+          title: data.title,
+          telegramUsername: null,
+          telegramChatId: null,
+          chatType: null,
+          status: "review",
+          note: null,
+          lastCheckedAt: null,
+          createdAt: new Date("2026-07-01T00:00:00.000Z"),
+          updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+          topics: []
+        };
+      }
+    }
+  };
+
+  const result = await createEntry(prisma as never, {
+    title: "No topics"
+  });
+
+  assert.equal(topicFindManyCalls, 0);
+  assert.equal(createData?.topics, undefined);
+  assert.deepEqual(result.topic_ids, []);
+});
