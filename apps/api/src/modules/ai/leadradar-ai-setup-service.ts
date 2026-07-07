@@ -154,7 +154,7 @@ export class LeadRadarAiSetupService {
       "IMPORTANT: Your previous output was invalid. Return ONLY valid JSON with keys niche, summary, keywordGroups (exactly 5 groups with exact titles), negativeKeywords, chatTopics. No extra text.";
 
     try {
-      const raw = await this.completeText(messages, { temperature: 0.35, maxTokens: 1400 });
+      const raw = await this.completeText(messages, { temperature: 0.4, maxTokens: 1800 });
       return normalizeLeadRadarAiSetupResult(tryParseJson(raw));
     } catch (firstError) {
       this.app.log.warn({ err: firstError }, "[LeadRadar AI Setup] first generation attempt failed, retrying");
@@ -163,7 +163,7 @@ export class LeadRadarAiSetupService {
     try {
       const retryRaw = await this.completeText(
         [...messages, { role: "user", content: retryHint }],
-        { temperature: 0.15, maxTokens: 1400 }
+        { temperature: 0.2, maxTokens: 1800 }
       );
       return normalizeLeadRadarAiSetupResult(tryParseJson(retryRaw));
     } catch (retryError) {
