@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import type { AppConfig } from "./config/index.js";
 import prismaPlugin from "./plugins/prisma.js";
 import redisPlugin from "./plugins/redis.js";
+import systemLogPlugin from "./plugins/system-log.js";
 import rawBodyPlugin from "./plugins/raw-body.js";
 import corsPlugin from "./plugins/cors.js";
 import authPlugin from "./plugins/auth.js";
@@ -32,6 +33,7 @@ export const buildApp = async (config: AppConfig) => {
 
   await app.register(prismaPlugin);
   await app.register(redisPlugin);
+  await app.register(systemLogPlugin);
   await app.register(rawBodyPlugin);
   await app.register(corsPlugin);
   await app.register(helmetPlugin);

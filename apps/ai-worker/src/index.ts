@@ -33,6 +33,42 @@ const log = (level: "info" | "error" | "warn", message: string, extra: Record<st
   );
 };
 
+/**
+ * Emit an internal system log for observability. Always writes to the local
+ * worker logger and additionally forwards the entry to the shared API system
+ * log service (best-effort). Never throws so the join flow is never affected.
+ * Only technical metadata is passed (no PII, tokens or message content).
+ */
+const emitSystemLog = (
+  level: "info" | "warn" | "error",
+  event: string,
+  traceId: string | undefined,
+  metadata: Record<string, unknown>
+) => {
+  log(level, `join-worker:${event}`, { traceId, ...metadata });
+
+  if (!internalToken) {
+    return;
+  }
+
+  void fetch(`${apiInternalUrl}/internal/system-logs`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-internal-token": internalToken
+    },
+    body: JSON.stringify({
+      level,
+      module: "join-worker",
+      event,
+      traceId: traceId ?? undefined,
+      metadata
+    })
+  }).catch((error) => {
+    log("error", "join-worker:system-log-failed", { event, error: String(error) });
+  });
+};
+
 const defaultJobOptions: JobsOptions = {
   attempts: 3,
   backoff: {
@@ -129,13 +165,24 @@ type JoinCatalogEntryJob = {
   runId: string;
   entryId: string;
   telegramAccountId: string;
+  traceId?: string;
 };
 
 const subscribeWorker = new Worker(
   "telegram-subscribe",
   async (job) => {
     const data = job.data as JoinCatalogEntryJob;
+    const traceId = data.traceId;
+    const jobStartedAt = Date.now();
+    const attempt = job.attemptsMade + 1;
     log("info", "Processing join-catalog-entry job", { jobId: job.id, ...data });
+
+    emitSystemLog("info", "JoinStarted", traceId, {
+      runId: data.runId,
+      entryId: data.entryId,
+      jobId: job.id,
+      attempt
+    });
 
     if (!internalToken) {
       throw new Error("INTERNAL_API_TOKEN is required for join-catalog-entry jobs");
@@ -175,6 +222,14 @@ const subscribeWorker = new Worker(
           telegramAccountId: data.telegramAccountId,
           body: bodyText
         });
+        emitSystemLog("warn", "FloodWait", traceId, {
+          runId: data.runId,
+          entryId: data.entryId,
+          jobId: job.id,
+          attempt,
+          errorCode: "TELEGRAM_FLOOD_WAIT",
+          duration: Date.now() - jobStartedAt
+        });
         throw new Error(`join-catalog-entry flood-wait: ${bodyText}`);
       }
 
@@ -186,6 +241,14 @@ const subscribeWorker = new Worker(
           telegramAccountId: data.telegramAccountId,
           status: response.status,
           body: bodyText
+        });
+        emitSystemLog("error", "JoinFailed", traceId, {
+          runId: data.runId,
+          entryId: data.entryId,
+          jobId: job.id,
+          attempt,
+          errorCode: `HTTP_${response.status}`,
+          duration: Date.now() - jobStartedAt
         });
         throw new Error(`join-catalog-entry failed: ${response.status} ${bodyText}`);
       }
@@ -199,7 +262,44 @@ const subscribeWorker = new Worker(
           telegramAccountId: data.telegramAccountId,
           result: parsed
         });
+        emitSystemLog("error", "JoinFailed", traceId, {
+          runId: data.runId,
+          entryId: data.entryId,
+          jobId: job.id,
+          attempt,
+          errorCode: "UNEXPECTED_STATUS",
+          duration: Date.now() - jobStartedAt
+        });
         throw new Error(`join-catalog-entry unexpected status: ${joinStatus}`);
+      }
+
+      const alreadyJoined = parsed?.alreadyJoined === true;
+      const joinTelegramChatId = typeof parsed?.telegramChatId === "string" ? parsed.telegramChatId : undefined;
+      if (joinStatus === "joined") {
+        emitSystemLog("info", alreadyJoined ? "AlreadyJoined" : "Joined", traceId, {
+          runId: data.runId,
+          entryId: data.entryId,
+          jobId: job.id,
+          telegramChatId: joinTelegramChatId,
+          attempt,
+          duration: Date.now() - jobStartedAt
+        });
+      } else if (joinStatus === "private") {
+        emitSystemLog("warn", "PrivateChat", traceId, {
+          runId: data.runId,
+          entryId: data.entryId,
+          jobId: job.id,
+          attempt,
+          duration: Date.now() - jobStartedAt
+        });
+      } else {
+        emitSystemLog("warn", "InvalidChat", traceId, {
+          runId: data.runId,
+          entryId: data.entryId,
+          jobId: job.id,
+          attempt,
+          duration: Date.now() - jobStartedAt
+        });
       }
 
       const outcomeResponse = await fetch(`${apiInternalUrl}/internal/source-marketplace/join-outcome`, {
@@ -213,10 +313,11 @@ const subscribeWorker = new Worker(
           telegramAccountId: data.telegramAccountId,
           entryId: data.entryId,
           status: joinStatus,
-          telegramChatId: typeof parsed?.telegramChatId === "string" ? parsed.telegramChatId : undefined,
+          telegramChatId: joinTelegramChatId,
           chatTitle:
             typeof parsed?.chatTitle === "string" || parsed?.chatTitle === null ? parsed.chatTitle : undefined,
-          chatType: typeof parsed?.chatType === "string" || parsed?.chatType === null ? parsed.chatType : undefined
+          chatType: typeof parsed?.chatType === "string" || parsed?.chatType === null ? parsed.chatType : undefined,
+          traceId
         })
       });
 

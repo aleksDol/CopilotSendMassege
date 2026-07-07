@@ -1098,3 +1098,29 @@ model SourceMarketplaceSubscribeRun {
   @@index([telegramAccountId, status], map: "source_marketplace_subscribe_runs_tg_account_status_idx")
   @@map("source_marketplace_subscribe_runs")
 }
+
+/// Internal observability log for the admin panel. Intentionally has no relations
+/// so that writing a log never blocks or breaks the main business flow.
+enum SystemLogLevel {
+  info
+  warn
+  error
+}
+
+model SystemLog {
+  id        String         @id @default(uuid()) @db.Uuid @map("id")
+  createdAt DateTime       @default(now()) @map("created_at")
+  level     SystemLogLevel @default(info) @map("level")
+  module    String         @map("module")
+  event     String         @map("event")
+  traceId   String?        @map("trace_id")
+  userId    String?        @map("user_id")
+  companyId String?        @map("company_id")
+  metadata  Json?          @map("metadata")
+
+  @@index([createdAt(sort: Desc)], map: "system_logs_created_at_idx")
+  @@index([traceId], map: "system_logs_trace_id_idx")
+  @@index([module, createdAt(sort: Desc)], map: "system_logs_module_created_idx")
+  @@index([level, createdAt(sort: Desc)], map: "system_logs_level_created_idx")
+  @@map("system_logs")
+}

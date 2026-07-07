@@ -127,7 +127,8 @@ export const subscribeJoinOutcomeBodySchema = z
     status: z.enum(["joined", "private", "invalid"]),
     telegramChatId: z.string().max(128).optional(),
     chatTitle: z.string().max(255).nullable().optional(),
-    chatType: z.string().max(64).nullable().optional()
+    chatType: z.string().max(64).nullable().optional(),
+    traceId: z.string().max(191).optional()
   })
   .superRefine((body, ctx) => {
     if (body.status === "joined" && !body.telegramChatId?.trim()) {

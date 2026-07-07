@@ -20,6 +20,7 @@ import settingsRoutes from "./settings/routes.js";
 import adminRoutes from "./admin/routes.js";
 import crmRoutes from "./crm/routes.js";
 import sourceMarketplaceRoutes from "./source-marketplace/routes.js";
+import systemLogsRoutes from "./system-logs/routes.js";
 
 const apiModules: FastifyPluginAsync = async (app) => {
   await app.register(healthRoutes);
@@ -42,6 +43,7 @@ const apiModules: FastifyPluginAsync = async (app) => {
   await app.register(userRoutes);
   await app.register(adminRoutes);
   await app.register(sourceMarketplaceRoutes);
+  await app.register(systemLogsRoutes);
   await app.register(crmRoutes);
 
   if (app.config.env.ENABLE_LEADRADAR) {

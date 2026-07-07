@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "@/lib/api/errors";
 import { adminApi, type AdminUserRow } from "@/lib/api/admin";
@@ -105,9 +106,14 @@ export default function AdminPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Админ</h1>
-        <p className="text-sm text-muted-foreground">Пользователи и ручное управление подпиской компании (по пользователю).</p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-semibold">Админ</h1>
+          <p className="text-sm text-muted-foreground">Пользователи и ручное управление подпиской компании (по пользователю).</p>
+        </div>
+        <Link href="/admin/system-logs" className="text-sm text-primary hover:underline">
+          Системные логи →
+        </Link>
       </div>
 
       <Card>

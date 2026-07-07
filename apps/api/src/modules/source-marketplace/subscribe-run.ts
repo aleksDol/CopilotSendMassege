@@ -2,8 +2,11 @@ import type { PrismaClient, SourceMarketplaceSubscribeRun, SourceMarketplaceSubs
 import type { Redis } from "ioredis";
 import type { Env } from "../../config/env.js";
 import { AppError } from "../../lib/errors.js";
+import type { SystemLogger } from "../../lib/system-log.js";
 import { PrismaLeadSourceRepository } from "../leadradar/infrastructure/repositories/prisma/index.js";
 import { enqueueJoinCatalogEntryJobs } from "./subscribe-queue.js";
+
+const SYSTEM_LOG_MODULE = "marketplace";
 
 export type SubscribeRunCounts = {
   totalCount: number;
@@ -116,7 +119,9 @@ export async function applySubscribeJoinOutcome(
     telegramChatId?: string;
     chatTitle?: string | null;
     chatType?: string | null;
-  }
+    traceId?: string;
+  },
+  systemLog?: SystemLogger
 ) {
   const idempotencyKey = subscribeRunEntryIdempotencyKey(input.runId, input.entryId);
   const acquired = await redis.set(idempotencyKey, "1", "EX", 7 * 24 * 3600, "NX");
@@ -149,6 +154,24 @@ export async function applySubscribeJoinOutcome(
         throw new AppError(400, "TELEGRAM_CHAT_ID_REQUIRED", "telegramChatId is required for joined outcome");
       }
 
+      // Existence check is only used to pick the log event name. It must never
+      // break the join flow, so a lookup failure defaults to "created".
+      let sourceExisted = false;
+      try {
+        const existingSource = await prisma.leadRadarSource.findUnique({
+          where: {
+            telegramAccountId_telegramChatId: {
+              telegramAccountId: input.telegramAccountId,
+              telegramChatId
+            }
+          },
+          select: { id: true }
+        });
+        sourceExisted = existingSource !== null;
+      } catch {
+        sourceExisted = false;
+      }
+
       const sourceRepo = new PrismaLeadSourceRepository(prisma);
       await sourceRepo.addSource({
         user_id: run.userId,
@@ -157,6 +180,18 @@ export async function applySubscribeJoinOutcome(
         chat_title: input.chatTitle ?? null,
         chat_type: input.chatType ?? null,
         is_active: true
+      });
+
+      systemLog?.info({
+        module: SYSTEM_LOG_MODULE,
+        event: sourceExisted ? "LeadRadarSourceUpdated" : "LeadRadarSourceCreated",
+        traceId: input.traceId,
+        userId: run.userId,
+        metadata: {
+          runId: run.id,
+          entryId: input.entryId,
+          telegramChatId
+        }
       });
     }
 
@@ -174,6 +209,35 @@ export async function applySubscribeJoinOutcome(
       }
     });
 
+    systemLog?.info({
+      module: SYSTEM_LOG_MODULE,
+      event: "SubscribeRunIncrement",
+      traceId: input.traceId,
+      userId: run.userId,
+      metadata: {
+        runId: run.id,
+        entryId: input.entryId,
+        outcome: input.status,
+        joinedCount: nextJoinedCount,
+        failedCount: nextFailedCount
+      }
+    });
+
+    if (nextStatus === "completed") {
+      systemLog?.info({
+        module: SYSTEM_LOG_MODULE,
+        event: "RunCompleted",
+        traceId: input.traceId,
+        userId: run.userId,
+        metadata: {
+          runId: run.id,
+          joinedCount: nextJoinedCount,
+          failedCount: nextFailedCount,
+          skippedCount: updatedRun.skippedCount
+        }
+      });
+    }
+
     return mapSubscribeRunResponse(updatedRun);
   } catch (error) {
     await redis.del(idempotencyKey);
@@ -185,10 +249,13 @@ export async function startSubscribeRun(
   prisma: PrismaClient,
   params: {
     userId: string;
+    companyId?: string;
     telegramAccountId: string;
     topicIds: string[];
+    traceId?: string;
   },
-  env: Env
+  env: Env,
+  systemLog?: SystemLogger
 ) {
   const uniqueTopicIds = [...new Set(params.topicIds)];
   if (!uniqueTopicIds.length) {
@@ -255,7 +322,37 @@ export async function startSubscribeRun(
     await enqueueJoinCatalogEntryJobs(env, {
       runId: run.id,
       telegramAccountId: params.telegramAccountId,
-      entryIds: toConnectEntryIds
+      entryIds: toConnectEntryIds,
+      traceId: params.traceId
+    });
+
+    systemLog?.info({
+      module: SYSTEM_LOG_MODULE,
+      event: "QueueCreated",
+      traceId: params.traceId,
+      userId: params.userId,
+      companyId: params.companyId,
+      metadata: {
+        runId: run.id,
+        jobCount: toConnectCount,
+        topicCount: uniqueTopicIds.length,
+        skippedCount
+      }
+    });
+  } else {
+    // Nothing to connect -> the run is already completed synchronously.
+    systemLog?.info({
+      module: SYSTEM_LOG_MODULE,
+      event: "RunCompleted",
+      traceId: params.traceId,
+      userId: params.userId,
+      companyId: params.companyId,
+      metadata: {
+        runId: run.id,
+        joinedCount: 0,
+        failedCount: 0,
+        skippedCount
+      }
     });
   }
 

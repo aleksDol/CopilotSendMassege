@@ -40,6 +40,8 @@ import "./modules/dashboard/sales-utils.test.js";
 import "./modules/source-marketplace/recommendations.test.js";
 import "./modules/source-marketplace/service.test.js";
 import "./modules/source-marketplace/subscribe-run.test.js";
+import "./lib/system-log.test.js";
+import "./modules/system-logs/service.test.js";
 import "./scripts/cleanup-invalid-crm-leads.test.js";
 import "./scripts/merge-direct-conversation-duplicates.test.js";
 import "./scripts/archive-duplicate-direct-conversations.test.js";

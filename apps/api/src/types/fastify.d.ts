@@ -10,12 +10,14 @@ import type { LeadRadarIngestionService } from "../modules/leadradar/application
 import type { LeadMatchService } from "../modules/leadradar/application/services/lead-match-service.js";
 import type { LeadScoringService } from "../modules/leadradar/application/services/lead-scoring-service.js";
 import type { LeadDeduplicationService } from "../modules/leadradar/application/services/lead-deduplication-service.js";
+import type { SystemLogger } from "../lib/system-log.js";
 
 declare module "fastify" {
   interface FastifyInstance {
     config: AppConfig;
     prisma: PrismaClient;
     redis: Redis;
+    systemLog: SystemLogger;
     authenticate: import("fastify").preHandlerHookHandler;
     rateLimit: (opts?: unknown) => import("fastify").preHandlerHookHandler;
 

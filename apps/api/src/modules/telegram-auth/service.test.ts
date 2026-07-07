@@ -69,6 +69,11 @@ function makeApp(overrides: Partial<any> = {}) {
     log: {
       error: () => {}
     },
+    systemLog: {
+      info: () => {},
+      warn: () => {},
+      error: () => {}
+    },
     redis: {
       set: async (key: string, value: string) => {
         redisStore.set(key, value);

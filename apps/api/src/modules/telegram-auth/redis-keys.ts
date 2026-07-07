@@ -12,4 +12,6 @@ export type TelegramAuthLoginSession = {
   lastName?: string | null;
   photoUrl?: string | null;
   confirmedAt?: string;
+  /** Correlation id for internal system logs across the login flow. */
+  traceId?: string;
 };

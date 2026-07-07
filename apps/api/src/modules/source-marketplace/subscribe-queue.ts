@@ -8,6 +8,7 @@ export type JoinCatalogEntryJob = {
   runId: string;
   entryId: string;
   telegramAccountId: string;
+  traceId?: string;
 };
 
 const toBullMqConnection = (redisUrl: string) => {
@@ -54,6 +55,7 @@ export async function enqueueJoinCatalogEntryJobs(
     runId: string;
     telegramAccountId: string;
     entryIds: string[];
+    traceId?: string;
   }
 ): Promise<{ enqueued: number }> {
   if (!input.entryIds.length) {
@@ -70,7 +72,8 @@ export async function enqueueJoinCatalogEntryJobs(
         {
           runId: input.runId,
           entryId,
-          telegramAccountId: input.telegramAccountId
+          telegramAccountId: input.telegramAccountId,
+          traceId: input.traceId
         },
         {
           jobId: toJoinCatalogEntryJobId(input.telegramAccountId, entryId),

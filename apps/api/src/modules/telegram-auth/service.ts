@@ -119,7 +119,8 @@ const buildSessionResponse = async (app: FastifyInstance, user: User & { company
 export const startTelegramLogin = async (app: FastifyInstance) => {
   const botUsername = ensureTelegramAuthConfigured(app);
   const loginToken = randomUUID();
-  const session: TelegramAuthLoginSession = { status: "pending" };
+  const traceId = randomUUID();
+  const session: TelegramAuthLoginSession = { status: "pending", traceId };
 
   await app.redis.set(
     telegramAuthLoginKey(loginToken),
@@ -127,6 +128,12 @@ export const startTelegramLogin = async (app: FastifyInstance) => {
     "EX",
     TELEGRAM_AUTH_LOGIN_TTL_SECONDS
   );
+
+  app.systemLog.info({
+    module: "telegram-login",
+    event: "TelegramLoginStarted",
+    traceId
+  });
 
   return {
     loginToken,
@@ -136,6 +143,12 @@ export const startTelegramLogin = async (app: FastifyInstance) => {
 
 export const completeTelegramLogin = async (app: FastifyInstance, payload: { loginToken: string }) => {
   const session = await getConfirmedSessionOrThrow(app, payload.loginToken);
+
+  app.systemLog.info({
+    module: "telegram-login",
+    event: "TelegramLoginConfirmed",
+    traceId: session.traceId
+  });
 
   const identity = await app.prisma.telegramIdentity.findUnique({
     where: { telegramUserId: session.telegramUserId },
@@ -245,6 +258,14 @@ export const registerTelegramUser = async (
   } catch (error) {
     app.log.error({ err: error, companyId: company.id }, "Failed to initialize billing customer");
   }
+
+  app.systemLog.info({
+    module: "telegram-login",
+    event: "TelegramRegistered",
+    traceId: session.traceId,
+    userId: user.id,
+    companyId: company.id
+  });
 
   const authenticated = await buildSessionResponse(app, {
     ...user,

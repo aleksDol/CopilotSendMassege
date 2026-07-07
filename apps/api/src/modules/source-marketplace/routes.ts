@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { AppError } from "../../lib/errors.js";
 import { ensureInternalToken } from "../../lib/internal-auth.js";
@@ -59,6 +60,19 @@ const sourceMarketplaceRoutes: FastifyPluginAsync = async (app) => {
   app.post("/source-marketplace/start", { preHandler: [app.authenticate, requireAccess] }, async (request) => {
     const scope = getCompanyScope(request);
     const body = parseWithSchema(startSubscribeBodySchema, request.body);
+    const traceId = randomUUID();
+
+    app.systemLog.info({
+      module: "marketplace",
+      event: "MarketplaceStart",
+      traceId,
+      userId: scope.userId,
+      companyId: scope.companyId,
+      metadata: {
+        topicCount: body.topicIds.length,
+        channelAccountId: body.channelAccountId
+      }
+    });
 
     const active = await resolveActiveLeadRadarTelegramAccount(app.prisma, {
       companyId: scope.companyId,
@@ -74,10 +88,13 @@ const sourceMarketplaceRoutes: FastifyPluginAsync = async (app) => {
       app.prisma,
       {
         userId: scope.userId,
+        companyId: scope.companyId,
         telegramAccountId: active.id,
-        topicIds: body.topicIds
+        topicIds: body.topicIds,
+        traceId
       },
-      app.config.env
+      app.config.env,
+      app.systemLog
     );
   });
 
@@ -94,7 +111,7 @@ const sourceMarketplaceRoutes: FastifyPluginAsync = async (app) => {
     );
 
     const body = parseWithSchema(subscribeJoinOutcomeBodySchema, request.body);
-    return applySubscribeJoinOutcome(app.prisma, app.redis, body);
+    return applySubscribeJoinOutcome(app.prisma, app.redis, body, app.systemLog);
   });
 
   app.get("/admin/source-marketplace/topics", { preHandler: adminPreHandler }, async (request) => {
